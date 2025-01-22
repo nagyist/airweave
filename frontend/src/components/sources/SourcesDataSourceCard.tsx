@@ -2,12 +2,14 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter }
 import { Button } from "@/components/ui/button";
 import { getAppIconUrl } from "@/lib/utils/icons";
 import { ManageSourceDialog } from "./ManageSourceDialog";
+import { ApiKeyAuthDialog } from "./ApiKeyAuthDialog";
 import { useState } from "react";
 import { Connection, DataSourceCardProps } from "@/types";
 
 interface SourcesDataSourceCardProps extends Omit<DataSourceCardProps, 'onSelect'> {
   onConnect: () => void;
   existingConnections?: Connection[];
+  authType?: string;
 }
 
 export function SourcesDataSourceCard({ 
@@ -16,10 +18,19 @@ export function SourcesDataSourceCard({
   description, 
   status,
   onConnect,
-  existingConnections = []
+  existingConnections = [],
+  authType,
 }: SourcesDataSourceCardProps) {
   const [showManageDialog, setShowManageDialog] = useState(false);
+  const [showApiKeyDialog, setShowApiKeyDialog] = useState(false);
 
+  if (authType === "api_key" && status === "disconnected"){
+    setShowApiKeyDialog(true);
+  } else {
+    // Fallback to existing “ManageSourceDialog” or OAuth logic, etc.
+    onConnect();
+    setShowManageDialog(true);
+  }
   return (
     <>
       <Card className="w-full min-h-[240px] flex flex-col justify-between overflow-hidden">
@@ -64,6 +75,17 @@ export function SourcesDataSourceCard({
         description={description}
         onConnect={onConnect}
         existingConnections={existingConnections}
+      />
+
+      <ApiKeyAuthDialog
+        open={showApiKeyDialog}
+        onOpenChange={setShowApiKeyDialog}
+        sourceName={name}
+        sourceShortName={shortName}
+        onConnected={() => {
+          setShowApiKeyDialog(false);
+          onConnect();
+        }}
       />
     </>
   );

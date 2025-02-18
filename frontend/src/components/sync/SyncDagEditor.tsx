@@ -408,7 +408,7 @@ const SyncDagEditorInner = ({ syncId, initialDag, onSave }: SyncDagEditorProps) 
       id: `chunk-${Date.now()}-1`,
       type: 'entity',
       data: {
-        name: `${chunkPrefix} 1`,
+        name: `AsanaPDFParent`,
       },
       position: { x: 0, y: 0 },
     };
@@ -417,7 +417,7 @@ const SyncDagEditorInner = ({ syncId, initialDag, onSave }: SyncDagEditorProps) 
       id: `chunk-${Date.now()}-2`,
       type: 'entity',
       data: {
-        name: `${chunkPrefix} 2`,
+        name: `AsanaPDFChunk`,
       },
       position: { x: 0, y: 0 },
     };

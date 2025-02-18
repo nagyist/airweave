@@ -53,6 +53,8 @@ class DagService:
         # Create entity nodes with pre-set IDs
         for entity_definition in entity_definitions:
             entity_node_id = uuid4()
+            if "Workspace" in entity_definition.name or "Comment" in entity_definition.name:
+                continue
             entity_node = DagNodeCreate(
                 id=entity_node_id,
                 type="entity",
@@ -68,6 +70,24 @@ class DagService:
                     to_node_id=entity_node_id,
                 )
             )
+
+        # Add a fake file entity node
+        file_entity_node_id = uuid4()
+        file_entity_node = DagNodeCreate(
+            id=file_entity_node_id,
+            type="entity",
+            name="AsanaPDF",
+            config={"type": "file"},  # Add a config to identify it as a file type
+        )
+        nodes.append(file_entity_node)
+
+        # Create edge from source to file entity
+        edges.append(
+            DagEdgeCreate(
+                from_node_id=source_node_id,
+                to_node_id=file_entity_node_id,
+            )
+        )
 
         # Create destination node with pre-set ID
         destination_node_id = uuid4()
@@ -96,20 +116,11 @@ class DagService:
             )
         nodes.append(destination_node)
 
-        # Create edges from entities to destination (or source to destination if no entities)
-        if entity_definitions:
-            for node in nodes[1:-1]:  # Skip source and destination nodes
-                edges.append(
-                    DagEdgeCreate(
-                        from_node_id=node.id,
-                        to_node_id=destination_node_id,
-                    )
-                )
-        else:
-            # Direct edge from source to destination if no entities
+        # Create edges from entities to destination (including the file entity)
+        for node in nodes[1:-1]:  # Skip source and destination nodes
             edges.append(
                 DagEdgeCreate(
-                    from_node_id=source_node_id,
+                    from_node_id=node.id,
                     to_node_id=destination_node_id,
                 )
             )

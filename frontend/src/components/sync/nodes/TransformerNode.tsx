@@ -24,6 +24,7 @@ import {
 interface TransformerConfig {
   chunkSize?: number;
   overlap?: number;
+  maxChunkSize?: number;
   splitMethod?: 'size' | 'delimiter' | 'visual';
   delimiter?: string;
 }
@@ -51,7 +52,7 @@ const getDefaultConfig = (transformerId: string): TransformerConfig => {
     case 'text-splitter':
       return { chunkSize: 1000, overlap: 200, splitMethod: 'size' };
     case 'visual-pdf-chunker':
-      return { chunkSize: 1, splitMethod: 'visual' };
+      return { chunkSize: 1, overlap: 50, maxChunkSize: 2048, splitMethod: 'visual' };
     default:
       return {};
   }
@@ -185,13 +186,32 @@ export const TransformerNode = memo(({ data, selected, ...props }: NodeProps<Tra
               {data.transformer_id === 'visual-pdf-chunker' && (
                 <>
                   <div className="space-y-2">
-                    <Label htmlFor="chunkSize">Pages per Chunk</Label>
+                    <Label htmlFor="maxChunkSize">Max Chunk Size (tokens)</Label>
                     <Input
-                      id="chunkSize"
+                      id="maxChunkSize"
                       type="number"
-                      value={config.chunkSize}
+                      min="128"
+                      max="8192"
+                      step="128"
+                      value={config.maxChunkSize}
                       onChange={(e) => 
-                        setConfig(prev => ({ ...prev, chunkSize: parseInt(e.target.value) }))
+                        setConfig(prev => ({ ...prev, maxChunkSize: parseInt(e.target.value) }))
+                      }
+                    />
+                    <p className="text-sm text-muted-foreground">
+                      Recommended: 2048 tokens for optimal context
+                    </p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="overlap">Overlap (%)</Label>
+                    <Input
+                      id="overlap"
+                      type="number"
+                      min="0"
+                      max="100"
+                      value={config.overlap}
+                      onChange={(e) => 
+                        setConfig(prev => ({ ...prev, overlap: parseInt(e.target.value) }))
                       }
                     />
                   </div>

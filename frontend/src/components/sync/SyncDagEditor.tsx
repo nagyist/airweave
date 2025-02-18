@@ -396,27 +396,30 @@ const SyncDagEditorInner = ({ syncId, initialDag, onSave }: SyncDagEditorProps) 
       data: {
         name: transformerName,
         transformer_id: transformerId,
+        isConfigured: false, // Start unconfigured
+        config: {} // Will be set through the form
       },
       position: { x: 0, y: 0 }, // Will be set by layout
     };
 
-    // Create chunk nodes
+    // Create chunk nodes with better names based on transformer
+    const chunkPrefix = transformerId === 'visual-pdf-chunker' ? 'Page Group' : 'Chunk';
     const chunk1: Node = {
       id: `chunk-${Date.now()}-1`,
       type: 'entity',
       data: {
-        name: 'Chunk 1',
+        name: `${chunkPrefix} 1`,
       },
-      position: { x: 0, y: 0 }, // Will be set by layout
+      position: { x: 0, y: 0 },
     };
 
     const chunk2: Node = {
       id: `chunk-${Date.now()}-2`,
       type: 'entity',
       data: {
-        name: 'Chunk 2',
+        name: `${chunkPrefix} 2`,
       },
-      position: { x: 0, y: 0 }, // Will be set by layout
+      position: { x: 0, y: 0 },
     };
 
     // Create new edges with appropriate types

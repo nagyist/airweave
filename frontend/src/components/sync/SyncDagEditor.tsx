@@ -513,7 +513,7 @@ const SyncDagEditorInner = ({ syncId, initialDag, onSave }: SyncDagEditorProps) 
   };
 
   return (
-    <div className="w-full h-[600px] relative border rounded-lg bg-background">
+    <div className="w-full h-[800px] relative border rounded-lg bg-background">
       <ReactFlow
         nodes={nodes}
         edges={edges.map(edge => ({
@@ -526,10 +526,11 @@ const SyncDagEditorInner = ({ syncId, initialDag, onSave }: SyncDagEditorProps) 
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
         fitView
-        className="bg-background"
+        className="bg-background rounded-lg"
         defaultEdgeOptions={{
           type: 'button',
         }}
+        proOptions={{ hideAttribution: true }}
       >
         <Background />
         <Controls />

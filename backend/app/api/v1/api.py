@@ -11,6 +11,7 @@ from app.api.v1.endpoints import (
     embedding_models,
     entities,
     health,
+    search,
     sources,
     sync,
     transformers,
@@ -34,3 +35,4 @@ api_router.include_router(chat.router, prefix="/chat", tags=["chat"])
 api_router.include_router(dag.router, prefix="/dag", tags=["dag"])
 api_router.include_router(entities.router, prefix="/entities", tags=["entities"])
 api_router.include_router(transformers.router, prefix="/transformers", tags=["transformers"])
+api_router.include_router(search.router, prefix="/search", tags=["search"])

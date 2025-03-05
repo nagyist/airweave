@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app import crud, schemas
 from app.core import credentials
 from app.core.exceptions import NotFoundException
+from app.core.logging import logger
 from app.platform.auth.schemas import AuthType
 from app.platform.auth.services import oauth2_service
 from app.platform.destinations._base import BaseDestination
@@ -39,7 +40,7 @@ class SyncContext:
     """
 
     source: BaseSource
-    destination: BaseDestination  # still assumes single destination
+    destinations: dict[str, BaseDestination]  # Map of destination name to destination instance
     embedding_model: BaseEmbeddingModel
     transformers: dict[str, callable]
     sync: schemas.Sync
@@ -54,7 +55,7 @@ class SyncContext:
     def __init__(
         self,
         source: BaseSource,
-        destination: BaseDestination,  # still assumes single destination
+        destinations: dict[str, BaseDestination],  # Map of destination name to destination instance
         embedding_model: BaseEmbeddingModel,
         transformers: dict[str, callable],
         sync: schemas.Sync,
@@ -65,9 +66,23 @@ class SyncContext:
         entity_map: dict[type[BaseEntity], UUID],
         white_label: Optional[schemas.WhiteLabel] = None,
     ):
-        """Initialize the sync context."""
+        """Initialize sync context.
+
+        Args:
+            source: Source instance
+            destinations: Map of destination name to destination instance
+            embedding_model: Embedding model instance
+            transformers: Dictionary of transformer callables
+            sync: Sync instance
+            sync_job: Sync job instance
+            dag: DAG instance
+            progress: Progress tracker instance
+            router: DAG router instance
+            entity_map: Map of entity type to entity definition ID
+            white_label: Optional white label configuration
+        """
         self.source = source
-        self.destination = destination
+        self.destinations = destinations
         self.embedding_model = embedding_model
         self.transformers = transformers
         self.sync = sync
@@ -77,6 +92,20 @@ class SyncContext:
         self.router = router
         self.entity_map = entity_map
         self.white_label = white_label
+
+    @property
+    def destination(self) -> BaseDestination:
+        """Return the first destination for backward compatibility.
+
+        This property is maintained for backward compatibility with existing code
+        that expects a single destination.
+
+        Returns:
+            BaseDestination: The first destination instance
+        """
+        if not self.destinations:
+            raise ValueError("No destinations configured")
+        return next(iter(self.destinations.values()))
 
 
 class SyncContextFactory:
@@ -92,19 +121,46 @@ class SyncContextFactory:
         current_user: schemas.User,
         white_label: Optional[schemas.WhiteLabel] = None,
     ) -> SyncContext:
-        """Create a sync context."""
+        """Create a sync context.
+
+        Args:
+            db: Database connection
+            sync: Sync instance
+            sync_job: Sync job instance
+            dag: DAG instance
+            current_user: Current user
+            white_label: Optional white label configuration
+
+        Returns:
+            SyncContext: Sync context instance
+        """
+        # Create source instance
         source = await cls._create_source_instance(db, sync, current_user)
+
+        # Create embedding model
         embedding_model = cls._get_embedding_model(sync)
-        destination = await cls._create_destination_instance(sync, embedding_model)
+
+        # Create destination instances
+        destinations = await cls._create_destination_instances(
+            db, sync, embedding_model, current_user
+        )
+
+        # Create transformers
         transformers = await cls._get_transformer_callables(db, sync)
+
+        # Create entity map
         entity_map = await cls._get_entity_definition_map(db)
 
-        progress = SyncProgress(sync_job.id)
-        router = SyncDAGRouter(dag, entity_map)
+        # Create sync progress
+        progress = SyncProgress(total=0, sync_id=sync.id, sync_job_id=sync_job.id, dag_id=dag.id)
 
-        return SyncContext(
+        # Create router
+        router = SyncDAGRouter(dag=dag, entity_map=entity_map)
+
+        # Create sync context
+        return cls(
             source=source,
-            destination=destination,
+            destinations=destinations,
             embedding_model=embedding_model,
             transformers=transformers,
             sync=sync,
@@ -231,15 +287,71 @@ class SyncContextFactory:
         return LocalText2Vec()  # TODO: Handle other embedding models
 
     @classmethod
-    async def _create_destination_instance(
-        cls, sync: schemas.Sync, embedding_model: BaseEmbeddingModel
-    ) -> BaseDestination:
-        """Create destination instance."""
-        if not sync.destination_connection_id:
-            return await WeaviateDestination.create(sync.id, embedding_model)
-        return await WeaviateDestination.create(
-            sync.id, embedding_model
-        )  # TODO: Handle other destinations
+    async def _create_destination_instances(
+        cls,
+        db: AsyncSession,
+        sync: schemas.Sync,
+        embedding_model: BaseEmbeddingModel,
+        current_user: schemas.User,
+    ) -> dict[str, BaseDestination]:
+        """Create destination instances.
+
+        Args:
+            db: Database connection
+            sync: Sync instance
+            embedding_model: Embedding model instance
+            current_user: Current user
+
+        Returns:
+            dict[str, BaseDestination]: Map of destination name to destination instance
+        """
+        destinations = {}
+
+        # Default to Weaviate if no destination specified
+        if not sync.destination_connections:
+            destinations["weaviate"] = await WeaviateDestination.create(sync.id, embedding_model)
+            return destinations
+
+        # Process each destination connection
+        for connection_id in sync.destination_connections:
+            try:
+                connection = await crud.connection.get(db, connection_id, current_user)
+                if not connection:
+                    continue
+
+                destination_model = await crud.destination.get_by_short_name(
+                    db, connection.short_name
+                )
+                if not destination_model:
+                    continue
+
+                # Get the destination class
+                destination_class = resource_locator.get_destination(destination_model)
+                if not destination_class:
+                    continue
+
+                # Create the destination instance
+                destination = await destination_class.create(sync.id, embedding_model)
+
+                # Set up the collection for this sync
+                await destination.setup_collection(sync.id)
+
+                # Store the destination with its short name as key
+                destinations[connection.short_name] = destination
+
+            except Exception as e:
+                # Log error but continue with other destinations
+                import traceback
+
+                traceback.print_exc()
+                logger.error(f"Error creating destination {connection_id}: {str(e)}")
+
+        # If no destinations were successfully created, fall back to Weaviate
+        if not destinations:
+            destinations["weaviate"] = await WeaviateDestination.create(sync.id, embedding_model)
+            await destinations["weaviate"].setup_collection(sync.id)
+
+        return destinations
 
     @classmethod
     async def _get_transformer_callables(

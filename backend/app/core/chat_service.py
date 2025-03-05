@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app import crud, schemas
 from app.core.config import settings
 from app.core.search_service import search_service
+from app.core.search_type import SearchType
 from app.models.chat import ChatMessage, ChatRole
 
 logger = logging.getLogger(__name__)
@@ -216,31 +217,101 @@ class ChatService:
         query: str,
         user: schemas.User,
     ) -> str:
-        """Get relevant context from vector store if sync_id is present."""
+        """Get relevant context for the query from vector search.
+
+        Args:
+            db: Database session
+            chat: Chat object
+            query: Query string
+            user: Current user
+
+        Returns:
+            str: Relevant context as a string
+        """
         if not chat.sync_id:
             return ""
 
         try:
-            search_results = await search_service.search(
+            # Get search type preference from chat settings
+            search_type = SearchType.VECTOR  # Default to vector search
+            if chat.settings and "search_type" in chat.settings:
+                try:
+                    search_type = SearchType(chat.settings["search_type"])
+                except (ValueError, KeyError):
+                    # Invalid search type, fall back to vector
+                    pass
+
+            # Perform search based on the search type
+            results = await search_service.search(
                 db=db,
                 query=query,
                 sync_id=chat.sync_id,
                 current_user=user,
+                search_type=search_type,
+                limit=5,  # Limit to top 5 results
             )
 
-            if not search_results:
-                return ""
+            # Format results based on search type
+            if search_type == SearchType.HYBRID:
+                # For hybrid search, combine vector and graph results
+                vector_results = results.get("vector", [])
+                graph_results = results.get("graph", [])
 
-            # Format search results into context
-            context_parts = []
-            for result in search_results.objects:
-                context_parts.append(str(result.properties))
+                # Format vector results
+                vector_context = ""
+                if vector_results:
+                    vector_context = "Vector search results:\n\n"
+                    for i, result in enumerate(vector_results[:3], 1):  # Limit to top 3
+                        vector_context += f"{i}. {self._format_search_result(result)}\n\n"
 
-            return "\n\n".join(context_parts)
+                # Format graph results
+                graph_context = ""
+                if graph_results:
+                    graph_context = "Graph search results (showing relationships):\n\n"
+                    for i, result in enumerate(graph_results[:3], 1):  # Limit to top 3
+                        graph_context += f"{i}. {self._format_search_result(result)}\n\n"
+
+                # Combine contexts
+                return f"{vector_context}\n{graph_context}".strip()
+            else:
+                # For single search type (vector or graph)
+                if not results:
+                    return ""
+
+                context = ""
+                for i, result in enumerate(results[:5], 1):
+                    context += f"{i}. {self._format_search_result(result)}\n\n"
+
+                return context
 
         except Exception as e:
-            logger.error(f"Error getting search context: {str(e)}")
-            raise e
+            logger.error(f"Error getting context: {str(e)}")
+            return ""
+
+    def _format_search_result(self, result: dict) -> str:
+        """Format a search result for inclusion in context.
+
+        Args:
+            result: Search result dictionary
+
+        Returns:
+            str: Formatted search result
+        """
+        # Extract common fields
+        content = result.get("content", "")
+        name = result.get("name", "")
+        entity_type = result.get("entity_type", "")
+
+        # Format based on available fields
+        if name and content:
+            return f"{name} ({entity_type}):\n{content}"
+        elif name:
+            return f"{name} ({entity_type})"
+        elif content:
+            return content
+        else:
+            # Fallback to returning the whole result as a string
+            return str(result)
 
     def _prepare_messages_with_context(
         self,

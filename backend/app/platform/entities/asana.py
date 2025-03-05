@@ -6,6 +6,7 @@ from typing import Any, Dict, List, Optional
 from pydantic import Field
 
 from app.platform.entities._base import ChunkEntity, FileEntity
+from app.platform.sources._base import Relation
 
 
 class AsanaWorkspaceEntity(ChunkEntity):
@@ -128,3 +129,56 @@ class AsanaFileEntity(FileEntity):
     )
     view_url: Optional[str] = Field(None, description="URL to view the attachment")
     permanent: bool = Field(False, description="Whether this is a permanent attachment")
+
+
+# Define relationships between Asana entities
+RELATIONS = [
+    # Project belongs to a workspace
+    Relation(
+        source_entity_type=AsanaProjectEntity,
+        source_entity_id_attribute="workspace_gid",
+        target_entity_type=AsanaWorkspaceEntity,
+        target_entity_id_attribute="asana_gid",
+        relation_type="BELONGS_TO_WORKSPACE",
+    ),
+    # Section belongs to a project
+    Relation(
+        source_entity_type=AsanaSectionEntity,
+        source_entity_id_attribute="project_gid",
+        target_entity_type=AsanaProjectEntity,
+        target_entity_id_attribute="asana_gid",
+        relation_type="BELONGS_TO_PROJECT",
+    ),
+    # Task belongs to a project
+    Relation(
+        source_entity_type=AsanaTaskEntity,
+        source_entity_id_attribute="project_gid",
+        target_entity_type=AsanaProjectEntity,
+        target_entity_id_attribute="asana_gid",
+        relation_type="BELONGS_TO_PROJECT",
+    ),
+    # Task belongs to a section
+    Relation(
+        source_entity_type=AsanaTaskEntity,
+        source_entity_id_attribute="section_gid",
+        target_entity_type=AsanaSectionEntity,
+        target_entity_id_attribute="asana_gid",
+        relation_type="BELONGS_TO_SECTION",
+    ),
+    # Comment belongs to a task
+    Relation(
+        source_entity_type=AsanaCommentEntity,
+        source_entity_id_attribute="task_gid",
+        target_entity_type=AsanaTaskEntity,
+        target_entity_id_attribute="asana_gid",
+        relation_type="BELONGS_TO_TASK",
+    ),
+    # File belongs to a task
+    Relation(
+        source_entity_type=AsanaFileEntity,
+        source_entity_id_attribute="task_gid",
+        target_entity_type=AsanaTaskEntity,
+        target_entity_id_attribute="asana_gid",
+        relation_type="BELONGS_TO_TASK",
+    ),
+]

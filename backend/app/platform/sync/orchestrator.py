@@ -1,12 +1,14 @@
 """Module for data synchronization."""
 
 import asyncio
+import importlib
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import crud, schemas
 from app.core.logging import logger
 from app.db.session import get_db_context
+from app.platform.destinations._base import GraphDBDestination
 from app.platform.entities._base import BaseEntity, DestinationAction
 from app.platform.sync.context import SyncContext
 from app.platform.sync.stream import AsyncSourceStream
@@ -298,56 +300,133 @@ class SyncOrchestrator:
 
         # Prepare the processed entities
         for processed_entity in processed_entities:
-            # Set parent entity ID if not already set
-            if (
-                not hasattr(processed_entity, "parent_entity_id")
-                or not processed_entity.parent_entity_id
-            ):
-                processed_entity.parent_entity_id = parent_entity.entity_id
+            # Set the parent ID if not already set
+            if not processed_entity.parent_id and parent_entity:
+                processed_entity.parent_id = parent_entity.id
 
-        # Handle database operations for the parent entity
+            # Set the sync ID
+            processed_entity.sync_id = sync_context.sync.id
+
+            # Set the entity definition ID
+            entity_type = type(processed_entity)
+            if entity_type in sync_context.entity_map:
+                processed_entity.entity_definition_id = sync_context.entity_map[entity_type]
+
+        # Persist to all configured destinations
+        for destination_name, destination in sync_context.destinations.items():
+            try:
+                # Bulk insert/update entities
+                if action == DestinationAction.INSERT:
+                    await destination.bulk_insert(processed_entities)
+                elif action == DestinationAction.UPDATE:
+                    # For update, first delete then insert
+                    await destination.delete(db_entity.id)
+                    await destination.bulk_insert(processed_entities)
+
+                # Process relationships for graph databases
+                if isinstance(destination, GraphDBDestination):
+                    await self._process_relationships(processed_entities, destination, sync_context)
+
+            except Exception as e:
+                logger.error(f"Error persisting to {destination_name}: {str(e)}")
+                # Continue with other destinations even if one fails
+
+        # Update progress
         if action == DestinationAction.INSERT:
-            # Insert into database
-            new_db_entity = await crud.entity.create(
-                db=db,
-                obj_in=schemas.EntityCreate(
-                    sync_id=sync_context.sync.id,
-                    entity_id=parent_entity.entity_id,
-                    hash=parent_entity.hash(),  # compute hash on the entity
-                    sync_job_id=sync_context.sync_job.id,
-                ),
-                organization_id=sync_context.sync.organization_id,
-            )
-            parent_entity.db_entity_id = new_db_entity.id
-            await sync_context.progress.increment("inserted", 1)
-
-            # Insert all child entities into destination
-
-            await sync_context.destination.bulk_insert(processed_entities)
-
+            await sync_context.progress.increment(inserted=len(processed_entities))
         elif action == DestinationAction.UPDATE:
-            # Update in database
-            await crud.entity.update(
-                db=db,
-                db_obj=db_entity,
-                obj_in=schemas.EntityUpdate(
-                    hash=parent_entity.hash(),  # compute hash on the entity
-                ),
-            )
-            parent_entity.db_entity_id = db_entity.id
+            await sync_context.progress.increment(updated=len(processed_entities))
 
-            # For destination, we need to handle the update scenario:
-            # 1. Delete existing parent and children
-            # 2. Insert the new processed entities
+    async def _process_relationships(
+        self,
+        entities: list[BaseEntity],
+        destination: GraphDBDestination,
+        sync_context: SyncContext,
+    ) -> None:
+        """Process entity relationships for graph databases.
 
-            await sync_context.destination.bulk_delete_by_parent_id(
-                parent_entity.entity_id, sync_context.sync.id
-            )
+        This method extracts relationships from entity modules and creates them in the graph database.
 
-            # Insert new processed entities
-            await sync_context.destination.bulk_insert(processed_entities)
+        Args:
+            entities: List of entities to process relationships for
+            destination: The graph database destination
+            sync_context: The sync context
+        """
+        # Skip if no entities
+        if not entities:
+            return
 
-            await sync_context.progress.increment("updated", 1)
+        # Get the module where the entity class is defined
+        entity_module = entities[0].__class__.__module__
+
+        try:
+            # Import the module
+            module = importlib.import_module(entity_module)
+
+            # Check if the module has a RELATIONS list
+            if not hasattr(module, "RELATIONS"):
+                return
+
+            relations = module.RELATIONS
+            if not relations:
+                return
+
+            # Process each relation
+            for relation in relations:
+                # Find entities that match the source entity type
+                source_entities = [
+                    entity for entity in entities if isinstance(entity, relation.source_entity_type)
+                ]
+
+                if not source_entities:
+                    continue
+
+                # For each source entity, create relationships
+                relationships_to_create = []
+
+                for source_entity in source_entities:
+                    # Get the source ID attribute value
+                    source_id = getattr(source_entity, relation.source_entity_id_attribute, None)
+                    if not source_id:
+                        continue
+
+                    # Handle both single values and lists
+                    target_ids = []
+                    if isinstance(source_id, list):
+                        target_ids.extend(source_id)
+                    else:
+                        target_ids.append(source_id)
+
+                    # Create a relationship for each target ID
+                    for target_id in target_ids:
+                        if not target_id:
+                            continue
+
+                        relationships_to_create.append(
+                            {
+                                "from_node_id": str(source_entity.id),
+                                "to_node_id": str(target_id),
+                                "rel_type": relation.relation_type,
+                                "properties": {
+                                    "sync_id": str(sync_context.sync.id),
+                                    "source_type": source_entity.__class__.__name__,
+                                    "target_type": relation.target_entity_type.__name__,
+                                },
+                            }
+                        )
+
+                # Bulk create relationships if any
+                if relationships_to_create:
+                    try:
+                        await destination.bulk_create_relationships(relationships_to_create)
+                        logger.info(
+                            f"Created {len(relationships_to_create)} relationships of type {relation.relation_type}"
+                        )
+                    except Exception as e:
+                        logger.error(f"Error creating relationships: {str(e)}")
+
+        except Exception as e:
+            logger.error(f"Error processing relationships: {str(e)}")
 
 
 sync_orchestrator = SyncOrchestrator()

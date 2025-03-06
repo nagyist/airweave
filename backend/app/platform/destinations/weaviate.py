@@ -245,10 +245,11 @@ class WeaviateDestination(VectorDBDestination):
             # Delete all matching entities
             await collection.data.delete_many(where=where_filter)
 
-    async def search_for_sync_id(self, sync_id: UUID) -> list[dict]:
+    async def search_for_sync_id(self, query_text: str, sync_id: UUID) -> list[dict]:
         """Search for a sync_id in the destination.
 
         Args:
+            query_text (str): The query text to search for.
             sync_id (UUID): The sync_id to search for.
 
         Returns:
@@ -263,11 +264,12 @@ class WeaviateDestination(VectorDBDestination):
             collection: Collection = await service.get_weaviate_collection(self.collection_name)
 
             # Create a proper filter to find all entities with this sync_id
-            results = await collection.query.fetch_objects(
-                filters=Filter.by_property("sync_id").equal(str(sync_id)), limit=100
+            results = await collection.query.near_text(
+                query=query_text,
+                limit=10,
+                filters=Filter.by_property("sync_id").equal(str(sync_id)),
             )
-
-            return results.objects if results and hasattr(results, "objects") else []
+            return results
 
     @staticmethod
     def _sanitize_collection_name(collection_name: UUID) -> str:

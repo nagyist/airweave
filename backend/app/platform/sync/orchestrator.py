@@ -215,7 +215,10 @@ class SyncOrchestrator:
         async with semaphore:
             # Create a new session for this task
             async with get_db_context() as db:
-                # First determine the entity action (without processing through DAG)
+                # First, enrich the entity with sync metadata
+                entity = await self._enrich_entity(entity, sync_context)
+
+                # Then determine the entity action (without processing through DAG)
                 db_entity, action = await self._determine_entity_action(entity, sync_context, db)
 
                 # If the action is KEEP, we can skip further processing
@@ -237,6 +240,33 @@ class SyncOrchestrator:
                 )
 
                 return processed_entities, action
+
+    async def _enrich_entity(
+        self,
+        entity: BaseEntity,
+        sync_context: SyncContext,
+    ) -> BaseEntity:
+        """Enrich an entity with information from the sync context.
+
+        Adds metadata from the sync context to the entity, including source name,
+        sync IDs, and white label information when applicable.
+
+        Args:
+            entity: The entity to be enriched
+            sync_context: The sync context containing metadata to add to the entity
+
+        Returns:
+            The enriched entity with added metadata
+        """
+        entity.source_name = sync_context.source._name
+        entity.sync_id = sync_context.sync.id
+        entity.sync_job_id = sync_context.sync_job.id
+        entity.sync_metadata = sync_context.sync.sync_metadata
+        if sync_context.sync.white_label_id:
+            entity.white_label_user_identifier = sync_context.sync.white_label_user_identifier
+            entity.white_label_id = sync_context.sync.white_label_id
+            entity.white_label_name = sync_context.white_label.name
+        return entity
 
     async def _determine_entity_action(
         self, entity: BaseEntity, sync_context: SyncContext, db: AsyncSession

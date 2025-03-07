@@ -111,7 +111,10 @@ async def exception_logging_middleware(request: Request, call_next: callable) ->
         response = await call_next(request)
         return response
     except Exception as exc:
-        logger.error(f"Unhandled exception: {exc}\n{traceback.format_exc()}")
+        if settings.LOCAL_CURSOR_DEVELOPMENT:
+            logger.error(f"Unhandled exception: {exc}\n{traceback.format_exc()}")
+        else:
+            logger.error(f"Unhandled exception: {exc}")
         return JSONResponse(status_code=500, content={"detail": "Internal Server Error"})
 
 
@@ -145,11 +148,53 @@ async def validation_exception_handler(
             "errors": [
                 {"body.email": "field required"},
                 {"body.age": "value is not a valid integer"}
+            ],
+            "source": "RequestValidationError",
+            "request_path": "/api/users",
+            "request_method": "POST",
+            "schema_info": {
+                "name": "UserCreate",
+                "module": "app.schemas.user",
+                "file_path": "/app/schemas/user.py"
+            },
+            "validation_context": [
+                "app.api.v1.endpoints.users:create_user:42",
+                "app.schemas.user:UserCreate:15"
             ]
         }
 
     """
+    # Extract basic error messages
     error_messages = unpack_validation_error(exc)
+
+    if settings.LOCAL_CURSOR_DEVELOPMENT:
+        # Additional diagnostic information
+        exception_type = exc.__class__.__name__
+        exception_str = str(exc)
+        class_name = exception_str.split("\n")[0].split(" ")[-1]
+
+        # Extract a simplified stack trace focusing on schema validation
+        stack_trace = []
+        if hasattr(exc, "__traceback__") and exc.__traceback__ is not None:
+            stack_frames = traceback.extract_tb(exc.__traceback__)
+
+            # Create a simplified version for the response
+            for frame in stack_frames:
+                # Only include frames from our app code
+                if "site-packages" not in frame.filename and "/app" in frame.filename:
+                    context = f"{frame.filename.split('/')[-1]}:{frame.name}:{frame.lineno}"
+                    stack_trace.append(context)
+
+        return JSONResponse(
+            status_code=422,
+            content={
+                "class_name": class_name,
+                "stack_trace": stack_trace,
+                "type": exception_type,
+                "error_messages": error_messages,
+            },
+        )
+
     return JSONResponse(status_code=422, content=error_messages)
 
 

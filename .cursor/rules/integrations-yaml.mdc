@@ -1,0 +1,54 @@
+---
+description: Descrtiption of how the integrations yaml works.
+globs: backend/app/platform/auth
+alwaysApply: false
+---
+# Airweave Integrations Configuration Structure
+
+## YAML Configuration Structure
+The `<env>.integrations.yaml` files define authentication configurations for various third-party service integrations. The structure follows this pattern:
+
+```yaml
+integrations:
+  service_name:
+    auth_type: "oauth2_with_refresh"  # or other auth types
+    url: "https://service.com/oauth/authorize"
+    backend_url: "https://service.com/oauth/token"
+    grant_type: "authorization_code"
+    client_id: "client_id_here"
+    client_secret: "client_secret_here"
+    content_type: "application/x-www-form-urlencoded"
+    client_credential_location: "body"  # or "header"
+    scope: "scope1 scope2 scope3"  # service-specific permissions
+    additional_frontend_params:  # optional service-specific parameters
+      param1: "value1"
+      param2: "value2"
+```
+
+### Example Integration
+```yaml
+gmail:
+  auth_type: "oauth2_with_refresh"
+  url: "https://accounts.google.com/o/oauth2/auth"
+  backend_url: "https://oauth2.googleapis.com/token"
+  grant_type: "authorization_code"
+  client_id: "502433363466-d8ruvkdb3nkafulj63tnenn8iud31sks.apps.googleusercontent.com"
+  client_secret: "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"
+  content_type: "application/x-www-form-urlencoded"
+  client_credential_location: "body"
+  scope: "https://www.googleapis.com/auth/gmail.readonly"
+  additional_frontend_params:
+    access_type: "offline"
+    prompt: "consent"
+```
+
+## Folder Structure
+The files appear to be part of a structured monorepo with:
+
+```
+├── yaml/         # YAML integration configs
+├── dev.integrations.yaml
+└── prod.integrations.yaml
+```
+
+Note that it is alphabetically sorted.

@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     ----------
         PROJECT_NAME (str): The name of the project.
         LOCAL_DEVELOPMENT (Optional[bool]): Whether the application is running locally.
+        LOCAL_CURSOR_DEVELOPMENT (Optional[bool]): Whether cursor development features are enabled.
         FIRST_SUPERUSER (str): The email address of the first superuser.
         FIRST_SUPERUSER_PASSWORD (str): The password of the first superuser.
         ENCRYPTION_KEY (str): The encryption key.
@@ -35,6 +36,7 @@ class Settings(BaseSettings):
 
     PROJECT_NAME: str = "Airweave"
     LOCAL_DEVELOPMENT: Optional[bool] = False
+    LOCAL_CURSOR_DEVELOPMENT: Optional[bool] = False
     FRONTEND_LOCAL_DEVELOPMENT_PORT: Optional[int] = 8080
     DTAP_ENVIRONMENT: Optional[str] = "local"
 

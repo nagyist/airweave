@@ -6,6 +6,7 @@ from app.api.v1.endpoints import (
     api_keys,
     chat,
     connections,
+    cursor_dev,
     dag,
     destinations,
     embedding_models,
@@ -17,6 +18,7 @@ from app.api.v1.endpoints import (
     users,
     white_label,
 )
+from app.core.config import settings
 
 api_router = APIRouter()
 api_router.include_router(health.router, prefix="/health", tags=["health"])
@@ -34,3 +36,7 @@ api_router.include_router(chat.router, prefix="/chat", tags=["chat"])
 api_router.include_router(dag.router, prefix="/dag", tags=["dag"])
 api_router.include_router(entities.router, prefix="/entities", tags=["entities"])
 api_router.include_router(transformers.router, prefix="/transformers", tags=["transformers"])
+
+# Only include cursor development endpoints if LOCAL_CURSOR_DEVELOPMENT is enabled
+if settings.LOCAL_CURSOR_DEVELOPMENT:
+    api_router.include_router(cursor_dev.router, prefix="/cursor-dev", tags=["Cursor Development"])

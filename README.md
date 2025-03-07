@@ -2,7 +2,7 @@
 
 
 <div align="center">
-  
+
 [![Ruff](https://github.com/airweave-ai/airweave/actions/workflows/ruff.yml/badge.svg)](https://github.com/airweave-ai/airweave/actions/workflows/ruff.yml)
 [![ESLint](https://github.com/airweave-ai/airweave/actions/workflows/eslint.yml/badge.svg)](https://github.com/airweave-ai/airweave/actions/workflows/eslint.yml)
 [![Discord](https://img.shields.io/discord/1323415085011701870?label=Discord&logo=discord&logoColor=white&style=flat-square)](https://discord.com/invite/484HY9Ehxt)
@@ -10,7 +10,7 @@
 </div>
 
 
-**Airweave** is an open-source tool that makes **any app searchable** for your agent by syncing your users' app data, APIs, databases, and websites into your graph and vector databases with minimal configuration. 
+**Airweave** is an open-source tool that makes **any app searchable** for your agent by syncing your users' app data, APIs, databases, and websites into your graph and vector databases with minimal configuration.
 
 
 <p align="center" style="padding-top: 4px; padding-bottom: 16px;">
@@ -21,21 +21,21 @@
 
 ## Table of Contents
 
-1. [Overview](#overview)  
-2. [Quick Start](#quick-start)  
-3. [Usage](#usage)  
-4. [Key Features](#key-features)  
-5. [Technology Stack](#technology-stack)  
-6. [Configuration](#configuration)  
-7. [Contributing](#contributing)  
-8. [Roadmap](#roadmap)  
+1. [Overview](#overview)
+2. [Quick Start](#quick-start)
+3. [Usage](#usage)
+4. [Key Features](#key-features)
+5. [Technology Stack](#technology-stack)
+6. [Configuration](#configuration)
+7. [Contributing](#contributing)
+8. [Roadmap](#roadmap)
 9. [License](#license)
 
 ---
 
 ## Overview
 
-Airweave simplifies the process of making your data searchable. Whether you have structured or unstructured data, Airweave helps you break it into processable entities, store the data in graph and vector databases, and retrieve it via your own **agent** or any **search mechanism**. 
+Airweave simplifies the process of making your data searchable. Whether you have structured or unstructured data, Airweave helps you break it into processable entities, store the data in graph and vector databases, and retrieve it via your own **agent** or any **search mechanism**.
 
 
 ## Quick Start
@@ -45,12 +45,12 @@ Below is a simple guide to get Airweave up and running locally. For more detaile
 
 ### Steps
 
-1. **Clone the Repository**  
+1. **Clone the Repository**
    ```bash
    git clone https://github.com/airweave-ai/airweave.git
    cd airweave
 
-3. **Build and Run**  
+3. **Build and Run**
    ```bash
    chmod +x start.sh
    ./start.sh
@@ -79,12 +79,12 @@ To use Airweave, you can either use the frontend or the API.
 
 
 ### Native Weaviate
-Airweave uses a local Weaviate instance by default, you can access the Weaviate API at `http://localhost:8087`. This can be used for testing and development. 
+Airweave uses a local Weaviate instance by default, you can access the Weaviate API at `http://localhost:8087`. This can be used for testing and development.
 
 You can configure your own vector database in the app UI or via the API.
 
 ### Why Airweave?
-- **Over 20 integrations and counting**: Airweave is your one-stop shop for building any application that requires semantic search.
+- **Over 25 integrations and counting**: Airweave is your one-stop shop for building any application that requires semantic search.
 - **Simplicity**: Minimal configuration needed to sync data from diverse sources (APIs, databases, and more).
 - **Extensibility**: Easily add new integrations via `sources` , `destinations` and `embedders`.
 - **Open-Core**: Core features are open source, ensuring transparency. Future commercial offerings will bring additional, advanced capabilities.
@@ -124,24 +124,20 @@ You can configure your own vector database in the app UI or via the API.
 
 ## Technology Stack
 
-- **Frontend**: [React](https://reactjs.org/) (JavaScript/TypeScript)  
-- **Backend**: [FastAPI](https://fastapi.tiangolo.com/) (Python)  
-- **Infrastructure**:  
-  - Local / Dev: [Docker Compose](https://docs.docker.com/compose/)  
-  - Production: (upcoming) [Kubernetes](https://kubernetes.io/)  
-- **Databases**:  
-  - [PostgreSQL](https://www.postgresql.org/) for relational data  
+- **Frontend**: [React](https://reactjs.org/) (JavaScript/TypeScript)
+- **Backend**: [FastAPI](https://fastapi.tiangolo.com/) (Python)
+- **Infrastructure**:
+  - Local / Dev: [Docker Compose](https://docs.docker.com/compose/)
+  - Production: (upcoming) [Kubernetes](https://kubernetes.io/)
+- **Databases**:
+  - [PostgreSQL](https://www.postgresql.org/) for relational data
   - Vector database (your choice, e.g. Chroma, Milvus, Pinecone, Qdrant, Weaviate, etc.)  + (upcoming batteries-included vector DB)
 - **Asynchronous Tasks**: [ARQ](https://arq-docs.helpmanual.io/) Redis for background workers
 
 ---
 
-## Configuration (Upcoming)
 
-Airweave provides flexibility through environment variables, allowing you to customize key aspects of your deployment. Below are the primary configuration options:
-
-
-### 1. Bring your own database
+## Bring your own database
 
 You can configure Airweave to use your own PostgreSQL database to store sources, schedules, and metadata. Update the following variables in your `.env` file:
 
@@ -150,52 +146,16 @@ POSTGRES_USER=<your-database-username>
 POSTGRES_PASSWORD=<your-database-password>
 POSTGRES_DB=<your-database-name>
 POSTGRES_HOST=<your-database-host>
-POSTGRES_PORT=<your-database-port>\
+POSTGRES_PORT=<your-database-port>
 ```
 
-This configuration will create a number of tables within the airweave schema in your specified database. More on this [later](docs.airweave.ai).
-
-### 2. Specify logging destination
-
-You can specify the logging destination. Currently we support Datadog and Sentry.
-
-```env
-# Datadog
-LOG_DESTINATION=datadog
-DATADOG_API_KEY=<your-datadog-api-key>
-DATADOG_HOST=<your-datadog-host>
-DATADOG_PORT=<your-datadog-port>
-
-# Sentry
-LOG_DESTINATION=sentry
-SENTRY_DSN=<your-sentry-dsn>
-SENTRY_ENVIRONMENT=development
-SENTRY_RELEASE=<your-release-name>
-```
-
-### 3. Specify SMTP settings
-
-You can specify the SMTP settings in your `.env` file. This is used for sending email notifications.
-
-```env
-SMTP_HOST=<your-smtp-host>
-SMTP_PORT=<your-smtp-port>
-SMTP_USER=<your-smtp-user>
-SMTP_PASSWORD=<your-smtp-password>
-SMTP_FROM_EMAIL=<your-from-email>
-```
 
 
 ## Contributing
 
 We welcome all contributions! Whether you're fixing a bug, improving documentation, or adding a new feature:
-1. Fork this repository
-2. Create a feature branch: `git checkout -b feature/new-entity-generator`
-3. Commit changes: `git commit -m "Add new entity generator for XYZ"`
-4. Push to your fork: `git push origin feature/new-entity-generator`
-5. Create a Pull Request: Submit your PR against this repo's main branch.
 
-Please follow the existing code style and conventions. See `CONTRIBUTING.md` for more details.
+Please follow the existing code style and conventions. See [CONTRIBUTING.md](https://github.com/airweave-ai/airweave/blob/main/README.md) for more details.
 
 ---
 
@@ -216,7 +176,7 @@ Airweave is released under an open-core model. The community edition is licensed
 ---
 
 ## Contact & Community
-- **Discord**: Join our Discord channel [here](https://discord.gg/r2cF7V6s) to get help or discuss features.
+- **Discord**: Join our Discord channel [here](https://discord.com/invite/484HY9Ehxt) to get help or discuss features.
 - **GitHub Issues**: Report bugs or request new features in GitHub Issues.
 - **Twitter**: Follow @airweave_ai for updates.
 

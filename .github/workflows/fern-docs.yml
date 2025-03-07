@@ -36,7 +36,7 @@ jobs:
           FIRST_SUPERUSER: "docs@example.com"
           FIRST_SUPERUSER_PASSWORD: "docs-password"
           ENCRYPTION_KEY: "docs-encryption-key"
-          POSTGRES_SERVER: "localhost"
+          POSTGRES_HOST: "localhost"
           POSTGRES_USER: "postgres"
           POSTGRES_PASSWORD: "postgres"
           OPENAI_API_KEY: "sk-docs"

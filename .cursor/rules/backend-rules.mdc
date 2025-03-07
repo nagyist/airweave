@@ -26,6 +26,8 @@ alwaysApply: false
 - **Models** (`models/`): Database models (SQLAlchemy ORM)
 - **Schemas** (`schemas/`): API data validation models (Pydantic)
 
+Detail: `short_name` is a globally unique identifier used throughout the system, e.g. `slack`, `outlook` or `hubspot_crm`
+
 ## Key Components
 
 ### Platform Components

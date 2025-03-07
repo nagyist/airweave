@@ -3,24 +3,41 @@ description: Use if you're writing a new source connection.
 globs: 
 alwaysApply: false
 ---
-# Airweave API Source Integration Coding Guide
+
+# Airweave Source Integration Generator
+
+You are an expert Python developer tasked with creating a new source integration for Airweave. Airweave is an open-source platform that makes any app searchable for agents by syncing data from various sources into vector and graph databases. 
+
+#### Real Examples
+
+- **Slack**: Multi-resource API with channels, users, and messages [slack.py](mdc:backend/app/platform/sources/slack.py) [slack.py](mdc:backend/app/platform/entities/slack.py)
+- **Stripe**: Complex pagination with many resource types [stripe.py](mdc:backend/app/platform/sources/stripe.py) [stripe.py](mdc:backend/app/platform/entities/stripe.py)
+- **Asana**: Hierarchical data with file handling capabilities [asana.py](mdc:backend/app/platform/sources/asana.py) [asana.py](mdc:backend/app/platform/entities/asana.py)
+
+## Your Task
+
+Create a complete source integration for {your source} in the following steps
+
+1. Extract necessary information from the docs.
+2. Define entity schemas
+3. Implement source connector
+4. Run, test and debug with the `Local Sync Test` MCP Tool server
+5. Conclude
+
+Do not edit code other than the files you were prompted to create or edit.
 
 
-### Real Examples
+## 1. Extract necessary information
 
-- **Slack**: Multi-resource API with channels, users, and messages @slack.py @slack.py
-- **Stripe**: Complex pagination with many resource types @stripe.py @stripe.py
-- **Asana**: Hierarchical data with file handling capabilities @asana.py @asana.py
+1. Find out which authentication type is best for this type of source integration, if OAuth2, which type? You can choose between: `oauth2`, `oauth2_with_refresh` and `oauth2_with_refresh_rotating`?
+2. Find out which entities are most important. List them, along with their (optional and primary key) attributes
+3. Find out the relations between these entities. List them along with named foreign key relations.
 
-When implementing a new API-based source, you'll need to:
+## 2. Define Entity Schemas
 
-## 1. Define Entity Schemas
+For each data type from your API, create a corresponding entity schema in `backend/app/platform/entities/your_service.py`:
 
-For each data type from your API, create a corresponding entity schema in `app/platform/entities/your_service.py`:
-
-
-It extends from @_base.py the BaseEntity, ChunkyEntity or FileEntity.
-
+It extends from [_base.py](mdc:backend/app/platform/entities/_base.py) the BaseEntity, ChunkyEntity or FileEntity.
 
 ```python
 class Breadcrumb(BaseModel):
@@ -73,9 +90,9 @@ class YourServiceEntity(ChunkEntity):
 The `entity_id` usually is just the id of the item in the API. If not, find a primary key in the object.
 
 
-## 2. Implement Source Connector
+## 3. Implement Source Connector
 
-Create your source implementation in `app/platform/sources/your_service.py`:
+Create your source implementation in `backend/app/platform/sources/your_service.py`:
 
 ```python
 @source("Display Name", "your_service", AuthType.oauth2)
@@ -136,19 +153,30 @@ class YourServiceSource(BaseSource):
             #     yield entity
 ```
 
-## 3. Best Practices
+### Source Writing Best Practices
 
-- **Error Handling and Retries**: Use Tenacity for robust retry mechanisms
+- **Error Handling and Retries**: Use Async Tenacity for robust retry mechanisms
   ```python
-  @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
   async def _get_with_auth(self, client: httpx.AsyncClient, url: str) -> Dict:
       """Make authenticated GET request to API."""
-      response = await client.get(
-          url,
-          headers={"Authorization": f"Bearer {self.access_token}"},
+      retryer = AsyncRetrying(
+          retry=retry_if_exception_type(httpx.HTTPError),
+          wait=wait_exponential(multiplier=1, min=2, max=10),
+          stop=stop_after_attempt(3),
       )
-      response.raise_for_status()
-      return response.json()
+      
+      async for attempt in retryer:
+          with attempt:
+              try:
+                  response = await client.get(
+                      url,
+                      headers={"Authorization": f"Bearer {self.access_token}"},
+                  )
+                  response.raise_for_status()
+                  return response.json()
+              except Exception as e:
+                  logger.error(f"Error calling endpoint: {str(e)}")
+                  raise
   ```
 
 - **Modular Entity Generation**: Create separate methods for different entity types
@@ -216,7 +244,26 @@ class YourServiceSource(BaseSource):
       download_url=file_data.get("download_url"),
   )
   
-  # Stream the file and process it
+  # Stream the file and hand off the stream.
   file_stream = self._stream_file(client, file_entity.download_url)
   yield await handle_file_entity(file_entity, file_stream)
   ```
+
+## 4. Run, test and debug with the `Local Sync Test` MCP Tool server
+
+Once the source is set up, you must test the MCP server.
+
+There are two tools
+- Check Connection (arg: short_name)
+- Run Sync (arg: short_name)
+
+There are essentially three outcomes:
+
+1. You test the connection and it returns that the user must still handle something. Pause the execution and prompt the user to fix it. If the problem is about the integrations yaml, check out [integrations-yaml.mdc](mdc:.cursor/rules/integrations-yaml.mdc). In case of OAuth2: look into the docs which scoped we need. Add the yaml instance. to `dev.integrations.yaml`. Then `docker-compose down && docker-compose up -d` as there is no hot reload for non-python files. If the problem is that there is no connection, ask the user to add one. Once done, retest the connection using mcp!
+
+2. The connection works, and you try the sync, but it fails. You will receive a stacktrace from the problem. You must now fix it, and retry to sync, until it works.
+
+3. The sync works! You can now create a branch, commit and push.
+
+
+

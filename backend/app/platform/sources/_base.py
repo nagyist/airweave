@@ -1,11 +1,11 @@
 """Base source class."""
 
 from abc import abstractmethod
-from typing import Any, AsyncGenerator, Optional
+from typing import Any, AsyncGenerator, Optional, Type
 
 from pydantic import BaseModel
 
-from app.platform.entities._base import ChunkEntity
+from app.platform.entities._base import BaseEntity, ChunkEntity
 
 
 class BaseSource:
@@ -31,8 +31,8 @@ class BaseSource:
 class Relation(BaseModel):
     """A relation between two entities."""
 
-    source_entity_type: type[ChunkEntity]
+    source_entity_type: Type[ChunkEntity] | Type[BaseEntity]
     source_entity_id_attribute: str
-    target_entity_type: type[ChunkEntity]
+    target_entity_type: Type[ChunkEntity] | Type[BaseEntity]
     target_entity_id_attribute: str
     relation_type: str

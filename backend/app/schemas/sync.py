@@ -2,7 +2,7 @@
 
 import re
 from datetime import datetime
-from typing import Optional
+from typing import List, Optional
 from uuid import UUID
 
 from pydantic import BaseModel, EmailStr, field_validator
@@ -18,11 +18,48 @@ class SyncBase(BaseModel):
     description: Optional[str] = None
     source_connection_id: UUID
     destination_connection_id: Optional[UUID] = None
+    destination_connection_ids: Optional[List[UUID]] = None
     embedding_model_connection_id: Optional[UUID] = None
     cron_schedule: Optional[str] = None  # Actual cron expression
     white_label_id: Optional[UUID] = None
     white_label_user_identifier: Optional[str] = None
     sync_metadata: Optional[dict] = None
+
+    @property
+    def destination_connections(self) -> List[UUID]:
+        """Get all destination connections.
+
+        This property combines destination_connection_id and destination_connection_ids
+        for backwards compatibility.
+        """
+        connections = []
+        if self.destination_connection_id:
+            connections.append(self.destination_connection_id)
+        if self.destination_connection_ids:
+            connections.extend(self.destination_connection_ids)
+        return connections
+
+    @property
+    def use_native_weaviate(self) -> bool:
+        """Check if the sync uses native Weaviate.
+
+        Returns:
+            bool: True if native Weaviate is used, False otherwise
+        """
+        if not self.sync_metadata:
+            return False
+        return self.sync_metadata.get("use_native_weaviate", False)
+
+    @property
+    def use_native_neo4j(self) -> bool:
+        """Check if the sync uses native Neo4j.
+
+        Returns:
+            bool: True if native Neo4j is used, False otherwise
+        """
+        if not self.sync_metadata:
+            return False
+        return self.sync_metadata.get("use_native_neo4j", False)
 
     @field_validator("cron_schedule")
     def validate_cron_schedule(cls, v: str) -> str:

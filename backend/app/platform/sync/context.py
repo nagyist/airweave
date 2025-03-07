@@ -1,7 +1,7 @@
 """Module for sync context."""
 
 import importlib
-from typing import Optional
+from typing import Optional, Type
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -28,7 +28,7 @@ class SyncContext:
 
     Contains all the necessary components for a sync:
     - source - the source instance
-    - destination - the destination instance (still assumes single destination)
+    - destinations - the destination instances
     - embedding model - the embedding model used for the sync
     - transformers - a dictionary of transformer callables
     - sync - the main sync object
@@ -70,7 +70,7 @@ class SyncContext:
 
         Args:
             source: Source instance
-            destinations: Map of destination name to destination instance
+            destinations: Map of destination name to destination instances
             embedding_model: Embedding model instance
             transformers: Dictionary of transformer callables
             sync: Sync instance
@@ -294,21 +294,34 @@ class SyncContextFactory:
         embedding_model: BaseEmbeddingModel,
         current_user: schemas.User,
     ) -> dict[str, BaseDestination]:
-        """Create destination instances.
+        """Create destination instances for the sync context.
 
         Args:
-            db: Database connection
-            sync: Sync instance
-            embedding_model: Embedding model instance
-            current_user: Current user
+            db: The database session
+            sync: The sync object
+            embedding_model: The embedding model
+            current_user: The current user
 
         Returns:
             dict[str, BaseDestination]: Map of destination name to destination instance
         """
         destinations = {}
 
+        # Add native Weaviate if configured
+        if sync.use_native_weaviate:
+            destinations["weaviate"] = await WeaviateDestination.create(sync.id, embedding_model)
+
+        # Add native Neo4j if configured
+        if sync.use_native_neo4j:
+            try:
+                from app.platform.destinations.neo4j import Neo4jDestination
+
+                destinations["neo4j"] = await Neo4jDestination.create(sync.id, embedding_model)
+            except (ImportError, Exception) as e:
+                logger.warning(f"Failed to initialize native Neo4j destination: {e}")
+
         # Default to Weaviate if no destination specified
-        if not sync.destination_connections:
+        if not sync.destination_connections and not destinations:
             destinations["weaviate"] = await WeaviateDestination.create(sync.id, embedding_model)
             return destinations
 
@@ -318,39 +331,26 @@ class SyncContextFactory:
                 connection = await crud.connection.get(db, connection_id, current_user)
                 if not connection:
                     continue
-
-                destination_model = await crud.destination.get_by_short_name(
-                    db, connection.short_name
+                # Get the destination object
+                destination = await crud.destination.get(
+                    db,
+                    id=connection.destination_id,
+                    current_user=current_user,
                 )
-                if not destination_model:
+                if not destination:
                     continue
 
                 # Get the destination class
-                destination_class = resource_locator.get_destination(destination_model)
+                destination_class = get_destination_class(destination.short_name)
                 if not destination_class:
                     continue
 
                 # Create the destination instance
-                destination = await destination_class.create(sync.id, embedding_model)
-
-                # Set up the collection for this sync
-                await destination.setup_collection(sync.id)
-
-                # Store the destination with its short name as key
-                destinations[connection.short_name] = destination
-
+                destination_instance = await destination_class.create(sync.id, embedding_model)
+                destinations[destination.short_name] = destination_instance
             except Exception as e:
-                # Log error but continue with other destinations
-                import traceback
-
-                traceback.print_exc()
-                logger.error(f"Error creating destination {connection_id}: {str(e)}")
-
-        # If no destinations were successfully created, fall back to Weaviate
-        if not destinations:
-            destinations["weaviate"] = await WeaviateDestination.create(sync.id, embedding_model)
-            await destinations["weaviate"].setup_collection(sync.id)
-
+                # If we fail to create one destination, that shouldn't stop the sync
+                logger.error(f"Error creating destination instance: {e}")
         return destinations
 
     @classmethod
@@ -384,3 +384,15 @@ class SyncContextFactory:
             entity_definition_map[entity_class] = entity_definition.id
 
         return entity_definition_map
+
+
+def get_destination_class(short_name: str) -> Type[BaseDestination]:
+    """Get the destination class for a given short name.
+
+    Args:
+        short_name: Short name of the destination
+
+    Returns:
+        The destination class or None if not found
+    """
+    return resource_locator.get_destination_by_short_name(short_name)

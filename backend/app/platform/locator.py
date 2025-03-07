@@ -105,5 +105,25 @@ class ResourceLocator:
         )
         return getattr(module, entity_definition.class_name)
 
+    @staticmethod
+    def get_destination_by_short_name(short_name: str) -> Type[BaseDestination]:
+        """Get the destination class by short name.
+
+        Args:
+            short_name (str): Short name of the destination
+
+        Returns:
+            Type[BaseDestination]: Destination class
+        """
+        try:
+            module = importlib.import_module(f"{PLATFORM_PATH}.destinations.{short_name}")
+            # Try to find a class that ends with "Destination"
+            for attr_name in dir(module):
+                if attr_name.endswith("Destination"):
+                    return getattr(module, attr_name)
+            return None
+        except (ImportError, AttributeError):
+            return None
+
 
 resource_locator = ResourceLocator()

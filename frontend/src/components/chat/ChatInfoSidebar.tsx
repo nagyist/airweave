@@ -4,7 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { ChevronRight, Settings, Link as LinkIcon, Settings2, Trash2 } from "lucide-react";
+import { ChevronRight, Settings, Link as LinkIcon, Settings2, Trash2, Database } from "lucide-react";
 import {
   Sheet,
   SheetContent,
@@ -37,6 +37,7 @@ import { cn } from "@/lib/utils";
 import { useNavigate } from "react-router-dom";
 import { apiClient } from "@/lib/api";
 import { useTheme } from "@/lib/theme-provider";
+import { SearchTypeSelector } from "./SearchTypeSelector";
 
 const AVAILABLE_MODELS = [
   { id: "gpt-4o", name: "GPT-4o" },
@@ -68,7 +69,7 @@ export function ChatInfoSidebar({ chatInfo, onUpdateSettings }: ChatInfoSidebarP
     setModelName(newModelName);
     try {
       // Update model_name at root level
-      await onUpdateSettings({ model_name: newModelName });
+      await onUpdateSettings({ model_name: newModelName } as any);
     } catch (error) {
       toast({
         title: "Error",
@@ -89,7 +90,7 @@ export function ChatInfoSidebar({ chatInfo, onUpdateSettings }: ChatInfoSidebarP
     const timeout = setTimeout(async () => {
       try {
         // Update model_settings separately
-        await onUpdateSettings({ model_settings: newSettings });
+        await onUpdateSettings({ model_settings: newSettings } as any);
       } catch (error) {
         toast({
           title: "Error",
@@ -394,6 +395,25 @@ export function ChatInfoSidebar({ chatInfo, onUpdateSettings }: ChatInfoSidebarP
                       max={2}
                       step={0.1}
                       onValueChange={([value]) => handleSettingChange("presence_penalty", value)}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Search Settings */}
+              <div className="space-y-6">
+                <div>
+                  <div className="flex items-center">
+                    <Database className="mr-2 h-4 w-4" />
+                    <h3 className="text-sm font-medium">Search Settings</h3>
+                  </div>
+                  <Separator className="my-2" />
+                  
+                  <div className="space-y-4 mt-4">
+                    <SearchTypeSelector
+                      value={modelSettings.search_type || "vector"}
+                      onChange={(value) => handleSettingChange("search_type", value)}
+                      disabled={false}
                     />
                   </div>
                 </div>

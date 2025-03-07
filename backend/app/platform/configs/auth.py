@@ -107,6 +107,9 @@ class OracleAuthConfig(BaseDatabaseAuthConfig):
 
 
 # Destination specific auth configs
+
+
+# Vector Database Destinations
 class WeaviateAuthConfig(AuthConfig):
     """Weaviate authentication credentials schema."""
 
@@ -114,6 +117,7 @@ class WeaviateAuthConfig(AuthConfig):
     api_key: str = Field(title="API Key", description="The API key for the Weaviate cluster")
 
 
+# Graph Database Destinations
 class Neo4jAuthConfig(AuthConfig):
     """Neo4j authentication credentials schema."""
 

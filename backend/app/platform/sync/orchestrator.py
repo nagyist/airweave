@@ -321,28 +321,38 @@ class SyncOrchestrator:
         """
         # No processing needed for KEEP action
         if action == DestinationAction.KEEP:
-            # Update the progress for kept entities
-            await sync_context.progress.increment(already_sync=1)
+            await sync_context.progress.increment(stat_name="skipped", amount=1)
             return
 
-        if len(processed_entities) == 0:
-            raise ValueError("No processed entities to persist")
+        # Handle database operations for parent entity
+        if action == DestinationAction.INSERT:
+            # Insert into database
+            new_db_entity = await crud.entity.create(
+                db=db,
+                obj_in=schemas.EntityCreate(
+                    sync_id=sync_context.sync.id,
+                    entity_id=parent_entity.entity_id,
+                    hash=parent_entity.hash(),  # compute hash on the entity
+                    sync_job_id=sync_context.sync_job.id,
+                ),
+                organization_id=sync_context.sync.organization_id,
+            )
+            parent_entity.db_entity_id = new_db_entity.id
+            await sync_context.progress.increment("inserted", 1)
 
-        # Prepare the processed entities
-        for processed_entity in processed_entities:
-            # Set the parent ID if not already set
-            if not processed_entity.parent_id and parent_entity:
-                processed_entity.parent_id = parent_entity.id
+        elif action == DestinationAction.UPDATE:
+            # Update in database
+            await crud.entity.update(
+                db=db,
+                db_obj=db_entity,
+                obj_in=schemas.EntityUpdate(
+                    hash=parent_entity.hash(),  # compute hash on the entity
+                ),
+            )
+            parent_entity.db_entity_id = db_entity.id
+            await sync_context.progress.increment("updated", 1)
 
-            # Set the sync ID
-            processed_entity.sync_id = sync_context.sync.id
-
-            # Set the entity definition ID
-            entity_type = type(processed_entity)
-            if entity_type in sync_context.entity_map:
-                processed_entity.entity_definition_id = sync_context.entity_map[entity_type]
-
-        # Persist to all configured destinations
+        # Then proceed with destination persistence
         for destination_name, destination in sync_context.destinations.items():
             try:
                 # Bulk insert/update entities
@@ -356,16 +366,8 @@ class SyncOrchestrator:
                 # Process relationships for graph databases
                 if isinstance(destination, GraphDBDestination):
                     await self._process_relationships(processed_entities, destination, sync_context)
-
             except Exception as e:
                 logger.error(f"Error persisting to {destination_name}: {str(e)}")
-                # Continue with other destinations even if one fails
-
-        # Update progress
-        if action == DestinationAction.INSERT:
-            await sync_context.progress.increment(inserted=len(processed_entities))
-        elif action == DestinationAction.UPDATE:
-            await sync_context.progress.increment(updated=len(processed_entities))
 
     async def _process_relationships(
         self,

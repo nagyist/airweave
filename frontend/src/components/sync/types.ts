@@ -74,7 +74,7 @@ export interface SyncDestination {
 
 export interface SyncUIMetadata {
   source: SyncSource;
-  destination: SyncDestination;
+  destination: SyncDestination | SyncDestination[];
   userId: string;
   organizationId: string;
   userEmail: string;

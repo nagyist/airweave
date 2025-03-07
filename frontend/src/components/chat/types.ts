@@ -4,6 +4,7 @@ export interface ModelSettings {
   top_p: number;
   frequency_penalty: number;
   presence_penalty: number;
+  search_type?: "vector" | "graph" | "hybrid";
 }
 
 export interface SourceConnection {

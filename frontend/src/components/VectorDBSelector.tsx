@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Loader2, Check, CirclePlus } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { Badge } from "@/components/ui/badge";
 
 import { useToast } from "@/components/ui/use-toast";
 import { getDestinationIconUrl } from "@/lib/utils/icons";
@@ -47,7 +48,7 @@ interface Connection {
 }
 
 interface VectorDBSelectorProps {
-  onComplete: (details: ConnectionSelection, metadata: { name: string; shortName: string }) => void;
+  onComplete: (details: ConnectionSelection | ConnectionSelection[], metadata: { name: string; shortName: string }[]) => void;
 }
 
 interface DestinationDetails {
@@ -65,6 +66,13 @@ interface DestinationDetails {
   };
 }
 
+interface ConnectionSelection {
+  connectionId: string;
+  isNative: boolean;
+  destinationName: string;
+  destinationShortName: string;
+}
+
 /**
  * Example endpoint for listing existing "destination" connections:
  *   GET /connections/list/destination
@@ -74,8 +82,8 @@ interface DestinationDetails {
 export const VectorDBSelector = ({ onComplete }: VectorDBSelectorProps) => {
   const [destinations, setDestinations] = useState<DestinationDetails[]>([]);
   const [connections, setConnections] = useState<Connection[]>([]);
-  // For storing config form states
   const [selectedDestination, setSelectedDestination] = useState<DestinationDetails | null>(null);
+  const [selectedConnections, setSelectedConnections] = useState<ConnectionSelection[]>([]);
   const [showConfig, setShowConfig] = useState(false);
   const [configValues, setConfigValues] = useState<Record<string, string>>({});
   const [configFields, setConfigFields] = useState<ConfigField[]>([]);
@@ -140,11 +148,52 @@ export const VectorDBSelector = ({ onComplete }: VectorDBSelectorProps) => {
   /**
    * Called when user selects an existing connection or native instance
    */
-  const handleUseExistingConnection = (connId: string, isNative?: boolean) => {
-    onComplete({
+  const handleUseExistingConnection = (connId: string, isNative?: boolean, dest?: DestinationDetails) => {
+    const selection: ConnectionSelection = {
       connectionId: isNative ? "" : connId,
-      isNative: isNative
-    }, { name: "", shortName: "" });
+      isNative: isNative,
+      destinationName: dest?.name || "Native Weaviate",
+      destinationShortName: dest?.short_name || "weaviate_native",
+    };
+    
+    // Check if the connection is already selected
+    const alreadySelectedIndex = selectedConnections.findIndex(
+      conn => conn.connectionId === selection.connectionId && conn.isNative === selection.isNative
+    );
+    
+    // Toggle selection
+    if (alreadySelectedIndex >= 0) {
+      const updatedSelections = [...selectedConnections];
+      updatedSelections.splice(alreadySelectedIndex, 1);
+      setSelectedConnections(updatedSelections);
+    } else {
+      setSelectedConnections([...selectedConnections, selection]);
+    }
+  };
+
+  // Add a Continue button to proceed with multiple selections
+  const handleContinueWithSelections = () => {
+    if (selectedConnections.length === 0) {
+      toast({
+        title: "No destinations selected",
+        description: "Please select at least one destination",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    // Create metadata array from selections
+    const metadata = selectedConnections.map(selection => ({
+      name: selection.destinationName || "",
+      shortName: selection.destinationShortName || "",
+    }));
+
+    // If only one selection, call onComplete with single item for backward compatibility
+    if (selectedConnections.length === 1) {
+      onComplete(selectedConnections[0], metadata);
+    } else {
+      onComplete(selectedConnections, metadata);
+    }
   };
 
   /**
@@ -173,7 +222,15 @@ export const VectorDBSelector = ({ onComplete }: VectorDBSelectorProps) => {
       if (!response.ok) throw new Error("Failed to connect");
 
       const data = await response.json();
-      onComplete({ connectionId: data.id }, { name: selectedDestination.name, shortName: selectedDestination.short_name });
+      const newConnection: ConnectionSelection = {
+        connectionId: data.id,
+        destinationName: selectedDestination.name,
+        destinationShortName: selectedDestination.short_name,
+        isNative: false
+      };
+      
+      // Add the new connection to selected connections
+      setSelectedConnections([...selectedConnections, newConnection]);
       setShowConfig(false);
     } catch (err) {
       toast({
@@ -189,36 +246,116 @@ export const VectorDBSelector = ({ onComplete }: VectorDBSelectorProps) => {
   /**
    * Render the native Weaviate card separately
    */
-  const renderNativeWeaviate = () => (
-    <Card className="flex flex-col justify-between hover:border-primary/50 transition-colors bg-gradient-to-br from-background to-muted/50">
-      <CardHeader>
-        <div className="flex items-center space-x-3">
-          <img
-            src={getDestinationIconUrl("weaviate_native")}
-            alt="Weaviate icon"
-            className="w-8 h-8"
-          />
-          <div>
-            <CardTitle>Native Weaviate</CardTitle>
-            <CardDescription>Built-in vector database</CardDescription>
+  const renderNativeWeaviate = () => {
+    const isSelected = selectedConnections.some(
+      selected => selected.isNative && selected.destinationShortName === "weaviate_native"
+    );
+    
+    return (
+      <Card className={cn(
+        "flex flex-col justify-between hover:border-primary/50 transition-colors bg-gradient-to-br from-background to-muted/50",
+        isSelected ? "border-primary bg-primary/5" : ""
+      )}>
+        <CardHeader>
+          <div className="flex items-center space-x-3">
+            <img
+              src={getDestinationIconUrl("weaviate_native")}
+              alt="Weaviate icon"
+              className="w-8 h-8"
+            />
+            <div>
+              <CardTitle>Native Weaviate</CardTitle>
+              <CardDescription>Built-in vector database</CardDescription>
+            </div>
           </div>
-        </div>
-      </CardHeader>
-      <CardContent className="flex-grow">
-        <p className="text-sm text-muted-foreground">
-          Use the built-in Weaviate instance for optimal performance and seamless integration.
-        </p>
-      </CardContent>
-      <CardFooter>
-        <Button 
-          className="w-full" 
-          onClick={() => handleUseExistingConnection("native", true)}
-        >
-          Use Native Instance
-        </Button>
-      </CardFooter>
-    </Card>
-  );
+        </CardHeader>
+        <CardContent className="flex-grow">
+          <p className="text-sm text-muted-foreground">
+            Use the built-in Weaviate instance for optimal performance and seamless integration.
+          </p>
+        </CardContent>
+        <CardFooter>
+          <Button 
+            className="w-full" 
+            variant={isSelected ? "default" : "outline"}
+            onClick={() => handleUseExistingConnection("native", true, {
+              name: "Native Weaviate",
+              short_name: "weaviate_native",
+              description: "Built-in vector database",
+              auth_type: null,
+              id: "",
+              created_at: "",
+              modified_at: "",
+              class_name: "WeaviateDestination",
+              auth_config_class: "",
+              config_fields: {
+                fields: []
+              }
+            })}
+          >
+            {isSelected ? "Selected" : "Use Native Instance"}
+          </Button>
+        </CardFooter>
+      </Card>
+    );
+  };
+
+  /**
+   * Render the native Neo4j card separately
+   */
+  const renderNativeNeo4j = () => {
+    const isSelected = selectedConnections.some(
+      selected => selected.isNative && selected.destinationShortName === "neo4j_native"
+    );
+    
+    return (
+      <Card className={cn(
+        "flex flex-col justify-between hover:border-primary/50 transition-colors bg-gradient-to-br from-background to-muted/50",
+        isSelected ? "border-primary bg-primary/5" : ""
+      )}>
+        <CardHeader>
+          <div className="flex items-center space-x-3">
+            <img
+              src={getDestinationIconUrl("neo4j")}
+              alt="Neo4j icon"
+              className="w-8 h-8"
+            />
+            <div>
+              <CardTitle>Native Neo4j</CardTitle>
+              <CardDescription>Built-in graph database</CardDescription>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="flex-grow">
+          <p className="text-sm text-muted-foreground">
+            Use the built-in Neo4j instance for graph database capabilities and relationship queries.
+          </p>
+        </CardContent>
+        <CardFooter>
+          <Button 
+            className="w-full" 
+            variant={isSelected ? "default" : "outline"}
+            onClick={() => handleUseExistingConnection("neo4j_native", true, {
+              name: "Native Neo4j",
+              short_name: "neo4j_native",
+              description: "Built-in graph database",
+              auth_type: null,
+              id: "",
+              created_at: "",
+              modified_at: "",
+              class_name: "Neo4jDestination",
+              auth_config_class: "Neo4jAuthConfig",
+              config_fields: {
+                fields: []
+              }
+            })}
+          >
+            {isSelected ? "Selected" : "Use Native Instance"}
+          </Button>
+        </CardFooter>
+      </Card>
+    );
+  };
 
   /**
    * Group connections by destination type and render them as separate cards
@@ -250,7 +387,10 @@ export const VectorDBSelector = ({ onComplete }: VectorDBSelectorProps) => {
           {destConnections.map((conn) => (
             <Card 
               key={conn.id} 
-              className="flex flex-col justify-between hover:border-primary/50 transition-colors bg-muted/5"
+              className={cn(
+                "flex flex-col justify-between hover:border-primary/50 transition-colors",
+                selectedConnections.some(selected => selected.connectionId === conn.id && !selected.isNative) ? "border-primary bg-primary/5" : ""
+              )}
             >
               <CardHeader>
                 <div className="flex items-center justify-between">
@@ -270,11 +410,11 @@ export const VectorDBSelector = ({ onComplete }: VectorDBSelectorProps) => {
               </CardContent>
               <CardFooter>
                 <Button 
-                  className="w-full"
-                  variant={conn.status === "active" ? "secondary" : "destructive"}
-                  onClick={() => handleUseExistingConnection(conn.id)}
+                  className="w-full" 
+                  variant={selectedConnections.some(selected => selected.connectionId === conn.id && !selected.isNative) ? "default" : "outline"}
+                  onClick={() => handleUseExistingConnection(conn.id, false, dest)}
                 >
-                  {conn.status === "active" ? "Use This Instance" : "Reconnect"}
+                  {selectedConnections.some(selected => selected.connectionId === conn.id && !selected.isNative) ? "Selected" : "Select"}
                 </Button>
               </CardFooter>
             </Card>
@@ -379,10 +519,11 @@ export const VectorDBSelector = ({ onComplete }: VectorDBSelectorProps) => {
   }
 
   return (
-    <div className="space-y-8">
-      {/* Native Weaviate always on top */}
-      <div className="max-w-md">
+    <div className="space-y-6">
+      {/* Native instances on top */}
+      <div className="grid gap-4 sm:grid-cols-2">
         {renderNativeWeaviate()}
+        {renderNativeNeo4j()}
       </div>
 
       {/* Other destinations */}
@@ -392,6 +533,25 @@ export const VectorDBSelector = ({ onComplete }: VectorDBSelectorProps) => {
           .sort((a, b) => a.name.localeCompare(b.name))
           .map(renderDestinationGroup)}
       </div>
+
+      {/* Add this at the bottom */}
+      {selectedConnections.length > 0 && (
+        <div className="flex flex-col space-y-4 mt-8">
+          <div className="flex items-center justify-between">
+            <h3 className="text-lg font-semibold">Selected Destinations ({selectedConnections.length})</h3>
+            <Button onClick={handleContinueWithSelections}>
+              Continue
+            </Button>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {selectedConnections.map((selection, index) => (
+              <Badge key={index} variant="outline" className="px-3 py-1">
+                {selection.isNative ? "Native Weaviate" : selection.destinationName}
+              </Badge>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 };

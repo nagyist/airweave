@@ -23,6 +23,7 @@ import { Dag } from "@/components/sync/dag";
 interface ConnectionSelection {
   connectionId: string;
   isNative?: boolean;
+  destinationShortName?: string;
 }
 
 const Sync = () => {
@@ -33,7 +34,7 @@ const Sync = () => {
   const [selectedSource, setSelectedSource] = useState<ConnectionSelection | null>(null);
 
   // Chosen vector DB or native indexing (step 2 -> 3)
-  const [selectedDB, setSelectedDB] = useState<ConnectionSelection | null>(null);
+  const [selectedDB, setSelectedDB] = useState<ConnectionSelection | ConnectionSelection[] | null>(null);
 
   // Created sync ID and job ID once we make calls
   const [syncId, setSyncId] = useState<string | null>(null);
@@ -108,22 +109,32 @@ const Sync = () => {
    * handleVectorDBSelected is triggered after the user chooses a vector DB.
    * We move from step 2 -> 3 to confirm the pipeline.
    */
-  const handleVectorDBSelected = async (dbDetails: ConnectionSelection, metadata: { name: string; shortName: string }) => {
+  const handleVectorDBSelected = async (
+    dbDetails: ConnectionSelection | ConnectionSelection[], 
+    metadata: { name: string; shortName: string }[]
+  ) => {
     try {
-      setSelectedDB(dbDetails);
+      setSelectedDB(Array.isArray(dbDetails) ? dbDetails : [dbDetails]);
+      
+      // Update pipeline metadata with all destinations
       if (userInfo) {
         setPipelineMetadata(prev => prev ? {
           ...prev,
-          destination: dbDetails.isNative 
-            ? {
-                name: "Native Weaviate",
-                shortName: "weaviate_native",
-                type: "destination",
-              }
-            : {
-                ...metadata,
-                type: "destination",
-              }
+          destination: Array.isArray(dbDetails) 
+            ? metadata.map(m => ({
+                ...m,
+                type: "destination"
+              }))
+            : dbDetails.isNative 
+              ? {
+                  name: "Native Weaviate",
+                  shortName: "weaviate_native",
+                  type: "destination",
+                }
+              : {
+                  ...metadata[0],
+                  type: "destination",
+                }
         } : null);
       }
 
@@ -131,13 +142,51 @@ const Sync = () => {
         throw new Error("No source selected");
       }
 
-      // Create sync
-      const syncResp = await apiClient.post("/sync/", {
+      // Create sync with multiple destinations if applicable
+      const syncPayload: any = {
         name: "Sync from UI",
         source_connection_id: selectedSource.connectionId,
-        ...(dbDetails.isNative ? {} : { destination_connection_id: dbDetails.connectionId }),
-        run_immediately: false
-      });
+        run_immediately: false,
+        sync_metadata: {}
+      };
+      
+      // Handle multiple destinations
+      if (Array.isArray(dbDetails)) {
+        // Extract connection IDs for non-native destinations
+        const destinationConnectionIds = dbDetails
+          .filter(db => !db.isNative)
+          .map(db => db.connectionId);
+        
+        if (destinationConnectionIds.length > 0) {
+          syncPayload.destination_connection_ids = destinationConnectionIds;
+        }
+        
+        // Set native destination flags in sync_metadata
+        const hasNativeWeaviate = dbDetails.some(db => db.isNative && db.destinationShortName === "weaviate_native");
+        const hasNativeNeo4j = dbDetails.some(db => db.isNative && db.destinationShortName === "neo4j_native");
+        
+        if (hasNativeWeaviate) {
+          syncPayload.sync_metadata.use_native_weaviate = true;
+        }
+        
+        if (hasNativeNeo4j) {
+          syncPayload.sync_metadata.use_native_neo4j = true;
+        }
+      } else {
+        // Handle single destination (for backward compatibility)
+        if (dbDetails.isNative) {
+          if (dbDetails.destinationShortName === "weaviate_native") {
+            syncPayload.sync_metadata.use_native_weaviate = true;
+          } else if (dbDetails.destinationShortName === "neo4j_native") {
+            syncPayload.sync_metadata.use_native_neo4j = true;
+          }
+        } else {
+          syncPayload.destination_connection_id = dbDetails.connectionId;
+        }
+      }
+
+      // Create sync
+      const syncResp = await apiClient.post("/sync/", syncPayload);
 
       if (!syncResp.ok) {
         throw new Error("Failed to create sync");

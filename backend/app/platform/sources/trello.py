@@ -68,7 +68,6 @@ class TrelloSource(BaseSource):
         data = await self._get_with_auth(client, "/members/me/organizations")
         for org in data:
             yield TrelloOrganizationEntity(
-                source_name="trello",
                 entity_id=org["id"],
                 breadcrumbs=[],  # Top-level, no parent
                 display_name=org.get("displayName"),
@@ -99,7 +98,6 @@ class TrelloSource(BaseSource):
             )
 
             yield TrelloBoardEntity(
-                source_name="trello",
                 entity_id=board["id"],
                 breadcrumbs=board_breadcrumbs,
                 name=board.get("name"),
@@ -134,7 +132,6 @@ class TrelloSource(BaseSource):
             )
 
             yield TrelloListEntity(
-                source_name="trello",
                 entity_id=lst["id"],
                 breadcrumbs=list_breadcrumbs,
                 name=lst.get("name"),
@@ -169,7 +166,6 @@ class TrelloSource(BaseSource):
             )
 
             yield TrelloCardEntity(
-                source_name="trello",
                 entity_id=card["id"],
                 breadcrumbs=card_breadcrumbs,
                 name=card.get("name"),
@@ -205,7 +201,6 @@ class TrelloSource(BaseSource):
             )
 
             yield TrelloMemberEntity(
-                source_name="trello",
                 entity_id=member["id"],
                 breadcrumbs=member_breadcrumbs,
                 avatar_url=member.get("avatarUrl"),
@@ -240,7 +235,6 @@ class TrelloSource(BaseSource):
             )
 
             yield TrelloActionEntity(
-                source_name="trello",
                 entity_id=action["id"],
                 breadcrumbs=action_breadcrumbs,
                 action_type=action.get("type"),

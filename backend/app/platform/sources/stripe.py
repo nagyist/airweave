@@ -92,7 +92,6 @@ class StripeSource(BaseSource):
         url = "https://api.stripe.com/v1/balance"
         data = await self._get_with_auth(client, url)
         yield StripeBalanceEntity(
-            source_name="stripe",
             entity_id="balance",  # Arbitrary ID since there's only one balance resource
             available=data.get("available", []),
             pending=data.get("pending", []),
@@ -116,7 +115,6 @@ class StripeSource(BaseSource):
             data = await self._get_with_auth(client, url)
             for txn in data.get("data", []):
                 yield StripeBalanceTransactionEntity(
-                    source_name="stripe",
                     entity_id=txn["id"],
                     amount=txn.get("amount"),
                     currency=txn.get("currency"),
@@ -153,7 +151,6 @@ class StripeSource(BaseSource):
             data = await self._get_with_auth(client, url)
             for charge in data.get("data", []):
                 yield StripeChargeEntity(
-                    source_name="stripe",
                     entity_id=charge["id"],
                     amount=charge.get("amount"),
                     currency=charge.get("currency"),
@@ -190,7 +187,6 @@ class StripeSource(BaseSource):
             data = await self._get_with_auth(client, url)
             for cust in data.get("data", []):
                 yield StripeCustomerEntity(
-                    source_name="stripe",
                     entity_id=cust["id"],
                     email=cust.get("email"),
                     phone=cust.get("phone"),
@@ -226,7 +222,6 @@ class StripeSource(BaseSource):
             data = await self._get_with_auth(client, url)
             for evt in data.get("data", []):
                 yield StripeEventEntity(
-                    source_name="stripe",
                     entity_id=evt["id"],
                     event_type=evt.get("type"),
                     api_version=evt.get("api_version"),
@@ -259,7 +254,6 @@ class StripeSource(BaseSource):
             data = await self._get_with_auth(client, url)
             for inv in data.get("data", []):
                 yield StripeInvoiceEntity(
-                    source_name="stripe",
                     entity_id=inv["id"],
                     customer_id=inv.get("customer"),
                     number=inv.get("number"),
@@ -296,7 +290,6 @@ class StripeSource(BaseSource):
             data = await self._get_with_auth(client, url)
             for pi in data.get("data", []):
                 yield StripePaymentIntentEntity(
-                    source_name="stripe",
                     entity_id=pi["id"],
                     amount=pi.get("amount"),
                     currency=pi.get("currency"),
@@ -331,7 +324,6 @@ class StripeSource(BaseSource):
             data = await self._get_with_auth(client, url)
             for pm in data.get("data", []):
                 yield StripePaymentMethodEntity(
-                    source_name="stripe",
                     entity_id=pm["id"],
                     type=pm.get("type"),
                     billing_details=pm.get("billing_details", {}),
@@ -360,7 +352,6 @@ class StripeSource(BaseSource):
             data = await self._get_with_auth(client, url)
             for payout in data.get("data", []):
                 yield StripePayoutEntity(
-                    source_name="stripe",
                     entity_id=payout["id"],
                     amount=payout.get("amount"),
                     currency=payout.get("currency"),
@@ -395,7 +386,6 @@ class StripeSource(BaseSource):
             data = await self._get_with_auth(client, url)
             for refund in data.get("data", []):
                 yield StripeRefundEntity(
-                    source_name="stripe",
                     entity_id=refund["id"],
                     amount=refund.get("amount"),
                     currency=refund.get("currency"),
@@ -429,7 +419,6 @@ class StripeSource(BaseSource):
             data = await self._get_with_auth(client, url)
             for sub in data.get("data", []):
                 yield StripeSubscriptionEntity(
-                    source_name="stripe",
                     entity_id=sub["id"],
                     customer_id=sub.get("customer"),
                     status=sub.get("status"),

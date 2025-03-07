@@ -67,7 +67,6 @@ class TodoistSource(BaseSource):
         # 'projects' should be a list of project objects
         for project in projects:
             yield TodoistProjectEntity(
-                source_name="todoist",
                 entity_id=project["id"],
                 name=project["name"],
                 color=project.get("color"),
@@ -100,7 +99,6 @@ class TodoistSource(BaseSource):
 
         for section in sections:
             yield TodoistSectionEntity(
-                source_name="todoist",
                 entity_id=section["id"],
                 breadcrumbs=[project_breadcrumb],
                 name=section["name"],
@@ -149,7 +147,6 @@ class TodoistSource(BaseSource):
                     continue
 
             yield TodoistTaskEntity(
-                source_name="todoist",
                 entity_id=task["id"],
                 breadcrumbs=breadcrumbs,
                 content=task["content"],
@@ -194,7 +191,6 @@ class TodoistSource(BaseSource):
 
         for comment in comments:
             yield TodoistCommentEntity(
-                source_name="todoist",
                 entity_id=comment["id"],
                 breadcrumbs=task_breadcrumbs,
                 task_id=str(comment.get("task_id") or ""),

@@ -77,7 +77,6 @@ class DropboxSource(BaseSource):
             Account-level entities containing user/team information.
         """
         yield DropboxAccountEntity(
-            source_name="dropbox",
             entity_id="dummy_account_entity",
             breadcrumbs=[],
             display_name="My Dropbox Account",
@@ -103,7 +102,6 @@ class DropboxSource(BaseSource):
         """
         # Dummy placeholder for MVP:
         yield DropboxFolderEntity(
-            source_name="dropbox",
             entity_id="folder-entity-id",
             breadcrumbs=[account_breadcrumb],
             folder_id="folder-123",
@@ -129,7 +127,6 @@ class DropboxSource(BaseSource):
             File entities containing metadata about Dropbox files.
         """
         yield DropboxFileEntity(
-            source_name="dropbox",
             entity_id="file-entity-id",
             breadcrumbs=folder_breadcrumbs,
             file_id="file-123",

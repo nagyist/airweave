@@ -74,7 +74,6 @@ class ZendeskSource(BaseSource):
             data = await self._get_with_auth(client, url)
             for org in data.get("organizations", []):
                 yield ZendeskOrganizationEntity(
-                    source_name="zendesk",
                     entity_id=str(org["id"]),
                     name=org.get("name"),
                     domain_names=org.get("domain_names", []),
@@ -104,7 +103,6 @@ class ZendeskSource(BaseSource):
             data = await self._get_with_auth(client, url)
             for user in data.get("users", []):
                 yield ZendeskUserEntity(
-                    source_name="zendesk",
                     entity_id=str(user["id"]),
                     name=user.get("name"),
                     email=user.get("email"),
@@ -132,7 +130,6 @@ class ZendeskSource(BaseSource):
             data = await self._get_with_auth(client, url)
             for ticket in data.get("tickets", []):
                 yield ZendeskTicketEntity(
-                    source_name="zendesk",
                     entity_id=str(ticket["id"]),
                     subject=ticket.get("subject"),
                     description=ticket.get("description"),
@@ -167,7 +164,6 @@ class ZendeskSource(BaseSource):
             data = await self._get_with_auth(client, url)
             for comment in data.get("comments", []):
                 yield ZendeskCommentEntity(
-                    source_name="zendesk",
                     entity_id=str(comment["id"]),
                     ticket_id=str(ticket_id),
                     author_id=str(comment.get("author_id", "")) or None,

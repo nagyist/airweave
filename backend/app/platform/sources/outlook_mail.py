@@ -81,7 +81,6 @@ class OutlookMailSource(BaseSource):
             for folder in data.get("value", []):
                 # Yield folder entity
                 folder_entity = OutlookMailFolderEntity(
-                    source_name="outlook_mail",
                     entity_id=folder["id"],
                     breadcrumbs=parent_breadcrumbs,
                     display_name=folder["displayName"],
@@ -135,7 +134,6 @@ class OutlookMailSource(BaseSource):
             data = await self._get_with_auth(client, url)
             for msg in data.get("value", []):
                 yield OutlookMessageEntity(
-                    source_name="outlook_mail",
                     entity_id=msg["id"],
                     breadcrumbs=breadcrumbs,
                     subject=msg.get("subject"),

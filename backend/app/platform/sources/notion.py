@@ -241,7 +241,6 @@ class NotionSource(BaseSource):
                     title = first_title.get("plain_text", "Untitled")
 
         return NotionDatabaseEntity(
-            source_name="notion",
             database_id=database["id"],
             entity_id=database["id"],
             name=title,
@@ -267,7 +266,6 @@ class NotionSource(BaseSource):
         )
 
         return NotionPageEntity(
-            source_name="notion",
             page_id=page["id"],
             entity_id=page["id"],
             breadcrumbs=breadcrumbs,
@@ -287,7 +285,6 @@ class NotionSource(BaseSource):
         text_content = self._extract_block_content(block)
 
         return NotionBlockEntity(
-            source_name="notion",
             block_id=block["id"],
             entity_id=block["id"],
             breadcrumbs=breadcrumbs,

@@ -71,7 +71,6 @@ class SlackSource(BaseSource):
 
             for channel in data.get("channels", []):
                 yield SlackChannelEntity(
-                    source_name="slack",
                     entity_id=channel["id"],
                     channel_id=channel["id"],
                     name=channel.get("name"),
@@ -109,7 +108,6 @@ class SlackSource(BaseSource):
 
             for member in data.get("members", []):
                 yield SlackUserEntity(
-                    source_name="slack",
                     entity_id=member["id"],
                     user_id=member["id"],
                     team_id=member.get("team_id"),
@@ -146,7 +144,6 @@ class SlackSource(BaseSource):
 
             for message in data.get("messages", []):
                 yield SlackMessageEntity(
-                    source_name="slack",
                     entity_id=f"{channel_id}-{message.get('ts')}",
                     channel_id=channel_id,
                     user_id=message.get("user"),

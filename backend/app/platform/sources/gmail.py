@@ -60,7 +60,6 @@ class GmailSource(BaseSource):
         data = await self._get_with_auth(client, url)
         for label in data.get("labels", []):
             yield GmailLabelEntity(
-                source_name="gmail",
                 entity_id=label["id"],
                 breadcrumbs=[],
                 name=label["name"],
@@ -122,7 +121,6 @@ class GmailSource(BaseSource):
 
                 # Create thread entity and its breadcrumb
                 thread_entity = GmailThreadEntity(
-                    source_name="gmail",
                     entity_id=thread_id,
                     breadcrumbs=[],  # Thread is top-level, so empty breadcrumbs
                     snippet=snippet,
@@ -253,7 +251,6 @@ class GmailSource(BaseSource):
                         body_html = decoded_body
 
             yield GmailMessageEntity(
-                source_name="gmail",
                 entity_id=msg_id,
                 breadcrumbs=[thread_breadcrumb],  # Include thread in breadcrumb path
                 thread_id=thread_id,
@@ -394,7 +391,6 @@ class GmailSource(BaseSource):
                     breadcrumbs = [thread_breadcrumb]
 
                 yield GmailDraftEntity(
-                    source_name="gmail",
                     entity_id=draft_id,
                     breadcrumbs=breadcrumbs,  # Include thread breadcrumb if draft is part of thread
                     message_id=msg_id,

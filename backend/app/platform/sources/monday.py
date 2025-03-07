@@ -115,7 +115,6 @@ class MondaySource(BaseSource):
 
         for board in boards:
             yield MondayBoardEntity(
-                source_name="monday",
                 entity_id=str(board["id"]),
                 board_id=str(board["id"]),
                 name=board.get("name"),
@@ -157,7 +156,6 @@ class MondaySource(BaseSource):
         groups = boards_data[0].get("groups", [])
         for group in groups:
             yield MondayGroupEntity(
-                source_name="monday",
                 entity_id=f"{board_id}-{group['id']}",  # or just group["id"]
                 breadcrumbs=[board_breadcrumb],
                 group_id=group["id"],
@@ -198,7 +196,6 @@ class MondaySource(BaseSource):
         columns = boards_data[0].get("columns", [])
         for col in columns:
             yield MondayColumnEntity(
-                source_name="monday",
                 entity_id=f"{board_id}-{col['id']}",
                 breadcrumbs=[board_breadcrumb],
                 column_id=col["id"],
@@ -251,7 +248,6 @@ class MondaySource(BaseSource):
         items = boards_data[0].get("items", [])
         for item in items:
             yield MondayItemEntity(
-                source_name="monday",
                 entity_id=str(item["id"]),
                 breadcrumbs=[board_breadcrumb],
                 item_id=str(item["id"]),
@@ -312,7 +308,6 @@ class MondaySource(BaseSource):
         subitems = items_data[0].get("subitems", [])
         for subitem in subitems:
             yield MondaySubitemEntity(
-                source_name="monday",
                 entity_id=str(subitem["id"]),
                 breadcrumbs=item_breadcrumbs,
                 subitem_id=str(subitem["id"]),
@@ -394,7 +389,6 @@ class MondaySource(BaseSource):
 
         for upd in updates:
             yield MondayUpdateEntity(
-                source_name="monday",
                 entity_id=str(upd["id"]),
                 breadcrumbs=item_breadcrumbs or [],
                 update_id=str(upd["id"]),

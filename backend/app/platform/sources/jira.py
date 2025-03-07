@@ -156,7 +156,6 @@ class JiraSource(BaseSource):
             projects = data.get("values", [])
             for project in projects:
                 yield JiraProjectEntity(
-                    source_name="jira",
                     entity_id=project["id"],
                     breadcrumbs=[],  # top-level object, no parent
                     project_key=project["key"],
@@ -204,7 +203,6 @@ class JiraSource(BaseSource):
             comments = data.get("comments", [])
             for comment in comments:
                 yield JiraCommentEntity(
-                    source_name="jira",
                     entity_id=comment["id"],
                     breadcrumbs=[
                         # Provide a breadcrumb back to the Issue this comment is on
@@ -304,7 +302,6 @@ class JiraSource(BaseSource):
                 votes_count = votes.get("votes", 0) if votes else 0
 
                 yield JiraIssueEntity(
-                    source_name="jira",
                     entity_id=issue_data["id"],
                     breadcrumbs=[
                         Breadcrumb(

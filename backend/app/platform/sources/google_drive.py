@@ -77,7 +77,6 @@ class GoogleDriveSource(BaseSource):
         """Generate GoogleDriveDriveEntity objects for each shared drive."""
         async for drive_obj in self._list_drives(client):
             yield GoogleDriveDriveEntity(
-                source_name="google_drive",
                 entity_id=drive_obj["id"],
                 # No breadcrumbs for top-level drives in this connector
                 breadcrumbs=[],
@@ -150,7 +149,6 @@ class GoogleDriveSource(BaseSource):
     def _build_file_entity(self, file_obj: Dict) -> GoogleDriveFileEntity:
         """Helper to build a GoogleDriveFileEntity from a file API response object."""
         return GoogleDriveFileEntity(
-            source_name="google_drive",
             entity_id=file_obj["id"],
             breadcrumbs=[],
             file_id=file_obj["id"],

@@ -77,7 +77,6 @@ class GoogleCalendarSource(BaseSource):
             items = data.get("items", [])
             for cal in items:
                 yield GoogleCalendarListEntity(
-                    source_name="google_calendar",
                     entity_id=cal["id"],
                     breadcrumbs=[],  # top level entity
                     calendar_id=cal["id"],
@@ -104,7 +103,6 @@ class GoogleCalendarSource(BaseSource):
         url = f"https://www.googleapis.com/calendar/v3/calendars/{calendar_id}"
         data = await self._get_with_auth(client, url)
         yield GoogleCalendarCalendarEntity(
-            source_name="google_calendar",
             entity_id=data["id"],
             breadcrumbs=[],  # each calendar is top-level (matching the underlying resource)
             calendar_id=data["id"],
@@ -153,7 +151,6 @@ class GoogleCalendarSource(BaseSource):
                 )
 
                 yield GoogleCalendarEventEntity(
-                    source_name="google_calendar",
                     entity_id=event_id,
                     breadcrumbs=[cal_breadcrumb],
                     event_id=event_id,
@@ -203,7 +200,6 @@ class GoogleCalendarSource(BaseSource):
         busy_ranges = cal_busy_info.get("busy", [])
 
         yield GoogleCalendarFreeBusyEntity(
-            source_name="google_calendar",
             entity_id=calendar_list_entry.calendar_id + "_freebusy",
             breadcrumbs=[],
             calendar_id=calendar_list_entry.calendar_id,

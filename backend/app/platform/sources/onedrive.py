@@ -69,7 +69,6 @@ class OneDriveSource(BaseSource):
         """Generate OneDriveDriveEntity objects for each drive."""
         async for drive_obj in self._list_drives(client):
             yield OneDriveDriveEntity(
-                source_name="onedrive",
                 entity_id=drive_obj["id"],
                 breadcrumbs=[],  # top-level entity
                 drive_type=drive_obj.get("driveType"),
@@ -132,7 +131,6 @@ class OneDriveSource(BaseSource):
             # (Breadcrumbs can optionally be extended if you want each folder in path,
             #  though here we only store drive-level breadcrumb for simplicity.)
             yield OneDriveDriveItemEntity(
-                source_name="onedrive",
                 entity_id=item["id"],
                 breadcrumbs=[drive_breadcrumb],  # Minimal: just the drive-level
                 name=item.get("name"),

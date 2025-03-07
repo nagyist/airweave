@@ -184,7 +184,6 @@ class ConfluenceSource(BaseSource):
             data = await self._get_with_auth(client, url)
             for space in data.get("results", []):
                 yield ConfluenceSpaceEntity(
-                    source_name="confluence",
                     entity_id=space["id"],
                     breadcrumbs=[],  # top-level object
                     space_key=space["key"],
@@ -229,7 +228,6 @@ class ConfluenceSource(BaseSource):
             for page in data.get("results", []):
                 page_breadcrumbs = [space_breadcrumb]
                 yield ConfluencePageEntity(
-                    source_name="confluence",
                     entity_id=page["id"],
                     breadcrumbs=page_breadcrumbs,
                     content_id=page["id"],
@@ -257,7 +255,6 @@ class ConfluenceSource(BaseSource):
             data = await self._get_with_auth(client, url)
             for blog in data.get("results", []):
                 yield ConfluenceBlogPostEntity(
-                    source_name="confluence",
                     entity_id=blog["id"],
                     breadcrumbs=[space_breadcrumb],
                     content_id=blog["id"],
@@ -291,7 +288,6 @@ class ConfluenceSource(BaseSource):
             data = await self._get_with_auth(client, url)
             for comment in data.get("results", []):
                 yield ConfluenceCommentEntity(
-                    source_name="confluence",
                     entity_id=comment["id"],
                     breadcrumbs=parent_breadcrumbs,
                     content_id=comment["id"],
@@ -317,7 +313,6 @@ class ConfluenceSource(BaseSource):
             data = await self._get_with_auth(client, url)
             for label_obj in data.get("results", []):
                 yield ConfluenceLabelEntity(
-                    source_name="confluence",
                     entity_id=label_obj["id"],
                     breadcrumbs=[],
                     name=label_obj.get("name", ""),
@@ -339,7 +334,6 @@ class ConfluenceSource(BaseSource):
             data = await self._get_with_auth(client, url)
             for database in data.get("results", []):
                 yield ConfluenceDatabaseEntity(
-                    source_name="confluence",
                     entity_id=database["id"],
                     breadcrumbs=[space_breadcrumb],
                     content_id=database["id"],
@@ -362,7 +356,6 @@ class ConfluenceSource(BaseSource):
             data = await self._get_with_auth(client, url)
             for folder in data.get("results", []):
                 yield ConfluenceFolderEntity(
-                    source_name="confluence",
                     entity_id=folder["id"],
                     breadcrumbs=[space_breadcrumb],
                     content_id=folder["id"],

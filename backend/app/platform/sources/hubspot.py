@@ -58,7 +58,6 @@ class HubspotSource(BaseSource):
             data = await self._get_with_auth(client, url)
             for contact in data.get("results", []):
                 yield HubspotContactEntity(
-                    source_name="hubspot",
                     entity_id=contact["id"],
                     first_name=contact["properties"].get("firstname"),
                     last_name=contact["properties"].get("lastname"),
@@ -88,7 +87,6 @@ class HubspotSource(BaseSource):
             data = await self._get_with_auth(client, url)
             for company in data.get("results", []):
                 yield HubspotCompanyEntity(
-                    source_name="hubspot",
                     entity_id=company["id"],
                     name=company["properties"].get("name"),
                     domain=company["properties"].get("domain"),
@@ -120,7 +118,6 @@ class HubspotSource(BaseSource):
             data = await self._get_with_auth(client, url)
             for deal in data.get("results", []):
                 yield HubspotDealEntity(
-                    source_name="hubspot",
                     entity_id=deal["id"],
                     deal_name=deal["properties"].get("dealname"),
                     amount=(
@@ -153,7 +150,6 @@ class HubspotSource(BaseSource):
             data = await self._get_with_auth(client, url)
             for ticket in data.get("results", []):
                 yield HubspotTicketEntity(
-                    source_name="hubspot",
                     entity_id=ticket["id"],
                     subject=ticket["properties"].get("subject"),
                     content=ticket["properties"].get("content"),

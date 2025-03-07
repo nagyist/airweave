@@ -63,7 +63,6 @@ class GithubSource(BaseSource):
             repos_data = resp.json()  # This should be a list of repo objects
             for repo in repos_data:
                 yield GithubRepoEntity(
-                    source_name="github",
                     entity_id=str(repo["id"]),
                     breadcrumbs=[],
                     name=repo.get("name"),
@@ -128,7 +127,6 @@ class GithubSource(BaseSource):
         if isinstance(data, dict) and data.get("type") == "file":
             # Single file item
             yield GithubContentEntity(
-                source_name="github",
                 entity_id=data["sha"],
                 breadcrumbs=breadcrumbs,
                 repo_full_name=repo_full_name,
@@ -145,7 +143,6 @@ class GithubSource(BaseSource):
             # Directory listing
             for item in data:
                 yield GithubContentEntity(
-                    source_name="github",
                     entity_id=item["sha"],
                     breadcrumbs=breadcrumbs,
                     repo_full_name=repo_full_name,

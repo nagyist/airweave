@@ -93,7 +93,6 @@ class AsanaSource(BaseSource):
 
         for workspace in workspaces_data.get("data", []):
             yield AsanaWorkspaceEntity(
-                source_name="asana",
                 entity_id=workspace["gid"],
                 breadcrumbs=[],
                 name=workspace["name"],
@@ -113,7 +112,6 @@ class AsanaSource(BaseSource):
 
         for project in projects_data.get("data", []):
             yield AsanaProjectEntity(
-                source_name="asana",
                 entity_id=project["gid"],
                 breadcrumbs=[workspace_breadcrumb],
                 name=project["name"],
@@ -152,7 +150,6 @@ class AsanaSource(BaseSource):
 
         for section in sections_data.get("data", []):
             yield AsanaSectionEntity(
-                source_name="asana",
                 entity_id=section["gid"],
                 breadcrumbs=project_breadcrumbs,
                 name=section["name"],
@@ -187,7 +184,6 @@ class AsanaSource(BaseSource):
                 task_breadcrumbs = [*breadcrumbs, section_breadcrumb]
 
             yield AsanaTaskEntity(
-                source_name="asana",
                 entity_id=task["gid"],
                 breadcrumbs=task_breadcrumbs,
                 name=task["name"],
@@ -238,7 +234,6 @@ class AsanaSource(BaseSource):
                 continue
 
             yield AsanaCommentEntity(
-                source_name="asana",
                 entity_id=story["gid"],
                 breadcrumbs=task_breadcrumbs,
                 task_gid=task["gid"],
@@ -286,7 +281,6 @@ class AsanaSource(BaseSource):
 
             # Create the file entity with metadata
             file_entity = AsanaFileEntity(
-                source_name="asana",
                 entity_id=attachment_detail["gid"],
                 breadcrumbs=task_breadcrumbs,
                 file_id=attachment["gid"],

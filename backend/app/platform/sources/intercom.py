@@ -61,7 +61,6 @@ class IntercomSource(BaseSource):
             data = await self._get_with_auth(client, url)
             for contact in data.get("data", []):
                 yield IntercomContactEntity(
-                    source_name="intercom",
                     entity_id=contact.get("id"),
                     role=contact.get("role"),
                     external_id=contact.get("external_id"),
@@ -92,7 +91,6 @@ class IntercomSource(BaseSource):
             data = await self._get_with_auth(client, url)
             for company in data.get("data", []):
                 yield IntercomCompanyEntity(
-                    source_name="intercom",
                     entity_id=company.get("id"),
                     name=company.get("name"),
                     company_id=company.get("company_id"),
@@ -124,7 +122,6 @@ class IntercomSource(BaseSource):
             data = await self._get_with_auth(client, url)
             for convo in data.get("data", []):
                 yield IntercomConversationEntity(
-                    source_name="intercom",
                     entity_id=convo.get("id"),
                     conversation_id=convo.get("id", ""),
                     title=convo.get("title"),
@@ -154,7 +151,6 @@ class IntercomSource(BaseSource):
             data = await self._get_with_auth(client, url)
             for ticket in data.get("data", []):
                 yield IntercomTicketEntity(
-                    source_name="intercom",
                     entity_id=ticket.get("id"),
                     subject=ticket.get("subject"),
                     description=ticket.get("description"),

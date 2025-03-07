@@ -69,7 +69,6 @@ class OutlookCalendarSource(BaseSource):
             calendars = data.get("value", [])
             for cal in calendars:
                 yield OutlookCalendarCalendarEntity(
-                    source_name="outlook_calendar",
                     entity_id=cal["id"],  # inherited field for unique ID
                     breadcrumbs=[],  # top-level entity, no parent
                     name=cal.get("name"),
@@ -123,7 +122,6 @@ class OutlookCalendarSource(BaseSource):
                     )
 
                 yield OutlookCalendarEventEntity(
-                    source_name="outlook_calendar",
                     entity_id=ev["id"],
                     breadcrumbs=[cal_breadcrumb],
                     subject=ev.get("subject"),

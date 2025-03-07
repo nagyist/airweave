@@ -119,7 +119,7 @@ class SearchService:
 
                 # Use the first vector destination
                 results = await vector_destinations[0].search_for_sync_id(
-                    text=query,
+                    query_text=query,
                     sync_id=sync_id,
                     limit=limit,
                 )
@@ -131,7 +131,7 @@ class SearchService:
 
                 # Use the first graph destination
                 results = await graph_destinations[0].search_for_sync_id(
-                    text=query,
+                    query_text=query,
                     sync_id=sync_id,
                     limit=limit,
                 )
@@ -144,7 +144,7 @@ class SearchService:
                 if vector_destinations:
                     try:
                         vector_results = await vector_destinations[0].search_for_sync_id(
-                            text=query,
+                            query_text=query,
                             sync_id=sync_id,
                             limit=limit,
                         )
@@ -156,7 +156,7 @@ class SearchService:
                 if graph_destinations:
                     try:
                         graph_results = await graph_destinations[0].search_for_sync_id(
-                            text=query,
+                            query_text=query,
                             sync_id=sync_id,
                             limit=limit,
                         )

@@ -52,18 +52,44 @@ const badgeVariants = {
 };
 
 export function ChatInfoSidebar({ chatInfo, onUpdateSettings }: ChatInfoSidebarProps) {
-  const [modelSettings, setModelSettings] = useState<ModelSettings>(chatInfo.model_settings);
+  const [modelSettings, setModelSettings] = useState<ModelSettings>(() => {
+    // Try to get search_type from localStorage if it exists
+    const savedSearchType = localStorage.getItem(`chat_search_type_${chatInfo.id}`);
+    
+    if (savedSearchType && ["vector", "graph", "hybrid"].includes(savedSearchType)) {
+      return {
+        ...chatInfo.model_settings,
+        search_type: savedSearchType as "vector" | "graph" | "hybrid"
+      };
+    }
+    
+    return chatInfo.model_settings;
+  });
   const [modelName, setModelName] = useState<string>(chatInfo.model_name);
   const { toast } = useToast();
   const [saveTimeout, setSaveTimeout] = useState<NodeJS.Timeout | null>(null);
   const navigate = useNavigate();
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const { resolvedTheme } = useTheme();
+  
+  // Track if we're currently updating search type to prevent feedback loops
+  const [isUpdatingSearchType, setIsUpdatingSearchType] = useState(false);
 
   useEffect(() => {
-    setModelSettings(chatInfo.model_settings);
-    setModelName(chatInfo.model_name);
-  }, [chatInfo.model_settings, chatInfo.model_name]);
+    // Only update if we're not currently in the middle of a search type update
+    if (!isUpdatingSearchType) {
+      // Preserve search type from local state if it differs from server
+      const currentSearchType = modelSettings.search_type;
+      
+      setModelSettings(prev => ({
+        ...chatInfo.model_settings,
+        // Preserve our locally selected search type if it exists
+        search_type: currentSearchType || chatInfo.model_settings.search_type || "vector"
+      }));
+      
+      setModelName(chatInfo.model_name);
+    }
+  }, [chatInfo.model_settings, chatInfo.model_name, isUpdatingSearchType]);
 
   const handleModelChange = async (newModelName: string) => {
     setModelName(newModelName);
@@ -80,13 +106,36 @@ export function ChatInfoSidebar({ chatInfo, onUpdateSettings }: ChatInfoSidebarP
   };
 
   const handleSettingChange = (key: keyof ModelSettings, value: number | string) => {
+    // Create new settings object with the updated value
     const newSettings = { ...modelSettings, [key]: value };
     setModelSettings(newSettings);
     
+    // Clear existing timeout
     if (saveTimeout) {
       clearTimeout(saveTimeout);
     }
     
+    // For search_type changes, apply immediately without debounce
+    if (key === "search_type") {
+      (async () => {
+        try {
+          // Update model_settings separately
+          console.log(`Updating search type to: ${value}`);
+          await onUpdateSettings({ model_settings: newSettings } as any);
+        } catch (error) {
+          // If update fails, revert the local state
+          setModelSettings(modelSettings);
+          toast({
+            title: "Error",
+            description: "Failed to update search type",
+            variant: "destructive",
+          });
+        }
+      })();
+      return;
+    }
+    
+    // For other settings, use debounce
     const timeout = setTimeout(async () => {
       try {
         // Update model_settings separately
@@ -117,6 +166,53 @@ export function ChatInfoSidebar({ chatInfo, onUpdateSettings }: ChatInfoSidebarP
         description: "Failed to delete chat",
         variant: "destructive",
       });
+    }
+  };
+
+  // Special handler for search type changes
+  const handleSearchTypeChange = async (searchType: "vector" | "graph" | "hybrid") => {
+    try {
+      console.log(`Changing search type to: ${searchType}`);
+      
+      // Set flag to prevent feedback loops
+      setIsUpdatingSearchType(true);
+      
+      // Update UI immediately
+      setModelSettings(prev => ({
+        ...prev,
+        search_type: searchType
+      }));
+      
+      // Store in localStorage as backup
+      localStorage.setItem(`chat_search_type_${chatInfo.id}`, searchType);
+      
+      // Create updated settings object
+      const newSettings = {
+        ...modelSettings,
+        search_type: searchType
+      };
+      
+      // Send update to server but don't wait for response to update UI
+      const updatePromise = onUpdateSettings({ model_settings: newSettings } as any);
+      
+      // Wait for the update to complete
+      await updatePromise;
+      
+      console.log(`Successfully updated search type to: ${searchType}`);
+    } catch (error) {
+      console.error('Error updating search type:', error);
+      
+      // Show error but KEEP the UI selection as user chose
+      toast({
+        title: "Warning",
+        description: "Search type saved locally but server update failed.",
+        variant: "destructive",
+      });
+    } finally {
+      // Clear the update flag after a short delay to ensure state has settled
+      setTimeout(() => {
+        setIsUpdatingSearchType(false);
+      }, 500);
     }
   };
 
@@ -410,11 +506,56 @@ export function ChatInfoSidebar({ chatInfo, onUpdateSettings }: ChatInfoSidebarP
                   <Separator className="my-2" />
                   
                   <div className="space-y-4 mt-4">
-                    <SearchTypeSelector
-                      value={modelSettings.search_type || "vector"}
-                      onChange={(value) => handleSettingChange("search_type", value)}
-                      disabled={false}
-                    />
+                    {/* Custom search type selector using radio buttons to avoid resets */}
+                    <div className="space-y-2">
+                      <Label className="text-xs text-muted-foreground">Search Type</Label>
+                      
+                      <div className="space-y-2 mt-2">
+                        <div 
+                          className={`border p-2 rounded-md cursor-pointer hover:bg-accent hover:text-accent-foreground ${modelSettings.search_type === 'vector' ? 'bg-primary text-primary-foreground' : ''}`}
+                          onClick={() => handleSearchTypeChange('vector')}
+                        >
+                          <div className="font-medium">Vector Search</div>
+                          <div className="text-xs">Search using embeddings for semantic similarity</div>
+                        </div>
+                        
+                        <div 
+                          className={`border p-2 rounded-md cursor-pointer hover:bg-accent hover:text-accent-foreground ${modelSettings.search_type === 'graph' ? 'bg-primary text-primary-foreground' : ''}`}
+                          onClick={() => handleSearchTypeChange('graph')}
+                        >
+                          <div className="font-medium">Graph Search</div>
+                          <div className="text-xs">Search using graph relationships between entities</div>
+                        </div>
+                        
+                        <div 
+                          className={`border p-2 rounded-md cursor-pointer hover:bg-accent hover:text-accent-foreground ${modelSettings.search_type === 'hybrid' ? 'bg-primary text-primary-foreground' : ''}`}
+                          onClick={() => handleSearchTypeChange('hybrid')}
+                        >
+                          <div className="font-medium">Hybrid Search</div>
+                          <div className="text-xs">Combine vector and graph search for comprehensive results</div>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    {/* Show info for graph search if selected but not available */}
+                    {modelSettings.search_type === "graph" && (
+                      <div className="bg-yellow-50 rounded p-2 text-xs text-yellow-800">
+                        <p>
+                          <strong>Note:</strong> Graph search requires a properly configured Neo4j instance.
+                          If unavailable, results may fall back to vector search.
+                        </p>
+                      </div>
+                    )}
+                    
+                    {/* Show info for hybrid search if selected */}
+                    {modelSettings.search_type === "hybrid" && (
+                      <div className="bg-blue-50 rounded p-2 text-xs text-blue-800">
+                        <p>
+                          <strong>Note:</strong> Hybrid search combines results from both vector and graph search.
+                          Both Weaviate and Neo4j must be configured for optimal results.
+                        </p>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>

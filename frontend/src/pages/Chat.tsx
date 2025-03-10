@@ -284,17 +284,41 @@ function Chat() {
 
   const handleUpdateSettings = async (settings: Partial<ModelSettings>) => {
     if (!chatId) return;
-      
-    const response = await apiClient.put(`/chat/${chatId}`, undefined, {
-      model_settings: settings,  // Pass undefined for params, then the data
-    });
     
-    if (response.ok) {
-      await loadChatInfo();
-    } else {
+    try {
+      // Preserve existing settings by merging with current chat info
+      const currentSettings = chatInfo?.model_settings || {};
+      const mergedSettings = { ...currentSettings, ...settings };
+      
+      console.log("Updating settings:", mergedSettings);
+      
+      // For search_type updates, add a specific log
+      if ('search_type' in settings) {
+        console.log(`Updating search type to: ${settings.search_type}`);
+      }
+      
+      const response = await apiClient.put(`/chat/${chatId}`, undefined, {
+        model_settings: mergedSettings,  // Use the merged settings
+      });
+      
+      if (response.ok) {
+        // Don't automatically reload chat info for search_type changes
+        // to avoid UI flicker while selection is processing
+        if (!('search_type' in settings)) {
+          await loadChatInfo();
+        }
+      } else {
+        toast({
+          title: "Error",
+          description: "Failed to update settings",
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      console.error("Error updating settings:", error);
       toast({
         title: "Error",
-        description: "Failed to update settings",
+        description: "An unexpected error occurred while updating settings",
         variant: "destructive",
       });
     }

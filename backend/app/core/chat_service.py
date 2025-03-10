@@ -75,6 +75,19 @@ class ChatService:
             AsyncGenerator[ChatCompletionChunk]: Stream of response entities
         """
         try:
+            # Check if OpenAI client is initialized
+            if not self.client:
+                logger.error("OpenAI client not initialized. Check if OPENAI_API_KEY is set.")
+                error_message = schemas.ChatMessageCreate(
+                    content="Sorry, the AI service is not properly configured. Please contact support.",
+                    role=ChatRole.ASSISTANT,
+                )
+                await crud.chat.add_message(
+                    db=db, chat_id=chat_id, obj_in=error_message, current_user=user
+                )
+                return
+
+            # Get chat and messages
             chat = await crud.chat.get_with_messages(db=db, id=chat_id, current_user=user)
             if not chat:
                 logger.error(f"Chat {chat_id} not found")
@@ -86,28 +99,70 @@ class ChatService:
             )
             context = ""
             if last_user_message:
-                context = await self._get_relevant_context(
-                    db=db,
-                    chat=chat,
-                    query=last_user_message.content,
-                    user=user,
-                )
+                try:
+                    context = await self._get_relevant_context(
+                        db=db,
+                        chat=chat,
+                        query=last_user_message.content,
+                        user=user,
+                    )
+                    if context:
+                        logger.info(f"Found relevant context ({len(context)} chars) for query")
+                    else:
+                        logger.info("No relevant context found for query")
+                except Exception as context_error:
+                    logger.error(f"Error getting context: {str(context_error)}")
+                    # Continue without context rather than failing completely
 
             # Prepare messages with context
             messages = self._prepare_messages_with_context(chat.messages, context)
 
             # Merge settings
             model = chat.model_name or self.DEFAULT_MODEL
-            model_settings = {
-                **self.DEFAULT_MODEL_SETTINGS,
-                **chat.model_settings,
-                "stream": True,  # Enable streaming
-            }
+
+            try:
+                # Extract OpenAI API supported parameters
+                # Only pass parameters that OpenAI API actually supports
+                openai_supported_params = {
+                    "temperature": chat.model_settings.get(
+                        "temperature", self.DEFAULT_MODEL_SETTINGS["temperature"]
+                    ),
+                    "max_tokens": chat.model_settings.get(
+                        "max_tokens", self.DEFAULT_MODEL_SETTINGS["max_tokens"]
+                    ),
+                    "top_p": chat.model_settings.get("top_p", self.DEFAULT_MODEL_SETTINGS["top_p"]),
+                    "frequency_penalty": chat.model_settings.get(
+                        "frequency_penalty", self.DEFAULT_MODEL_SETTINGS["frequency_penalty"]
+                    ),
+                    "presence_penalty": chat.model_settings.get(
+                        "presence_penalty", self.DEFAULT_MODEL_SETTINGS["presence_penalty"]
+                    ),
+                    "stream": True,  # Enable streaming
+                }
+            except (AttributeError, TypeError) as e:
+                logger.warning(f"Error extracting model settings, using defaults: {e}")
+                openai_supported_params = {**self.DEFAULT_MODEL_SETTINGS, "stream": True}
+
+            # Log what we're sending to OpenAI
+            logger.info(
+                f"Creating completion with model {model} and settings: {openai_supported_params}"
+            )
 
             # Create streaming response
-            stream = await self.client.chat.completions.create(
-                model=model, messages=messages, **model_settings
-            )
+            try:
+                stream = await self.client.chat.completions.create(
+                    model=model, messages=messages, **openai_supported_params
+                )
+            except Exception as api_error:
+                logger.error(f"OpenAI API error: {str(api_error)}")
+                error_message = schemas.ChatMessageCreate(
+                    content="Sorry, I encountered an error when calling the AI service. Please try again.",
+                    role=ChatRole.ASSISTANT,
+                )
+                await crud.chat.add_message(
+                    db=db, chat_id=chat_id, obj_in=error_message, current_user=user
+                )
+                raise
 
             full_content = ""
             async for chunk in stream:
@@ -126,7 +181,7 @@ class ChatService:
                 )
 
         except Exception as e:
-            logger.error(f"Error generating streaming response: {str(e)}")
+            logger.error(f"Error in stream: {str(e)}")
             # Create error message
             error_message = schemas.ChatMessageCreate(
                 content=(
@@ -154,13 +209,27 @@ class ChatService:
 
             messages = self._prepare_messages(chat.messages)
             model = chat.model_name or self.DEFAULT_MODEL
-            model_settings = {
-                **self.DEFAULT_MODEL_SETTINGS,
-                **chat.model_settings,
+
+            # Extract OpenAI API supported parameters
+            # Only pass parameters that OpenAI API actually supports
+            openai_supported_params = {
+                "temperature": chat.model_settings.get(
+                    "temperature", self.DEFAULT_MODEL_SETTINGS["temperature"]
+                ),
+                "max_tokens": chat.model_settings.get(
+                    "max_tokens", self.DEFAULT_MODEL_SETTINGS["max_tokens"]
+                ),
+                "top_p": chat.model_settings.get("top_p", self.DEFAULT_MODEL_SETTINGS["top_p"]),
+                "frequency_penalty": chat.model_settings.get(
+                    "frequency_penalty", self.DEFAULT_MODEL_SETTINGS["frequency_penalty"]
+                ),
+                "presence_penalty": chat.model_settings.get(
+                    "presence_penalty", self.DEFAULT_MODEL_SETTINGS["presence_penalty"]
+                ),
             }
 
             response = await self.client.chat.completions.create(
-                model=model, messages=messages, **model_settings
+                model=model, messages=messages, **openai_supported_params
             )
 
             if not response.choices:
@@ -217,7 +286,7 @@ class ChatService:
         query: str,
         user: schemas.User,
     ) -> str:
-        """Get relevant context for the query from vector search.
+        """Get relevant context for the query.
 
         Args:
             db: Database session
@@ -232,24 +301,55 @@ class ChatService:
             return ""
 
         try:
-            # Get search type preference from chat settings
+            # Get search type preference from model_settings
             search_type = SearchType.VECTOR  # Default to vector search
-            if chat.search_settings and "search_type" in chat.search_settings:
-                try:
-                    search_type = SearchType(chat.search_settings["search_type"])
-                except (ValueError, KeyError):
-                    # Invalid search type, fall back to vector
-                    pass
+
+            # Get the search_type from model_settings
+            if chat.model_settings and isinstance(chat.model_settings, dict):
+                search_type_value = chat.model_settings["model_settings"].get("search_type")
+                if search_type_value:
+                    # Log what we've found for debugging
+                    logger.info(f"Found search_type in model_settings: {search_type_value}")
+
+                    # Validate and convert to enum
+                    try:
+                        search_type = SearchType(search_type_value)
+                    except (ValueError, TypeError) as e:
+                        logger.warning(
+                            f"Invalid search_type value '{search_type_value}': {e}. Defaulting to vector search."
+                        )
+
+            logger.info(f"Using search type: {search_type}")
 
             # Perform search based on the search type
-            results = await search_service.search(
-                db=db,
-                query=query,
-                sync_id=chat.sync_id,
-                current_user=user,
-                search_type=search_type,
-                limit=5,  # Limit to top 5 results
-            )
+            try:
+                results = await search_service.search(
+                    db=db,
+                    query=query,
+                    sync_id=chat.sync_id,
+                    current_user=user,
+                    search_type=search_type,
+                    limit=5,  # Limit to top 5 results
+                )
+            except Exception as e:
+                logger.error(f"Search error with {search_type} search: {str(e)}")
+                # If graph or hybrid search fails, try falling back to vector search
+                if search_type != SearchType.VECTOR:
+                    logger.info(f"Falling back to vector search after {search_type} search failed")
+                    try:
+                        results = await search_service.search(
+                            db=db,
+                            query=query,
+                            sync_id=chat.sync_id,
+                            current_user=user,
+                            search_type=SearchType.VECTOR,
+                            limit=5,
+                        )
+                    except Exception as fallback_error:
+                        logger.error(f"Fallback search error: {str(fallback_error)}")
+                        return ""
+                else:
+                    return ""
 
             # Format results based on search type
             if search_type == SearchType.HYBRID:
@@ -348,6 +448,102 @@ class ChatService:
         )
 
         return formatted_messages
+
+    async def get_context(
+        self,
+        db: AsyncSession,
+        query: str,
+        chat_id: UUID,
+        current_user: schemas.User,
+    ) -> str:
+        """Get context for a chat message.
+
+        Args:
+            db (AsyncSession): Database session
+            query (str): User query
+            chat_id (UUID): Chat ID
+            current_user (schemas.User): Current user
+
+        Returns:
+            str: Context for the chat message
+        """
+        # Get chat info
+        chat = await crud.chat.get(db, id=chat_id, current_user=current_user)
+        if not chat:
+            logger.warning(f"Chat {chat_id} not found")
+            return ""
+
+        # Get search type from model settings
+        search_type = SearchType.VECTOR  # Default to vector search
+        if chat.model_settings and "search_type" in chat.model_settings:
+            try:
+                search_type = SearchType(chat.model_settings["search_type"])
+                logger.info(f"Using search type: {search_type}")
+            except ValueError:
+                logger.warning(
+                    f"Invalid search type: {chat.model_settings['search_type']}. Using vector search."
+                )
+
+        # Search for relevant context
+        try:
+            results = await search_service.search(
+                db=db,
+                query=query,
+                sync_id=chat.sync_id,
+                current_user=current_user,
+                search_type=search_type,
+                limit=5,
+            )
+        except Exception as e:
+            logger.error(f"Error searching for context: {str(e)}")
+            return ""
+
+        # Format results based on search type
+        if search_type == SearchType.HYBRID:
+            # For hybrid search, results are a dict with 'vector' and 'graph' keys
+            if not results:
+                return ""
+
+            formatted_results = []
+
+            # Format vector results
+            if "vector" in results and results["vector"]:
+                formatted_results.append("## Vector Search Results")
+                for i, result in enumerate(results["vector"][:5], 1):
+                    content = result.get("content", "").strip()
+                    if not content:
+                        continue
+                    formatted_results.append(f"### Result {i}")
+                    formatted_results.append(content)
+                    formatted_results.append("")
+
+            # Format graph results
+            if "graph" in results and results["graph"]:
+                formatted_results.append("## Graph Search Results")
+                for i, result in enumerate(results["graph"][:5], 1):
+                    content = result.get("content", "").strip()
+                    if not content:
+                        continue
+                    formatted_results.append(f"### Result {i}")
+                    formatted_results.append(content)
+                    formatted_results.append("")
+
+            return "\n".join(formatted_results)
+        else:
+            # For vector or graph search, results are a list
+            if not results:
+                return ""
+
+            formatted_results = []
+            for i, result in enumerate(results[:5], 1):
+                content = result.get("content", "").strip()
+                if not content:
+                    continue
+                formatted_results.append(f"### Result {i}")
+                formatted_results.append(content)
+                formatted_results.append("")
+
+            return "\n".join(formatted_results)
 
 
 # Create a singleton instance

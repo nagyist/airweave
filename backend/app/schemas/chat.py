@@ -53,6 +53,7 @@ class ChatBase(BaseModel):
         "top_p": 1,
         "frequency_penalty": 0,
         "presence_penalty": 0,
+        "search_type": "vector",  # Default to vector search
     }
     search_settings: dict = {}
 

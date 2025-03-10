@@ -135,8 +135,60 @@ class SearchService:
                             embedding_model=LocalText2Vec(),
                         )
                     )
+                    logger.info("Successfully initialized Neo4j destination")
                 except Exception as e:
                     logger.warning(f"Could not initialize Neo4j destination: {str(e)}")
+                    # Check specific error types to provide better diagnostics
+                    if "Could not establish connection" in str(e):
+                        logger.error(
+                            "Neo4j connection failed. Please check Neo4j server is running and credentials are correct."
+                        )
+                    elif "Authentication failed" in str(e):
+                        logger.error(
+                            "Neo4j authentication failed. Please check username and password."
+                        )
+                    elif "NameError" in str(e) or "ModuleNotFoundError" in str(e):
+                        logger.error("Neo4j Python driver not properly installed or imported.")
+
+                    # Log additional debug information
+                    logger.debug(
+                        f"Neo4j initialization error details: {type(e).__name__}: {str(e)}"
+                    )
+
+            # Check if requested search type is available
+            if search_type == SearchType.VECTOR and not vector_destinations:
+                logger.warning("Vector search requested but no vector destinations available")
+                # Continue with empty results instead of failing
+                return []
+
+            if search_type == SearchType.GRAPH and not graph_destinations:
+                logger.warning("Graph search requested but no graph destinations available")
+                # If we have vector destinations, fall back to them
+                if vector_destinations:
+                    logger.info(
+                        "Falling back to vector search as graph destinations are not available"
+                    )
+                    search_type = SearchType.VECTOR
+                else:
+                    # Continue with empty results
+                    return []
+
+            if search_type == SearchType.HYBRID and (
+                not vector_destinations or not graph_destinations
+            ):
+                if vector_destinations and not graph_destinations:
+                    logger.warning(
+                        "Hybrid search requested but no graph destinations available. Falling back to vector search."
+                    )
+                    search_type = SearchType.VECTOR
+                elif graph_destinations and not vector_destinations:
+                    logger.warning(
+                        "Hybrid search requested but no vector destinations available. Falling back to graph search."
+                    )
+                    search_type = SearchType.GRAPH
+                else:
+                    logger.warning("No destinations available for hybrid search")
+                    return []
 
             # Perform search based on the requested type
             if search_type == SearchType.VECTOR:
@@ -185,10 +237,10 @@ class SearchService:
                             try:
                                 dest_instance = await Neo4jDestination.create(
                                     sync_id=sync_id,
-                                    embedding_model=LocalText2Vec(),
+                                    embedding_model=LocalText2Vec(),  # TODO: Why does a graph database destination need a vector embedding model?
                                 )
                                 results = await dest_instance.search_for_sync_id(
-                                    query_text=query,
+                                    text=query,
                                     sync_id=sync_id,
                                 )
                                 all_results.extend(results)

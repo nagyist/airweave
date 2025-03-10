@@ -397,10 +397,16 @@ class SyncOrchestrator:
 
             # Check if the module has a RELATIONS list
             if not hasattr(module, "RELATIONS"):
+                logger.debug(
+                    f"No RELATIONS defined in module {entity_module}, skipping relationship processing"
+                )
                 return
 
             relations = module.RELATIONS
             if not relations:
+                logger.debug(
+                    f"Empty RELATIONS list in module {entity_module}, skipping relationship processing"
+                )
                 return
 
             # Process each relation
@@ -411,6 +417,9 @@ class SyncOrchestrator:
                 ]
 
                 if not source_entities:
+                    logger.debug(
+                        f"No source entities of type {relation.source_entity_type.__name__} found, skipping relation"
+                    )
                     continue
 
                 # For each source entity, create relationships
@@ -418,47 +427,94 @@ class SyncOrchestrator:
 
                 for source_entity in source_entities:
                     # Get the source ID attribute value
-                    source_id = getattr(source_entity, relation.source_entity_id_attribute, None)
-                    if not source_id:
-                        continue
-
-                    # Handle both single values and lists
-                    target_ids = []
-                    if isinstance(source_id, list):
-                        target_ids.extend(source_id)
-                    else:
-                        target_ids.append(source_id)
-
-                    # Create a relationship for each target ID
-                    for target_id in target_ids:
-                        if not target_id:
+                    try:
+                        source_attr_value = getattr(
+                            source_entity, relation.source_entity_id_attribute, None
+                        )
+                        if not source_attr_value:
+                            logger.debug(
+                                f"No value for {relation.source_entity_id_attribute} in entity {source_entity.entity_id}, skipping"
+                            )
                             continue
 
-                        relationships_to_create.append(
-                            {
-                                "from_node_id": str(source_entity.id),
-                                "to_node_id": str(target_id),
-                                "rel_type": relation.relation_type,
+                        # Handle both single values and lists
+                        target_attr_values = []
+                        if isinstance(source_attr_value, list):
+                            target_attr_values.extend(source_attr_value)
+                        else:
+                            target_attr_values.append(source_attr_value)
+
+                        # Create relationships for each target value
+                        for target_attr_value in target_attr_values:
+                            if not target_attr_value:
+                                continue
+
+                            # Here's a simplified approach that doesn't rely on database queries
+                            # We use the entity_id (Asana GID) directly as the relationship target
+                            # This works because we're storing that ID as a property on each node in Neo4j
+                            relationship = {
+                                "from_id": str(source_entity.db_entity_id),
+                                "to_id": target_attr_value,  # Use the attribute value directly as the target ID
+                                "type": relation.relation_type,
                                 "properties": {
                                     "sync_id": str(sync_context.sync.id),
                                     "source_type": source_entity.__class__.__name__,
                                     "target_type": relation.target_entity_type.__name__,
+                                    "source_entity_id": source_entity.entity_id,
+                                    "target_entity_id": target_attr_value,
                                 },
                             }
+                            relationships_to_create.append(relationship)
+                    except AttributeError as ae:
+                        logger.warning(
+                            f"Error accessing attribute during relationship creation: {str(ae)}"
                         )
+                        continue
+                    except Exception as e:
+                        logger.warning(
+                            f"Unexpected error processing relationship for entity {source_entity.entity_id}: {str(e)}"
+                        )
+                        continue
 
                 # Bulk create relationships if any
                 if relationships_to_create:
                     try:
+                        logger.info(
+                            f"Creating {len(relationships_to_create)} relationships of type {relation.relation_type}"
+                        )
                         await destination.bulk_create_relationships(relationships_to_create)
                         logger.info(
-                            f"Created {len(relationships_to_create)} relationships of type {relation.relation_type}"
+                            f"Successfully created {len(relationships_to_create)} relationships of type {relation.relation_type}"
                         )
                     except Exception as e:
-                        logger.error(f"Error creating relationships: {str(e)}")
+                        logger.error(
+                            f"Error bulk creating relationships of type {relation.relation_type}: {str(e)}"
+                        )
 
+                        # Try creating relationships one by one as fallback
+                        if len(relationships_to_create) > 0:
+                            logger.info("Attempting to create relationships individually...")
+                            success_count = 0
+                            for rel in relationships_to_create:
+                                try:
+                                    await destination.create_relationship(
+                                        rel["from_id"], rel["to_id"], rel["type"], rel["properties"]
+                                    )
+                                    success_count += 1
+                                except Exception as inner_e:
+                                    logger.debug(
+                                        f"Failed to create individual relationship: {str(inner_e)}"
+                                    )
+
+                            logger.info(
+                                f"Created {success_count} out of {len(relationships_to_create)} relationships individually"
+                            )
+
+        except ImportError as ie:
+            logger.warning(f"Could not import module {entity_module}: {str(ie)}")
         except Exception as e:
-            logger.error(f"Error processing relationships: {str(e)}")
+            logger.error(f"Unexpected error processing relationships: {str(e)}")
+            logger.exception("Exception details:")
 
 
 sync_orchestrator = SyncOrchestrator()

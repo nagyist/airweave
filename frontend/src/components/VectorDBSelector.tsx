@@ -248,9 +248,9 @@ export const VectorDBSelector = ({ onComplete }: VectorDBSelectorProps) => {
    */
   const renderNativeWeaviate = () => {
     const isSelected = selectedConnections.some(
-      selected => selected.isNative && selected.destinationShortName === "weaviate_native"
+      conn => conn.isNative && conn.destinationShortName === "weaviate_native"
     );
-    
+
     return (
       <Card className={cn(
         "flex flex-col justify-between hover:border-primary/50 transition-colors bg-gradient-to-br from-background to-muted/50",
@@ -305,9 +305,9 @@ export const VectorDBSelector = ({ onComplete }: VectorDBSelectorProps) => {
    */
   const renderNativeNeo4j = () => {
     const isSelected = selectedConnections.some(
-      selected => selected.isNative && selected.destinationShortName === "neo4j_native"
+      conn => conn.isNative && conn.destinationShortName === "neo4j_native"
     );
-    
+
     return (
       <Card className={cn(
         "flex flex-col justify-between hover:border-primary/50 transition-colors bg-gradient-to-br from-background to-muted/50",

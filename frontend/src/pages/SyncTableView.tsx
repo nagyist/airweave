@@ -219,7 +219,7 @@ const SyncTableView = () => {
             <DialogTitle className="text-xl">Delete Sync</DialogTitle>
             <DialogDescription className="pt-3">
               Are you sure you want to delete <span className="font-medium text-foreground">{syncToDelete?.name}</span>? 
-              <p className="mt-2 text-destructive/80">This action cannot be undone.</p>
+              <p className="mt-2 text-destructive dark:text-red-400">This action cannot be undone.</p>
             </DialogDescription>
           </DialogHeader>
           

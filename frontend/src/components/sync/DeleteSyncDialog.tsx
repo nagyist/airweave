@@ -21,7 +21,7 @@ export const DeleteSyncDialog = ({ open, onOpenChange, onConfirm }: DeleteSyncDi
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-          <AlertDialogDescription>
+          <AlertDialogDescription className="text-foreground dark:text-gray-200">
             This will permanently delete this synchronization and all its history.
             This action cannot be undone.
           </AlertDialogDescription>
@@ -30,7 +30,7 @@ export const DeleteSyncDialog = ({ open, onOpenChange, onConfirm }: DeleteSyncDi
           <AlertDialogCancel>Cancel</AlertDialogCancel>
           <AlertDialogAction
             onClick={onConfirm}
-            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            className="bg-red-600 text-white hover:bg-red-700 dark:bg-red-500 dark:text-white dark:hover:bg-red-600"
           >
             Delete Sync
           </AlertDialogAction>

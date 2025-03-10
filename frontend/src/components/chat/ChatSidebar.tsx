@@ -8,6 +8,8 @@ import { CreateChatDialog } from "./CreateChatDialog";
 import { useNavigate, useParams } from "react-router-dom";
 import { apiClient } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
+import { useTheme } from "@/lib/theme-provider";
+import { getAppIconUrl } from "@/lib/utils/icons";
 
 interface Chat {
   id: string;
@@ -19,6 +21,11 @@ interface Chat {
   }>;
   created_at: string;
   modified_at: string;
+  sync_id?: string;
+  source_connection?: {
+    short_name: string;
+    name?: string;
+  };
 }
 
 interface ChatSidebarProps {
@@ -33,6 +40,7 @@ export const ChatSidebar = ({ onCreateChat }: ChatSidebarProps) => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const { chatId } = useParams<{ chatId: string }>();
+  const { resolvedTheme } = useTheme();
 
   useEffect(() => {
     void loadChats();
@@ -43,7 +51,39 @@ export const ChatSidebar = ({ onCreateChat }: ChatSidebarProps) => {
       setIsLoading(true);
       const response = await apiClient.get("/chat");
       const data = await response.json();
-      setChats(data);
+      
+      // Enhance chats with source connection info
+      const enhancedChats = await Promise.all(
+        data.map(async (chat: Chat) => {
+          if (!chat.sync_id) return chat;
+          
+          try {
+            // Get sync details
+            const syncResponse = await apiClient.get(`/sync/${chat.sync_id}`);
+            const syncData = await syncResponse.json();
+            
+            if (syncData.source_connection_id) {
+              // Get source connection details
+              const sourceConnResponse = await apiClient.get(`/connections/detail/${syncData.source_connection_id}`);
+              const sourceConnData = await sourceConnResponse.json();
+              
+              return {
+                ...chat,
+                source_connection: {
+                  short_name: sourceConnData.short_name,
+                  name: sourceConnData.name
+                }
+              };
+            }
+          } catch (err) {
+            console.error(`Failed to get sync info for chat ${chat.id}:`, err);
+          }
+          
+          return chat;
+        })
+      );
+      
+      setChats(enhancedChats);
     } catch (error) {
       console.error("Failed to load chats:", error);
       toast({
@@ -120,7 +160,15 @@ export const ChatSidebar = ({ onCreateChat }: ChatSidebarProps) => {
                   )}
                   onClick={() => navigate(`/chat/${chat.id}`)}
                 >
-                  <MessageSquare className="h-4 w-4 shrink-0" />
+                  {chat.source_connection?.short_name ? (
+                    <img 
+                      src={getAppIconUrl(chat.source_connection.short_name, resolvedTheme)} 
+                      alt={chat.source_connection.name || "Source"}
+                      className="h-4 w-4 shrink-0"
+                    />
+                  ) : (
+                    <MessageSquare className="h-4 w-4 shrink-0" />
+                  )}
                   <div className="flex-1 overflow-hidden">
                     <p className="font-medium truncate">
                       {chat.name || "Untitled Chat"}

@@ -13,6 +13,7 @@ from .crud_integration_credential import integration_credential
 from .crud_organization import organization
 from .crud_source import source
 from .crud_sync import sync
+from .crud_sync_destination import sync_destination
 from .crud_sync_job import sync_job
 from .crud_transformer import transformer
 from .crud_user import user
@@ -33,6 +34,7 @@ __all__ = [
     "organization",
     "source",
     "sync",
+    "sync_destination",
     "sync_dag",
     "sync_job",
     "transformer",

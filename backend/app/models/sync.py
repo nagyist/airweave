@@ -11,6 +11,7 @@ from app.models._base import OrganizationBase, UserMixin
 
 if TYPE_CHECKING:
     from app.models.entity import Entity
+    from app.models.sync_destination import SyncDestination
     from app.models.sync_job import SyncJob
 
 
@@ -48,6 +49,14 @@ class Sync(OrganizationBase, UserMixin):
         "Entity",
         back_populates="sync",
         lazy="noload",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+
+    destinations: Mapped[list["SyncDestination"]] = relationship(
+        "SyncDestination",
+        back_populates="sync",
+        lazy="joined",
         cascade="all, delete-orphan",
         passive_deletes=True,
     )

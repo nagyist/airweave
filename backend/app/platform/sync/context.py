@@ -151,14 +151,14 @@ class SyncContextFactory:
         # Create entity map
         entity_map = await cls._get_entity_definition_map(db)
 
-        # Create sync progress
-        progress = SyncProgress(total=0, sync_id=sync.id, sync_job_id=sync_job.id, dag_id=dag.id)
+        # Create sync progress - only use the job_id parameter as required by the current SyncProgress API
+        progress = SyncProgress(job_id=sync_job.id)
 
         # Create router
         router = SyncDAGRouter(dag=dag, entity_map=entity_map)
 
         # Create sync context
-        return cls(
+        return SyncContext(
             source=source,
             destinations=destinations,
             embedding_model=embedding_model,
@@ -307,50 +307,50 @@ class SyncContextFactory:
         """
         destinations = {}
 
-        # Add native Weaviate if configured
-        if sync.use_native_weaviate:
-            destinations["weaviate"] = await WeaviateDestination.create(sync.id, embedding_model)
+        # Get the sync destinations from the database
+        sync_destinations = await crud.sync_destination.get_by_sync_id(db, sync.id)
 
-        # Add native Neo4j if configured
-        if sync.use_native_neo4j:
-            try:
-                from app.platform.destinations.neo4j import Neo4jDestination
+        # Process each sync destination
+        for sync_destination in sync_destinations:
+            # For native Weaviate
+            if (
+                sync_destination.is_native
+                and sync_destination.destination_type == "weaviate_native"
+            ):
+                destinations["weaviate"] = await WeaviateDestination.create(
+                    sync.id, embedding_model
+                )
 
-                destinations["neo4j"] = await Neo4jDestination.create(sync.id, embedding_model)
-            except (ImportError, Exception) as e:
-                logger.warning(f"Failed to initialize native Neo4j destination: {e}")
+            # For native Neo4j
+            elif sync_destination.is_native and sync_destination.destination_type == "neo4j_native":
+                try:
+                    from app.platform.destinations.neo4j import Neo4jDestination
+
+                    destinations["neo4j"] = await Neo4jDestination.create(sync.id, embedding_model)
+                except (ImportError, Exception) as e:
+                    logger.warning(f"Failed to initialize native Neo4j destination: {e}")
+
+            # For connection-based destinations
+            elif sync_destination.connection_id:
+                try:
+                    connection = await crud.connection.get(
+                        db, sync_destination.connection_id, current_user
+                    )
+                    if not connection:
+                        continue
+
+                    destination_class = get_destination_class(connection.type)
+                    destinations[connection.name] = await destination_class.create(
+                        sync.id, embedding_model, connection
+                    )
+                except Exception as e:
+                    logger.error(f"Failed to create destination instance: {e}")
+                    continue
 
         # Default to Weaviate if no destination specified
-        if not sync.destination_connections and not destinations:
+        if not destinations:
             destinations["weaviate"] = await WeaviateDestination.create(sync.id, embedding_model)
-            return destinations
 
-        # Process each destination connection
-        for connection_id in sync.destination_connections:
-            try:
-                connection = await crud.connection.get(db, connection_id, current_user)
-                if not connection:
-                    continue
-                # Get the destination object
-                destination = await crud.destination.get(
-                    db,
-                    id=connection.destination_id,
-                    current_user=current_user,
-                )
-                if not destination:
-                    continue
-
-                # Get the destination class
-                destination_class = get_destination_class(destination.short_name)
-                if not destination_class:
-                    continue
-
-                # Create the destination instance
-                destination_instance = await destination_class.create(sync.id, embedding_model)
-                destinations[destination.short_name] = destination_instance
-            except Exception as e:
-                # If we fail to create one destination, that shouldn't stop the sync
-                logger.error(f"Error creating destination instance: {e}")
         return destinations
 
     @classmethod

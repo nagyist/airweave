@@ -264,11 +264,29 @@ class WeaviateDestination(VectorDBDestination):
             collection: Collection = await service.get_weaviate_collection(self.collection_name)
 
             # Create a proper filter to find all entities with this sync_id
-            results = await collection.query.near_text(
+            query_result = await collection.query.near_text(
                 query=query_text,
                 limit=10,
                 filters=Filter.by_property("sync_id").equal(str(sync_id)),
             )
+
+            # Convert the QueryReturn object to a list of dictionaries
+            results = []
+            if hasattr(query_result, "objects"):
+                for obj in query_result.objects:
+                    # Convert each object to a dictionary with its properties
+                    result_dict = obj.properties.copy() if obj.properties else {}
+                    # Add any metadata if available
+                    if obj.metadata:
+                        result_dict["_metadata"] = {
+                            "certainty": obj.metadata.certainty,
+                            "distance": obj.metadata.distance,
+                            "score": obj.metadata.score,
+                        }
+                    # Include the object ID
+                    result_dict["id"] = str(obj.uuid)
+                    results.append(result_dict)
+
             return results
 
     @staticmethod

@@ -66,6 +66,12 @@ from .source import (
     SourceWithConfigFields,
 )
 from .sync import Sync, SyncBase, SyncCreate, SyncInDBBase, SyncUpdate, SyncWithSourceConnection
+from .sync_destination import (
+    SyncDestination,
+    SyncDestinationBase,
+    SyncDestinationCreate,
+    SyncDestinationUpdate,
+)
 from .sync_job import SyncJob, SyncJobCreate, SyncJobInDBBase, SyncJobUpdate
 from .transformer import Transformer, TransformerCreate, TransformerUpdate
 from .user import (
@@ -99,8 +105,13 @@ __all__ = [
     "SourceCreate",
     "SourceUpdate",
     "Sync",
+    "SyncBase",
     "SyncCreate",
     "SyncUpdate",
+    "SyncDestination",
+    "SyncDestinationBase",
+    "SyncDestinationCreate",
+    "SyncDestinationUpdate",
     "Entity",
     "EntityCreate",
     "Transformer",

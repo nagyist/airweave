@@ -96,7 +96,15 @@ async def create_sync(
     async with UnitOfWork(db) as uow:
         sync = await sync_service.create(db=db, sync=sync_in.to_base(), current_user=user, uow=uow)
         await uow.session.flush()
+
+        # Load destinations for the response
+        sync_destinations = await crud.sync_destination.get_by_sync_id(db=db, sync_id=sync.id)
+
         sync_schema = schemas.Sync.model_validate(sync)
+        sync_schema.destinations = [
+            schemas.SyncDestination.model_validate(d) for d in sync_destinations
+        ]
+
         if sync_in.run_immediately:
             sync_job_create = schemas.SyncJobCreate(sync_id=sync_schema.id)
             sync_job = await crud.sync_job.create(
@@ -110,7 +118,7 @@ async def create_sync(
         await uow.commit()
         await uow.session.refresh(sync)
 
-    return sync
+    return sync_schema
 
 
 @router.delete("/{sync_id}", response_model=schemas.Sync)

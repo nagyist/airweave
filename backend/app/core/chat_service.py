@@ -234,9 +234,9 @@ class ChatService:
         try:
             # Get search type preference from chat settings
             search_type = SearchType.VECTOR  # Default to vector search
-            if chat.settings and "search_type" in chat.settings:
+            if chat.search_settings and "search_type" in chat.search_settings:
                 try:
-                    search_type = SearchType(chat.settings["search_type"])
+                    search_type = SearchType(chat.search_settings["search_type"])
                 except (ValueError, KeyError):
                     # Invalid search type, fall back to vector
                     pass

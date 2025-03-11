@@ -329,7 +329,7 @@ class ChatService:
                     sync_id=chat.sync_id,
                     current_user=user,
                     search_type=search_type,
-                    limit=5,  # Limit to top 5 results
+                    limit=10,
                 )
             except Exception as e:
                 logger.error(f"Search error with {search_type} search: {str(e)}")
@@ -343,7 +343,7 @@ class ChatService:
                             sync_id=chat.sync_id,
                             current_user=user,
                             search_type=SearchType.VECTOR,
-                            limit=5,
+                            limit=10,
                         )
                     except Exception as fallback_error:
                         logger.error(f"Fallback search error: {str(fallback_error)}")
@@ -361,14 +361,14 @@ class ChatService:
                 vector_context = ""
                 if vector_results:
                     vector_context = "Vector search results:\n\n"
-                    for i, result in enumerate(vector_results[:3], 1):  # Limit to top 3
+                    for i, result in enumerate(vector_results[:10], 1):  # Limit to top 10
                         vector_context += f"{i}. {self._format_search_result(result)}\n\n"
 
                 # Format graph results
                 graph_context = ""
                 if graph_results:
                     graph_context = "Graph search results (showing relationships):\n\n"
-                    for i, result in enumerate(graph_results[:3], 1):  # Limit to top 3
+                    for i, result in enumerate(graph_results[:10], 1):  # Limit to top 10
                         graph_context += f"{i}. {self._format_search_result(result)}\n\n"
 
                 # Combine contexts
@@ -379,7 +379,7 @@ class ChatService:
                     return ""
 
                 context = ""
-                for i, result in enumerate(results[:5], 1):
+                for i, result in enumerate(results[:10], 1):  # Limit to top 10
                     context += f"{i}. {self._format_search_result(result)}\n\n"
 
                 return context
@@ -492,7 +492,7 @@ class ChatService:
                 sync_id=chat.sync_id,
                 current_user=current_user,
                 search_type=search_type,
-                limit=5,
+                limit=10,
             )
         except Exception as e:
             logger.error(f"Error searching for context: {str(e)}")
@@ -509,7 +509,7 @@ class ChatService:
             # Format vector results
             if "vector" in results and results["vector"]:
                 formatted_results.append("## Vector Search Results")
-                for i, result in enumerate(results["vector"][:5], 1):
+                for i, result in enumerate(results["vector"][:10], 1):
                     content = result.get("content", "").strip()
                     if not content:
                         continue
@@ -520,7 +520,7 @@ class ChatService:
             # Format graph results
             if "graph" in results and results["graph"]:
                 formatted_results.append("## Graph Search Results")
-                for i, result in enumerate(results["graph"][:5], 1):
+                for i, result in enumerate(results["graph"][:10], 1):
                     content = result.get("content", "").strip()
                     if not content:
                         continue
@@ -535,7 +535,7 @@ class ChatService:
                 return ""
 
             formatted_results = []
-            for i, result in enumerate(results[:5], 1):
+            for i, result in enumerate(results[:10], 1):
                 content = result.get("content", "").strip()
                 if not content:
                     continue

@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app import crud, schemas
 from app.api import deps
 from app.core.logging import logger
-from app.db.unit_of_work import UnitOfWork
+from app.db.session import get_db_context
 
 router = APIRouter()
 
@@ -34,7 +34,7 @@ async def get_sync_destinations(
         List[schemas.SyncDestination]: The destinations
     """
     try:
-        async with UnitOfWork(db) as uow:
+        async with get_db_context() as db:
             # Verify user has access to the sync
             sync = await crud.sync.get(db=db, id=sync_id, current_user=user)
             if not sync:
@@ -46,7 +46,7 @@ async def get_sync_destinations(
         return result
     except Exception as e:
         logger.error(f"Error getting destinations: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Error getting destinations: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error getting destinations: {str(e)}") from e
 
 
 @router.post("/{sync_id}/destinations", response_model=List[schemas.SyncDestination])
@@ -79,7 +79,7 @@ async def create_sync_destinations(
         raise HTTPException(status_code=404, detail="Sync not found")
 
     try:
-        async with UnitOfWork(db) as uow:
+        async with get_db_context() as db:
             # Ensure all destinations have the correct sync_id
             for dest in destinations_in:
                 dest.sync_id = sync_id
@@ -91,13 +91,11 @@ async def create_sync_destinations(
             # Convert to Pydantic models BEFORE the async context ends
             result = [schemas.SyncDestination.model_validate(d) for d in destinations]
 
-            await uow.commit()
-
         logger.info(f"Successfully created {len(destinations)} destinations")
         return result
     except Exception as e:
         logger.error(f"Error creating destinations: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Error creating destinations: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error creating destinations: {str(e)}") from e
 
 
 @router.delete("/{sync_id}/destinations/{destination_id}", response_model=schemas.SyncDestination)
@@ -122,7 +120,7 @@ async def delete_sync_destination(
         schemas.SyncDestination: The deleted destination
     """
     try:
-        async with UnitOfWork(db) as uow:
+        async with get_db_context() as db:
             # Verify user has access to the sync
             sync = await crud.sync.get(db=db, id=sync_id, current_user=user)
             if not sync:
@@ -140,9 +138,7 @@ async def delete_sync_destination(
             destination = await crud.sync_destination.remove(db=db, id=destination_id)
             result = schemas.SyncDestination.model_validate(destination)
 
-            await uow.commit()
-
         return result
     except Exception as e:
         logger.error(f"Error deleting destination: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Error deleting destination: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error deleting destination: {str(e)}") from e

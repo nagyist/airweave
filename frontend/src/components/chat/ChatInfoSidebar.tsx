@@ -53,17 +53,32 @@ const badgeVariants = {
 
 export function ChatInfoSidebar({ chatInfo, onUpdateSettings }: ChatInfoSidebarProps) {
   const [modelSettings, setModelSettings] = useState<ModelSettings>(() => {
-    // Try to get search_type from localStorage if it exists
-    const savedSearchType = localStorage.getItem(`chat_search_type_${chatInfo.id}`);
+    // Get search_type from various sources with priority
+    // 1. localStorage (for persistence across refreshes)
+    // 2. chatInfo.model_settings.search_type 
+    // 3. Default to "vector" if nothing else is available
     
-    if (savedSearchType && ["vector", "graph", "hybrid"].includes(savedSearchType)) {
-      return {
-        ...chatInfo.model_settings,
-        search_type: savedSearchType as "vector" | "graph" | "hybrid"
-      };
+    const savedSearchType = localStorage.getItem(`chat_search_type_${chatInfo.id}`);
+    const currentSearchType = chatInfo.model_settings?.search_type;
+    
+    const searchType = savedSearchType && ["vector", "graph", "hybrid"].includes(savedSearchType) 
+      ? savedSearchType as "vector" | "graph" | "hybrid"
+      : currentSearchType || "vector";
+    
+    // Store this search type for persistence
+    if (searchType) {
+      localStorage.setItem(`chat_search_type_${chatInfo.id}`, searchType);
     }
     
-    return chatInfo.model_settings;
+    // Ensure we have all required ModelSettings properties
+    return {
+      temperature: chatInfo.model_settings?.temperature || 0.7,
+      max_tokens: chatInfo.model_settings?.max_tokens || 1000,
+      top_p: chatInfo.model_settings?.top_p || 1,
+      frequency_penalty: chatInfo.model_settings?.frequency_penalty || 0,
+      presence_penalty: chatInfo.model_settings?.presence_penalty || 0,
+      search_type: searchType
+    };
   });
   const [modelName, setModelName] = useState<string>(chatInfo.model_name);
   const { toast } = useToast();
@@ -169,50 +184,41 @@ export function ChatInfoSidebar({ chatInfo, onUpdateSettings }: ChatInfoSidebarP
     }
   };
 
-  // Special handler for search type changes
+  // Enhanced version of handleSearchTypeChange
   const handleSearchTypeChange = async (searchType: "vector" | "graph" | "hybrid") => {
+    // Save to localStorage for persistence across refreshes
+    localStorage.setItem(`chat_search_type_${chatInfo.id}`, searchType);
+    
+    // Update local state
+    setModelSettings((prev) => ({
+      ...prev,
+      search_type: searchType,
+    }));
+    
+    // Notify parent component to update settings remotely
     try {
-      console.log(`Changing search type to: ${searchType}`);
-      
-      // Set flag to prevent feedback loops
-      setIsUpdatingSearchType(true);
-      
-      // Update UI immediately
-      setModelSettings(prev => ({
-        ...prev,
+      // Pass settings directly in the format expected by the onUpdateSettings prop
+      await onUpdateSettings({
+        temperature: modelSettings.temperature,
+        max_tokens: modelSettings.max_tokens, 
+        top_p: modelSettings.top_p,
+        frequency_penalty: modelSettings.frequency_penalty,
+        presence_penalty: modelSettings.presence_penalty,
         search_type: searchType
-      }));
+      });
       
-      // Store in localStorage as backup
-      localStorage.setItem(`chat_search_type_${chatInfo.id}`, searchType);
-      
-      // Create updated settings object
-      const newSettings = {
-        ...modelSettings,
-        search_type: searchType
-      };
-      
-      // Send update to server but don't wait for response to update UI
-      const updatePromise = onUpdateSettings({ model_settings: newSettings } as any);
-      
-      // Wait for the update to complete
-      await updatePromise;
-      
-      console.log(`Successfully updated search type to: ${searchType}`);
-    } catch (error) {
-      console.error('Error updating search type:', error);
-      
-      // Show error but KEEP the UI selection as user chose
       toast({
-        title: "Warning",
-        description: "Search type saved locally but server update failed.",
+        title: "Search type updated",
+        description: `Using ${searchType} search for this chat`,
+        variant: "default",
+      });
+    } catch (error) {
+      console.error("Failed to update search type:", error);
+      toast({
+        title: "Failed to update search type",
+        description: "An error occurred while updating search settings",
         variant: "destructive",
       });
-    } finally {
-      // Clear the update flag after a short delay to ensure state has settled
-      setTimeout(() => {
-        setIsUpdatingSearchType(false);
-      }, 500);
     }
   };
 

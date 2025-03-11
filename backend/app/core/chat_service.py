@@ -1,7 +1,10 @@
 """Chat service for handling AI interactions."""
 
 import logging
-from typing import AsyncGenerator, Optional
+from typing import (
+    AsyncGenerator,
+    Optional,
+)
 from uuid import UUID
 
 from openai import AsyncOpenAI
@@ -10,8 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import crud, schemas
 from app.core.config import settings
-from app.core.search_service import search_service
-from app.core.search_type import SearchType
+from app.core.search_service import SearchService, SearchType
 from app.models.chat import ChatMessage, ChatRole
 
 logger = logging.getLogger(__name__)
@@ -286,106 +288,164 @@ class ChatService:
         query: str,
         user: schemas.User,
     ) -> str:
-        """Get relevant context for the query.
+        """Get relevant context for a query.
 
         Args:
-            db: Database session
-            chat: Chat object
-            query: Query string
-            user: Current user
+            db (AsyncSession): Database session
+            chat (schemas.Chat): Chat object
+            query (str): Query to get context for
+            user (schemas.User): Current user
 
         Returns:
-            str: Relevant context as a string
+            str: Formatted context
         """
-        if not chat.sync_id:
+        # Initialize the search service
+        search_service = SearchService()
+        DEFAULT_SEARCH_TYPE = SearchType.VECTOR
+
+        # Basic input validation
+        if not query:
+            logger.warning("Empty query provided for context retrieval")
             return ""
 
         try:
-            # Get search type preference from model_settings
-            search_type = SearchType.VECTOR  # Default to vector search
+            # Get sync ID associated with the chat
+            sync_id = chat.sync_id if chat else None
+            if not sync_id:
+                logger.warning(f"No sync ID associated with chat {chat.id}")
+                return ""
 
-            # Get the search_type from model_settings
-            if chat.model_settings and isinstance(chat.model_settings, dict):
-                search_type_value = chat.model_settings["model_settings"].get("search_type")
-                if search_type_value:
-                    # Log what we've found for debugging
-                    logger.info(f"Found search_type in model_settings: {search_type_value}")
+            # Determine search type with defensive programming
+            search_type = DEFAULT_SEARCH_TYPE
 
-                    # Validate and convert to enum
-                    try:
-                        search_type = SearchType(search_type_value)
-                    except (ValueError, TypeError) as e:
-                        logger.warning(
-                            f"Invalid search_type value '{search_type_value}': {e}. Defaulting to vector search."
-                        )
+            try:
+                # Get available destinations for this sync using the correct method
+                sync_destinations = await crud.sync_destination.get_by_sync_id(
+                    db=db, sync_id=sync_id
+                )
 
-            logger.info(f"Using search type: {search_type}")
+                # Check destination types
+                # TODO: generalize this by ensuring destinations have a type indicator like
+                # "vector" or "graph"
+                vector_dests = [
+                    d for d in sync_destinations if d.destination_type == "weaviate_native"
+                ]
+                graph_dests = [d for d in sync_destinations if d.destination_type == "neo4j_native"]
 
-            # Perform search based on the search type
+                # Store available destination types for future reference
+                available_search_types = []
+                if vector_dests:
+                    available_search_types.append(SearchType.VECTOR)
+                if graph_dests:
+                    available_search_types.append(SearchType.GRAPH)
+                if vector_dests and graph_dests:
+                    available_search_types.append(SearchType.HYBRID)
+
+                logger.debug(f"Available search types for chat {chat.id}: {available_search_types}")
+
+                # Get requested search type from model_settings
+                if chat.model_settings and isinstance(chat.model_settings, dict):
+                    search_type_str = chat.model_settings.get("search_type", "").upper()
+                    if search_type_str:
+                        try:
+                            search_type_enum = SearchType[search_type_str]
+
+                            # Validate that the selected search type is available
+                            if search_type_enum in available_search_types:
+                                search_type = search_type_enum
+                                logger.info(f"Using search type from model_settings: {search_type}")
+                            else:
+                                logger.warning(
+                                    f"Search type {search_type_str} selected but not available. "
+                                    f"Available: {available_search_types}. Selecting best available option."
+                                )
+                        except (KeyError, ValueError) as e:
+                            logger.warning(f"Invalid search_type in model_settings: {e}")
+
+                # If no valid search type from model_settings, use the best available
+                if search_type == DEFAULT_SEARCH_TYPE:
+                    if SearchType.HYBRID in available_search_types:
+                        search_type = SearchType.HYBRID
+                    elif SearchType.GRAPH in available_search_types:
+                        search_type = SearchType.GRAPH
+                    elif SearchType.VECTOR in available_search_types:
+                        search_type = SearchType.VECTOR
+
+                    logger.info(f"Selected best available search type: {search_type}")
+            except Exception as e:
+                logger.error(f"Error determining available search types: {str(e)}", exc_info=True)
+                # Continue with default search type
+
+            logger.info(
+                f"Using search type: {search_type} for query: '{query[:50]}...' (truncated)"
+            )
+
+            # Search for relevant information
             try:
                 results = await search_service.search(
                     db=db,
                     query=query,
-                    sync_id=chat.sync_id,
+                    sync_id=sync_id,
                     current_user=user,
                     search_type=search_type,
-                    limit=10,
                 )
-            except Exception as e:
-                logger.error(f"Search error with {search_type} search: {str(e)}")
-                # If graph or hybrid search fails, try falling back to vector search
-                if search_type != SearchType.VECTOR:
-                    logger.info(f"Falling back to vector search after {search_type} search failed")
+
+                if not results:
+                    logger.info(
+                        f"No relevant information found for query: '{query[:50]}...' (truncated)"
+                    )
+                    return ""
+
+                # Format search results as context
+                formatted_results = []
+                if isinstance(results, dict):
+                    # Handle hybrid search results
+                    for _search_type_key, results_list in results.items():
+                        for result in results_list:
+                            formatted_results.append(self._format_search_result(result))
+                else:
+                    # Handle regular search results
+                    for result in results:
+                        formatted_results.append(self._format_search_result(result))
+
+                context = "\n\n".join(formatted_results)
+                logger.debug(
+                    f"Generated context ({len(context)} chars) from {len(formatted_results)} results"
+                )
+                return context
+
+            except Exception as search_error:
+                logger.error(
+                    f"Error during {search_type} search: {str(search_error)}", exc_info=True
+                )
+
+                # If first search failed and we weren't already using VECTOR, try fallback to VECTOR search
+                if search_type != SearchType.VECTOR and SearchType.VECTOR in available_search_types:
+                    logger.info(f"Falling back to VECTOR search after {search_type} search failed")
                     try:
                         results = await search_service.search(
                             db=db,
                             query=query,
-                            sync_id=chat.sync_id,
+                            sync_id=sync_id,
                             current_user=user,
                             search_type=SearchType.VECTOR,
-                            limit=10,
                         )
+
+                        if not results:
+                            return ""
+
+                        # Format the fallback results
+                        formatted_results = [self._format_search_result(r) for r in results]
+                        return "\n\n".join(formatted_results)
+
                     except Exception as fallback_error:
-                        logger.error(f"Fallback search error: {str(fallback_error)}")
-                        return ""
-                else:
-                    return ""
+                        logger.error(f"Fallback search error: {str(fallback_error)}", exc_info=True)
 
-            # Format results based on search type
-            if search_type == SearchType.HYBRID:
-                # For hybrid search, combine vector and graph results
-                vector_results = results.get("vector", [])
-                graph_results = results.get("graph", [])
-
-                # Format vector results
-                vector_context = ""
-                if vector_results:
-                    vector_context = "Vector search results:\n\n"
-                    for i, result in enumerate(vector_results[:10], 1):  # Limit to top 10
-                        vector_context += f"{i}. {self._format_search_result(result)}\n\n"
-
-                # Format graph results
-                graph_context = ""
-                if graph_results:
-                    graph_context = "Graph search results (showing relationships):\n\n"
-                    for i, result in enumerate(graph_results[:10], 1):  # Limit to top 10
-                        graph_context += f"{i}. {self._format_search_result(result)}\n\n"
-
-                # Combine contexts
-                return f"{vector_context}\n{graph_context}".strip()
-            else:
-                # For single search type (vector or graph)
-                if not results:
-                    return ""
-
-                context = ""
-                for i, result in enumerate(results[:10], 1):  # Limit to top 10
-                    context += f"{i}. {self._format_search_result(result)}\n\n"
-
-                return context
+                # If we get here, all searches failed
+                return ""
 
         except Exception as e:
-            logger.error(f"Error getting context: {str(e)}")
+            logger.error(f"Error getting context: {str(e)}", exc_info=True)
             return ""
 
     def _format_search_result(self, result: dict) -> str:
@@ -456,94 +516,146 @@ class ChatService:
         chat_id: UUID,
         current_user: schemas.User,
     ) -> str:
-        """Get context for a chat message.
+        """Get context for a query in a chat.
 
         Args:
             db (AsyncSession): Database session
-            query (str): User query
+            query (str): Query to get context for
             chat_id (UUID): Chat ID
             current_user (schemas.User): Current user
 
         Returns:
-            str: Context for the chat message
+            str: Formatted context
         """
-        # Get chat info
-        chat = await crud.chat.get(db, id=chat_id, current_user=current_user)
-        if not chat:
-            logger.warning(f"Chat {chat_id} not found")
-            return ""
+        try:
+            # Get chat
+            chat = await crud.chat.get_with_messages(db=db, id=chat_id, current_user=current_user)
+            if not chat:
+                logger.error(f"Chat {chat_id} not found")
+                return ""
 
-        # Get search type from model settings
-        search_type = SearchType.VECTOR  # Default to vector search
-        if chat.model_settings and "search_type" in chat.model_settings:
+            # Get search type
+            search_type = SearchType.VECTOR  # Default
+
             try:
-                search_type = SearchType(chat.model_settings["search_type"])
-                logger.info(f"Using search type: {search_type}")
-            except ValueError:
-                logger.warning(
-                    f"Invalid search type: {chat.model_settings['search_type']}. Using vector search."
+                # Check available destinations
+                sync_destinations = await crud.sync_destination.get_by_sync_id(
+                    db=db, sync_id=chat.sync_id
                 )
 
-        # Search for relevant context
-        try:
-            results = await search_service.search(
-                db=db,
-                query=query,
-                sync_id=chat.sync_id,
-                current_user=current_user,
-                search_type=search_type,
-                limit=10,
-            )
+                # Check destination types
+                # TODO: generalize this by ensuring destinations have a type indicator like
+                # "vector" or "graph"
+                vector_dests = [
+                    d for d in sync_destinations if d.destination_type == "weaviate_native"
+                ]
+                graph_dests = [d for d in sync_destinations if d.destination_type == "neo4j_native"]
+
+                # Store available destination types
+                available_search_types = []
+                if vector_dests:
+                    available_search_types.append(SearchType.VECTOR)
+                if graph_dests:
+                    available_search_types.append(SearchType.GRAPH)
+                if vector_dests and graph_dests:
+                    available_search_types.append(SearchType.HYBRID)
+
+                logger.debug(f"Available search types for chat {chat_id}: {available_search_types}")
+
+                # Get requested search type from model_settings
+                if chat.model_settings and isinstance(chat.model_settings, dict):
+                    search_type_str = chat.model_settings.get("search_type", "").upper()
+                    if search_type_str and search_type_str in SearchType.__members__:
+                        requested_type = SearchType[search_type_str]
+
+                        # Make sure requested type is available
+                        if requested_type in available_search_types:
+                            search_type = requested_type
+                            logger.info(f"Using requested search type: {search_type}")
+                        else:
+                            logger.warning(f"Requested search type {requested_type} not available")
+
+                # If no valid search type from settings, use best available
+                if not available_search_types:
+                    logger.warning(f"No search destinations found for sync {chat.sync_id}")
+                elif search_type not in available_search_types:
+                    if SearchType.HYBRID in available_search_types:
+                        search_type = SearchType.HYBRID
+                    elif SearchType.GRAPH in available_search_types:
+                        search_type = SearchType.GRAPH
+                    elif SearchType.VECTOR in available_search_types:
+                        search_type = SearchType.VECTOR
+                    logger.info(f"Selected best available search type: {search_type}")
+            except Exception as e:
+                logger.error(f"Error determining available search types: {str(e)}", exc_info=True)
+
+            logger.info(f"Using search type: {search_type}")
+
+            # Search for relevant context
+            try:
+                # Create a search service instance
+                search_service_instance = SearchService()
+                results = await search_service_instance.search(
+                    db=db,
+                    query=query,
+                    sync_id=chat.sync_id,
+                    current_user=current_user,
+                    search_type=search_type,
+                    limit=10,
+                )
+
+                if not results:
+                    logger.info(
+                        f"No relevant information found for query: '{query[:50]}...' (truncated)"
+                    )
+                    return ""
+
+                # Format search results
+                formatted_results = []
+                if isinstance(results, dict):
+                    # Handle hybrid search results
+                    for _search_type_key, results_list in results.items():
+                        for result in results_list:
+                            formatted_results.append(self._format_search_result(result))
+                else:
+                    # Handle regular search results
+                    for result in results:
+                        formatted_results.append(self._format_search_result(result))
+
+                return "\n\n".join(formatted_results)
+
+            except Exception as e:
+                logger.error(f"Error searching for context: {str(e)}", exc_info=True)
+
+                # Try fallback to vector search if that's available and we weren't already using it
+                if search_type != SearchType.VECTOR and SearchType.VECTOR in available_search_types:
+                    logger.info(f"Falling back to VECTOR search after {search_type} search failed")
+                    try:
+                        search_service_instance = SearchService()
+                        results = await search_service_instance.search(
+                            db=db,
+                            query=query,
+                            sync_id=chat.sync_id,
+                            current_user=current_user,
+                            search_type=SearchType.VECTOR,
+                            limit=10,
+                        )
+
+                        if not results:
+                            return ""
+
+                        # Format the fallback results
+                        formatted_results = [self._format_search_result(r) for r in results]
+                        return "\n\n".join(formatted_results)
+
+                    except Exception as fallback_error:
+                        logger.error(f"Fallback search error: {str(fallback_error)}", exc_info=True)
+
+                return ""
+
         except Exception as e:
-            logger.error(f"Error searching for context: {str(e)}")
+            logger.error(f"Error getting context: {str(e)}", exc_info=True)
             return ""
-
-        # Format results based on search type
-        if search_type == SearchType.HYBRID:
-            # For hybrid search, results are a dict with 'vector' and 'graph' keys
-            if not results:
-                return ""
-
-            formatted_results = []
-
-            # Format vector results
-            if "vector" in results and results["vector"]:
-                formatted_results.append("## Vector Search Results")
-                for i, result in enumerate(results["vector"][:10], 1):
-                    content = result.get("content", "").strip()
-                    if not content:
-                        continue
-                    formatted_results.append(f"### Result {i}")
-                    formatted_results.append(content)
-                    formatted_results.append("")
-
-            # Format graph results
-            if "graph" in results and results["graph"]:
-                formatted_results.append("## Graph Search Results")
-                for i, result in enumerate(results["graph"][:10], 1):
-                    content = result.get("content", "").strip()
-                    if not content:
-                        continue
-                    formatted_results.append(f"### Result {i}")
-                    formatted_results.append(content)
-                    formatted_results.append("")
-
-            return "\n".join(formatted_results)
-        else:
-            # For vector or graph search, results are a list
-            if not results:
-                return ""
-
-            formatted_results = []
-            for i, result in enumerate(results[:10], 1):
-                content = result.get("content", "").strip()
-                if not content:
-                    continue
-                formatted_results.append(f"### Result {i}")
-                formatted_results.append(content)
-                formatted_results.append("")
-
-            return "\n".join(formatted_results)
 
 
 # Create a singleton instance

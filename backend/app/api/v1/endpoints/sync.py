@@ -98,8 +98,7 @@ async def create_sync(
         sync = await sync_service.create(db=db, sync=sync_in.to_base(), current_user=user, uow=uow)
         await uow.session.flush()
 
-        # Load destinations for the response
-        sync_destinations = await crud.sync_destination.get_by_sync_id(db=db, sync_id=sync.id)
+        # TODO:  Load destinations for the response
 
         sync_schema = schemas.Sync.model_validate(sync)
         sync_schema.destinations = [

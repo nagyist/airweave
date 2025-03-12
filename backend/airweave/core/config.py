@@ -32,6 +32,10 @@ class Settings(BaseSettings):
         NATIVE_WEAVIATE_HOST (str): The Weaviate host.
         NATIVE_WEAVIATE_PORT (int): The Weaviate port.
         NATIVE_WEAVIATE_GRPC_PORT (int): The Weaviate gRPC port.
+        REDIS_HOST (str): The Redis host.
+        REDIS_PORT (int): The Redis port.
+        REDIS_PASSWORD (Optional[str]): The Redis password.
+        WORKER_NAME (str): The name of the worker, set uniquely per container.
     """
 
     PROJECT_NAME: str = "Airweave"
@@ -61,6 +65,12 @@ class Settings(BaseSettings):
     NATIVE_WEAVIATE_GRPC_PORT: int = 50051
 
     OPENAI_API_KEY: Optional[str] = None
+
+    REDIS_HOST: str = "redis"
+    REDIS_PORT: int = 6379
+    REDIS_PASSWORD: Optional[str] = None
+
+    WORKER_NAME: str = "airweave-worker"
 
     @field_validator("SQLALCHEMY_ASYNC_DATABASE_URI", mode="before")
     def assemble_db_connection(cls, v: Optional[str], info: ValidationInfo) -> PostgresDsn:

@@ -255,6 +255,24 @@ test = ["anyio[trio]", "coverage[toml] (>=7)", "exceptiongroup (>=1.2.0)", "hypo
 trio = ["trio (>=0.26.1)"]
 
 [[package]]
+name = "arq"
+version = "0.26.3"
+description = "Job queues in python with asyncio and redis"
+optional = false
+python-versions = ">=3.8"
+files = [
+    {file = "arq-0.26.3-py3-none-any.whl", hash = "sha256:9f4b78149a58c9dc4b88454861a254b7c4e7a159f2c973c89b548288b77e9005"},
+    {file = "arq-0.26.3.tar.gz", hash = "sha256:362063ea3c726562fb69c723d5b8ee80827fdefda782a8547da5be3d380ac4b1"},
+]
+
+[package.dependencies]
+click = ">=8.0"
+redis = {version = ">=4.2.0,<6", extras = ["hiredis"]}
+
+[package.extras]
+watch = ["watchfiles (>=0.16)"]
+
+[[package]]
 name = "async-timeout"
 version = "5.0.1"
 description = "Timeout context manager for asyncio programs"
@@ -4460,4 +4478,4 @@ requests = "*"
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.11"
-content-hash = "09fed8b388429c43e9702789e345fc81491ba41a83c1c91498dd0b743f3e1ab0"
+content-hash = "798277e87e5df4c40c14b18b306eee7e8686c9fab4e85a6d7c969ffed502b266"

@@ -13,6 +13,7 @@ from app.core.logging import logger
 from app.platform.auth.schemas import AuthType
 from app.platform.auth.services import oauth2_service
 from app.platform.destinations._base import BaseDestination
+from app.platform.destinations.neo4j import Neo4jDestination
 from app.platform.destinations.weaviate import WeaviateDestination
 from app.platform.embedding_models._base import BaseEmbeddingModel
 from app.platform.embedding_models.local_text2vec import LocalText2Vec
@@ -310,6 +311,10 @@ class SyncContextFactory:
         # Get the sync destinations from the database
         sync_destinations = await crud.sync_destination.get_by_sync_id(db, sync.id)
 
+        logger.info(
+            f"Creating destination instances for sync {sync.id}. Found {len(sync_destinations)} destination(s)"
+        )
+
         # Process each sync destination
         for sync_destination in sync_destinations:
             # For native Weaviate
@@ -317,6 +322,7 @@ class SyncContextFactory:
                 sync_destination.is_native
                 and sync_destination.destination_type == "weaviate_native"
             ):
+                logger.info(f"Creating native Weaviate destination for sync {sync.id}")
                 destinations["weaviate"] = await WeaviateDestination.create(
                     sync.id, embedding_model
                 )
@@ -324,8 +330,7 @@ class SyncContextFactory:
             # For native Neo4j
             elif sync_destination.is_native and sync_destination.destination_type == "neo4j_native":
                 try:
-                    from app.platform.destinations.neo4j import Neo4jDestination
-
+                    logger.info(f"Creating native Neo4j destination for sync {sync.id}")
                     destinations["neo4j"] = await Neo4jDestination.create(sync.id, embedding_model)
                 except (ImportError, Exception) as e:
                     logger.warning(f"Failed to initialize native Neo4j destination: {e}")
@@ -347,8 +352,10 @@ class SyncContextFactory:
                     logger.error(f"Failed to create destination instance: {e}")
                     continue
 
-        # Default to Weaviate if no destination specified
-        if not destinations:
+        # Only default to Weaviate if no destinations are explicitly specified
+        # AND if sync.destinations is an empty list
+        if not destinations and (not hasattr(sync, "destinations") or not sync.destinations):
+            logger.info(f"No destinations found for sync {sync.id}, defaulting to Weaviate")
             destinations["weaviate"] = await WeaviateDestination.create(sync.id, embedding_model)
 
         return destinations

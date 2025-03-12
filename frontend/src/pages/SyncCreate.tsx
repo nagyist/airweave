@@ -122,27 +122,23 @@ const Sync = () => {
     metadata: { name: string; shortName: string }[]
   ) => {
     try {
+      // Always treat dbDetails as an array
       setSelectedDB(Array.isArray(dbDetails) ? dbDetails : [dbDetails]);
       
       // Update pipeline metadata with all destinations
       if (userInfo) {
         setPipelineMetadata(prev => prev ? {
           ...prev,
-          destination: Array.isArray(dbDetails) 
+          destination: Array.isArray(metadata) && metadata.length > 0
             ? metadata.map(m => ({
                 ...m,
                 type: "destination"
               }))
-            : dbDetails.isNative 
-              ? {
-                  name: "Native Weaviate",
-                  shortName: "weaviate_native",
-                  type: "destination",
-                }
-              : {
-                  ...metadata[0],
-                  type: "destination",
-                }
+            : {
+                name: "Native Weaviate",
+                shortName: "weaviate_native",
+                type: "destination",
+              }
         } : null);
       }
 
@@ -169,7 +165,7 @@ const Sync = () => {
       const newSyncId = syncData.id;
       setSyncId(newSyncId);
       
-      // Add destinations to the sync
+      // Add destinations to the sync - always treat as array
       const destinationsToAdd = Array.isArray(dbDetails) ? dbDetails : [dbDetails];
       const destinationPayload = destinationsToAdd.map(db => {
         return {

@@ -122,7 +122,7 @@ class Sync(SyncInDBBase):
     modified_at: Optional[datetime] = None
 
     # Destination relationships - use string literal for type annotation to avoid circular imports
-    destinations: Optional[List["SyncDestination"]] = None
+    destinations: Optional[List["SyncDestination"]] = []
 
     def has_destination_type(self, destination_type: str) -> bool:
         """Check if the sync has a destination of the specified type.

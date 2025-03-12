@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import crud, schemas
 from app.api import deps
+from app.core.logging import logger
 from app.db.unit_of_work import UnitOfWork
 from app.platform.sync.pubsub import sync_pubsub
 from app.platform.sync.service import sync_service
@@ -178,6 +179,12 @@ async def run_sync(
     if not sync:
         raise HTTPException(status_code=404, detail="Sync not found")
 
+    # Get the sync destinations
+    sync_destinations = await crud.sync_destination.get_by_sync_id(db=db, sync_id=sync_id)
+
+    sync.destinations = sync_destinations
+
+    # Convert to Pydantic model
     sync_schema = schemas.Sync.model_validate(sync)
 
     sync_job_in = schemas.SyncJobCreate(sync_id=sync_id)
@@ -188,6 +195,11 @@ async def run_sync(
     sync_dag_schema = schemas.SyncDag.model_validate(sync_dag)
 
     user_schema = schemas.User.model_validate(user)
+
+    # Print the destinations for debugging
+    logger.info(f"Running sync {sync_id} with {len(sync_schema.destinations or [])} destination(s)")
+    for dest in sync_schema.destinations or []:
+        logger.info(f"Destination: {dest.destination_type}, is_native: {dest.is_native}")
 
     # will be swapped for redis queue
     background_tasks.add_task(

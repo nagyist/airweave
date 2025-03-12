@@ -158,7 +158,9 @@ export const VectorDBSelector = ({ onComplete }: VectorDBSelectorProps) => {
     
     // Check if the connection is already selected
     const alreadySelectedIndex = selectedConnections.findIndex(
-      conn => conn.connectionId === selection.connectionId && conn.isNative === selection.isNative
+      conn => conn.connectionId === selection.connectionId && 
+              conn.isNative === selection.isNative && 
+              conn.destinationShortName === selection.destinationShortName
     );
     
     // Toggle selection
@@ -546,7 +548,7 @@ export const VectorDBSelector = ({ onComplete }: VectorDBSelectorProps) => {
           <div className="flex flex-wrap gap-2">
             {selectedConnections.map((selection, index) => (
               <Badge key={index} variant="outline" className="px-3 py-1">
-                {selection.isNative ? "Native Weaviate" : selection.destinationName}
+                {selection.destinationName}
               </Badge>
             ))}
           </div>

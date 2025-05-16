@@ -23,8 +23,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import SourceConnectionDetailView from "@/components/collection/SourceConnectionDetailView";
 import { emitCollectionEvent, COLLECTION_DELETED } from "@/lib/events";
-import { QueryTool } from '@/components/collection/QueryTool';
-import { LiveApiDoc } from '@/components/collection/LiveApiDoc';
+import { QueryToolAndLiveDoc } from '@/components/collection/QueryToolAndLiveDoc';
 import { ConnectFlow } from '@/components/shared';
 
 // DeleteCollectionDialog component
@@ -622,17 +621,13 @@ const Collections = () => {
                         </Button>
                     </div>
 
-                    {/* Add QueryTool and LiveApiDoc when a connection with syncId is selected */}
+                    {/* Add QueryToolAndLiveDoc when a connection with syncId is selected */}
                     {selectedConnection?.sync_id && (
                         <>
                             <div className='py-3 space-y-2 mt-1'>
-                                <QueryTool
-                                    syncId={selectedConnection.sync_id}
-                                    collectionReadableId={collection?.readable_id}
+                                <QueryToolAndLiveDoc
+                                    collectionReadableId={collection?.readable_id || ''}
                                 />
-                            </div>
-                            <div className='py-1 space-y-1 mt-2'>
-                                <LiveApiDoc syncId={selectedConnection.sync_id} />
                             </div>
                         </>
                     )}
@@ -688,7 +683,7 @@ const Collections = () => {
                                         "mt-2",
                                         isDark ? "border-gray-700 hover:bg-gray-800" : ""
                                     )}
-                                    onClick={() => { }}
+                                    onClick={() => setShowAddSourceDialog(true)}
                                 >
                                     <Plus className="h-4 w-4 mr-2" />
                                     Add a source connection

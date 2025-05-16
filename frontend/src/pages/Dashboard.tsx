@@ -277,7 +277,7 @@ const Dashboard = () => {
   ];
 
   return (
-    <div className="mx-auto w-full max-w-[1800px] px-6 py-6 pb-8">
+    <div className="mx-auto w-full max-w-[1200px] px-4 py-6 pb-8">
       {/* Connect Flow Dialog */}
       <ConnectFlow
         isOpen={dialogOpen}
@@ -290,9 +290,9 @@ const Dashboard = () => {
         errorData={connectionError}
       />
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-8">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         {/* Main content (left column) */}
-        <div className="sm:col-span-2 space-y-8 sm:space-y-10">
+        <div className="md:col-span-2 space-y-6 md:space-y-8">
           {/* Collections Section - only show when loading or has collections */}
           {(isLoadingCollections || collections.length > 0) && (
             <section>
@@ -307,12 +307,12 @@ const Dashboard = () => {
                 </Link>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 sm:gap-8 auto-rows-fr">
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 auto-rows-fr">
                 {isLoadingCollections ? (
                   Array.from({ length: 3 }).map((_, index) => (
                     <div
                       key={index}
-                      className="h-[220px] rounded-xl animate-pulse bg-slate-100 dark:bg-slate-800/50"
+                      className="h-[160px] rounded-xl animate-pulse bg-slate-100 dark:bg-slate-800/50"
                     />
                   ))
                 ) : (
@@ -339,7 +339,7 @@ const Dashboard = () => {
               Choose a first source to add to your new collection
             </p>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4 auto-rows-fr">
+            <div className="grid grid-cols-1 xs:grid-cols-2 sm:grid-cols-3 md:grid-cols-3 gap-3 auto-rows-fr">
               {isLoadingSources ? (
                 <div className="col-span-full h-40 flex items-center justify-center">
                   <div className="animate-pulse flex flex-col items-center">
@@ -368,7 +368,7 @@ const Dashboard = () => {
         </div>
 
         {/* Right Column */}
-        <div className="sm:col-span-1 space-y-6 sm:space-y-8">
+        <div className="md:col-span-1 space-y-6">
           {/* API Key Card */}
           <ApiKeyCard
             apiKey={apiKey}

@@ -2,22 +2,10 @@
  * SourceSelectorView.tsx
  *
  * This component displays a grid of available data sources that users can select
- * to connect to their collection. It's a key entry point in the ConnectFlow dialog
- * when starting from the "add source" mode.
- *
- * Key responsibilities:
- * 1. Fetch and display available data sources
- * 2. Allow filtering/searching of sources
- * 3. Handle source selection
- * 4. Pass selected source to the next step in the flow
- *
- * Flow context:
- * - Appears as the first step when adding a source to an existing collection
- * - On selection, typically leads to CreateCollectionView
- * - Can handle pre-selected sources from props
+ * to connect to their collection.
  */
 
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -25,7 +13,6 @@ import { Search, Loader2 } from "lucide-react";
 import { apiClient } from "@/lib/api";
 import { useTheme } from "@/lib/theme-provider";
 import { cn } from "@/lib/utils";
-import { DialogViewProps } from "../FlowDialog";
 import { useNavigate } from "react-router-dom";
 import { redirectWithError } from "@/lib/error-utils";
 import { SourceButton } from "@/components/dashboard/SourceButton";
@@ -48,19 +35,14 @@ interface Source {
 
 /**
  * Props for the SourceSelectorView component
- * Extends FlowDialog's common DialogViewProps
  */
-export interface SourceSelectorViewProps extends DialogViewProps {
-    viewData?: {
-        /** ID of existing collection when adding a source */
-        collectionId?: string;
-        /** Name of existing collection when adding a source */
-        collectionName?: string;
-        /** Optional pre-selected source ID */
-        preselectedSourceId?: string;
-        /** Flag indicating if we're creating a new collection (source-first flow) */
-        isNewCollection?: boolean;
-    };
+export interface SourceSelectorViewProps {
+    onNext?: (data?: any) => void;
+    onBack?: () => void;
+    onCancel?: () => void;
+    onComplete?: (data?: any) => void;
+    onError?: (error: Error | string, errorSource?: string) => void;
+    viewData?: Record<string, any>;
 }
 
 /**
@@ -71,8 +53,10 @@ export interface SourceSelectorViewProps extends DialogViewProps {
  */
 export const SourceSelectorView: React.FC<SourceSelectorViewProps> = ({
     onNext,
+    onBack,
     onCancel,
     onComplete,
+    onError,
     viewData = {},
 }) => {
     /** List of available sources from API */
@@ -88,13 +72,10 @@ export const SourceSelectorView: React.FC<SourceSelectorViewProps> = ({
 
     const { resolvedTheme } = useTheme();
     const isDark = resolvedTheme === 'dark';
-    const { collectionId, collectionName, preselectedSourceId, isNewCollection } = viewData;
+    const { collectionId, collectionName } = viewData;
 
     /**
      * Handle errors by redirecting to dashboard with error parameters
-     *
-     * @param error - The error that occurred
-     * @param errorType - Type of error for better context
      */
     const handleError = (error: Error | string, errorType: string) => {
         console.error(`❌ [SourceSelectorView] ${errorType}:`, error);
@@ -103,13 +84,16 @@ export const SourceSelectorView: React.FC<SourceSelectorViewProps> = ({
         const service = collectionId && collectionName ?
             `Collection: ${collectionName}` : undefined;
 
-        // Use the common error utility to redirect
-        redirectWithError(navigate, error, service);
+        if (onError) {
+            onError(error, service);
+        } else {
+            // Use the common error utility to redirect
+            redirectWithError(navigate, error, service);
+        }
     };
 
     /**
      * Fetch available sources from API
-     * Handles auto-selection of preselected source if provided
      */
     useEffect(() => {
         const fetchSources = async () => {
@@ -121,14 +105,6 @@ export const SourceSelectorView: React.FC<SourceSelectorViewProps> = ({
                 if (response.ok) {
                     const data = await response.json();
                     setSources(data);
-
-                    // If a source is preselected and it exists in the data, auto-select it
-                    if (preselectedSourceId) {
-                        const selectedSource = data.find((source: Source) => source.id === preselectedSourceId);
-                        if (selectedSource) {
-                            handleSourceSelect(selectedSource);
-                        }
-                    }
                 } else {
                     const errorText = await response.text();
                     throw new Error(`Failed to load sources: ${errorText}`);
@@ -142,51 +118,23 @@ export const SourceSelectorView: React.FC<SourceSelectorViewProps> = ({
         };
 
         fetchSources();
-    }, [preselectedSourceId]);
+    }, []);
 
     /**
-     * Handle source selection
-     * Proceeds to appropriate next step based on context
-     *
-     * @param source The selected source
+     * Handle source selection - simplified to just pass source data to next view
      */
     const handleSourceSelect = (source: Source) => {
         console.log(`Selected source: ${source.name} (${source.short_name})`);
 
-        // If we're creating a new collection (source-first flow)
-        if (isNewCollection) {
-            console.log("🔄 [SourceSelectorView] In source-first-collection mode, proceeding to collection creation");
-            onNext?.({
-                view: 'createCollection',
-                data: {
-                    sourceId: source.id,
-                    sourceName: source.name,
-                    sourceShortName: source.short_name
-                }
-            });
-        }
-        // If collection ID is available, move to source config with collection info
-        else if (collectionId) {
-            onNext?.({
-                view: 'sourceConfig',
-                data: {
-                    sourceId: source.id,
-                    sourceName: source.name,
-                    sourceShortName: source.short_name,
-                    collectionId
-                }
-            });
-        } else {
-            // Otherwise, move to create collection with source info
-            onNext?.({
-                view: 'createCollection',
-                data: {
-                    sourceId: source.id,
-                    sourceName: source.name,
-                    sourceShortName: source.short_name
-                }
-            });
-        }
+        // Include collection data from viewData in the data passed to next view
+        onNext?.({
+            sourceId: source.id,
+            sourceName: source.name,
+            sourceShortName: source.short_name,
+            // Preserve collection data
+            collectionId: viewData.collectionId,
+            collectionName: viewData.collectionName
+        });
     };
 
     /**
@@ -210,11 +158,10 @@ export const SourceSelectorView: React.FC<SourceSelectorViewProps> = ({
             {/* Header section - fixed */}
             <div className="flex-shrink-0 p-8 pb-4">
                 <DialogTitle className="text-2xl font-semibold text-left">
-                    {isNewCollection
-                        ? "Choose a first source for your new collection"
-                        : collectionId
-                            ? `Add source connection to "${collectionName || collectionId}"`
-                            : "Select a source to connect"}
+                    {collectionId
+                        ? `Add source connection to "${collectionName || collectionId}"`
+                        : "Select a source to connect"
+                    }
                 </DialogTitle>
                 {collectionId && (
                     <DialogDescription className="text-sm text-muted-foreground mt-1">

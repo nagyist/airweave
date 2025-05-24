@@ -15,7 +15,9 @@ from airweave.core.shared_models import ConnectionStatus, SourceConnectionStatus
 from airweave.core.sync_service import sync_service
 from airweave.db.unit_of_work import UnitOfWork
 from airweave.models.integration_credential import IntegrationType
-from airweave.platform.auth.schemas import AuthType
+from airweave.platform.auth.schemas import AuthType, OAuth2TokenResponse
+from airweave.platform.auth.services import oauth2_service
+from airweave.platform.auth.settings import integration_settings
 from airweave.platform.locator import resource_locator
 
 source_connection_logger = logger.with_prefix("Source Connection Service: ").with_context(
@@ -62,20 +64,19 @@ class SourceConnectionService:
             f"for more information."
         )
 
-        # This method only supports config_class auth type
-        if source.auth_type != AuthType.config_class:
-            if auth_fields is not None:
-                raise HTTPException(
-                    status_code=422,
-                    detail=f"Source {source.name} does not support auth fields. "
-                    + BASE_ERROR_MESSAGE,
-                )
-        else:
-            if auth_fields is None:
-                raise HTTPException(
-                    status_code=422,
-                    detail=f"Source {source.name} requires auth fields. " + BASE_ERROR_MESSAGE,
-                )
+        # Check if auth_config_class is defined for the source
+        if not source.auth_config_class:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Source {source.name} does not have an auth configuration defined. "
+                + BASE_ERROR_MESSAGE,
+            )
+
+        if auth_fields is None:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Source {source.name} requires auth fields. " + BASE_ERROR_MESSAGE,
+            )
 
         # Create and validate auth config
         try:
@@ -111,6 +112,89 @@ class SourceConnectionService:
                     detail=f"Invalid auth fields: {str(e)}. " + BASE_ERROR_MESSAGE,
                 ) from e
 
+    async def _validate_config_fields(
+        self, db: AsyncSession, source_short_name: str, config_fields: Optional[Dict[str, Any]]
+    ) -> dict:
+        """Validate config fields based on source config class.
+
+        Args:
+            db: The database session
+            source_short_name: The short name of the source
+            config_fields: The config fields to validate
+
+        Returns:
+            The validated config fields as a dict
+
+        Raises:
+            HTTPException: If config fields are invalid or required but not provided
+        """
+        # Get the source info
+        source = await crud.source.get_by_short_name(db, short_name=source_short_name)
+        if not source:
+            raise HTTPException(status_code=404, detail=f"Source '{source_short_name}' not found")
+
+        BASE_ERROR_MESSAGE = (
+            f"See https://docs.airweave.ai/docs/connectors/{source.short_name}#configuration "
+            f"for more information."
+        )
+
+        # Check if source has a config class defined - it MUST be defined
+        if not hasattr(source, "config_class") or source.config_class is None:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Source {source.name} does not have a configuration class defined. "
+                + BASE_ERROR_MESSAGE,
+            )
+
+        # Config class exists but no config fields provided - check if that's allowed
+        if config_fields is None:
+            try:
+                # Get config class to check if it has required fields
+                config_class = resource_locator.get_config(source.config_class)
+                # Create an empty instance to see if it accepts no fields
+                config = config_class()
+                return config.model_dump()
+            except Exception:
+                # If it fails with no fields, config is required
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"Source {source.name} requires config fields but none were provided. "
+                    + BASE_ERROR_MESSAGE,
+                ) from None
+
+        # Both config class and config fields exist, validate them
+        try:
+            config_class = resource_locator.get_config(source.config_class)
+            config = config_class(**config_fields)
+            return config.model_dump()
+        except Exception as e:
+            source_connection_logger.error(f"Failed to validate config fields: {e}")
+
+            # Check if it's a Pydantic validation error and format it nicely
+            from pydantic import ValidationError
+
+            if isinstance(e, ValidationError):
+                # Extract the field names and error messages
+                error_messages = []
+                for error in e.errors():
+                    field = ".".join(str(loc) for loc in error.get("loc", []))
+                    msg = error.get("msg", "")
+                    error_messages.append(f"Field '{field}': {msg}")
+
+                error_detail = f"Invalid configuration for {source.config_class}:\n" + "\n".join(
+                    error_messages
+                )
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"Invalid config fields: {error_detail}. " + BASE_ERROR_MESSAGE,
+                ) from e
+            else:
+                # For other types of errors
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"Invalid config fields: {str(e)}. " + BASE_ERROR_MESSAGE,
+                ) from e
+
     async def create_source_connection(
         self,
         db: AsyncSession,
@@ -120,7 +204,7 @@ class SourceConnectionService:
         """Create a new source connection with all related objects.
 
         This method:
-        1. Creates an integration credential with auth fields if provided
+        1. Creates a credential with auth fields if provided, or uses existing credential
         2. Creates the connection to the source (schemas.Connection)
         3. Creates a collection if not provided
         4. Creates a sync configuration and DAG
@@ -151,14 +235,34 @@ class SourceConnectionService:
                     status_code=404, detail=f"Source not found: {source_connection_in.short_name}"
                 )
 
-            # Validate auth
-            auth_fields = await self._validate_auth_fields(
-                db, source_connection_in.short_name, aux_attrs["auth_fields"]
-            )
-
-            # 1. Create integration credential if auth fields are provided
+            # 1. Get or create integration credential
             integration_credential_id = None
-            if aux_attrs["auth_fields"] is not None:
+
+            # If credential_id is provided, use it
+            if aux_attrs.get("credential_id"):
+                # Verify the credential exists and belongs to this user
+                credential = await crud.integration_credential.get(
+                    uow.session, id=aux_attrs["credential_id"], current_user=current_user
+                )
+                if not credential:
+                    raise HTTPException(status_code=404, detail="Integration credential not found")
+
+                if (
+                    credential.integration_short_name != source_connection_in.short_name
+                    or credential.integration_type != IntegrationType.SOURCE
+                ):
+                    raise HTTPException(
+                        status_code=400, detail="Credential doesn't match the source type"
+                    )
+
+                integration_credential_id = credential.id
+            # If auth_fields are provided, create new credential
+            elif aux_attrs["auth_fields"] is not None:
+                # Validate auth fields
+                auth_fields = await self._validate_auth_fields(
+                    db, source_connection_in.short_name, aux_attrs["auth_fields"]
+                )
+
                 # Create the integration credential
                 integration_cred_in = schemas.IntegrationCredentialCreateEncrypted(
                     name=f"{source.name} - {current_user.email}",
@@ -176,6 +280,21 @@ class SourceConnectionService:
 
                 await uow.session.flush()
                 integration_credential_id = integration_credential.id
+            else:
+                # Neither credential_id nor auth_fields provided
+                raise HTTPException(
+                    status_code=400,
+                    detail="Either auth_fields or credential_id must be "
+                    "provided to create a source connection",
+                )
+
+            # Validate config fields (config_fields are in core_attrs)
+            config_fields = await self._validate_config_fields(
+                db, source_connection_in.short_name, core_attrs.get("config_fields")
+            )
+
+            # Always set the validated config_fields (even if empty)
+            core_attrs["config_fields"] = config_fields
 
             # 2. Create the connection object for source (system table)
             connection_create = schemas.ConnectionCreate(
@@ -243,6 +362,9 @@ class SourceConnectionService:
                 "connection_id": connection_id,
                 "readable_collection_id": collection.readable_id,
                 "sync_id": sync.id,
+                "white_label_id": core_attrs.get(
+                    "white_label_id"
+                ),  # Include white_label_id if provided
             }
 
             source_connection = await crud.source_connection.create(
@@ -328,10 +450,29 @@ class SourceConnectionService:
                     else:
                         source_connection_schema.auth_fields = "********"
 
+        # 2. Get the sync schedule information if sync_id exists
+        if source_connection.sync_id:
+            sync = await crud.sync.get(
+                db=db, id=source_connection.sync_id, current_user=current_user
+            )
+            if sync:
+                # Add cron_schedule and next_scheduled_run to the response
+                source_connection_schema.cron_schedule = sync.cron_schedule
+                source_connection_schema.next_scheduled_run = sync.next_scheduled_run
+
+                # Log the sync schedule information for debugging
+                source_connection_logger.info(
+                    f"Adding sync schedule to source connection: "
+                    f"cron_schedule={sync.cron_schedule}, "
+                    f"next_scheduled_run={sync.next_scheduled_run}"
+                )
+
         # Before returning, add a log to see what's actually being sent
         logger.info(
             "\nRETURNING SOURCE CONNECTION: "
             f"latest_sync_job_id={source_connection_schema.latest_sync_job_id},\n"
+            f"cron_schedule={source_connection_schema.cron_schedule},\n"
+            f"next_scheduled_run={source_connection_schema.next_scheduled_run},\n"
             "all job info="
             f"{source_connection_schema if 'source_connection_schema' in locals() else 'None'}\n"
         )
@@ -379,6 +520,7 @@ class SourceConnectionService:
                 modified_at=sc.modified_at,
                 sync_id=sc.sync_id,
                 collection=sc.readable_collection_id,  # map to collection
+                white_label_id=sc.white_label_id,  # Include white_label_id
             )
             for sc in source_connections
         ]
@@ -428,6 +570,7 @@ class SourceConnectionService:
                 modified_at=sc.modified_at,
                 sync_id=sc.sync_id,
                 collection=sc.readable_collection_id,  # map to collection
+                white_label_id=sc.white_label_id,  # Include white_label_id
             )
             for sc in source_connections
         ]
@@ -467,6 +610,19 @@ class SourceConnectionService:
             raise HTTPException(status_code=404, detail="Source connection not found")
 
         async with UnitOfWork(db) as uow:
+            # Validate config fields if they're being updated
+            if source_connection_in.config_fields is not None:
+                validated_config_fields = await self._validate_config_fields(
+                    uow.session,
+                    source_connection.short_name,
+                    (
+                        source_connection_in.config_fields.model_dump()
+                        if hasattr(source_connection_in.config_fields, "model_dump")
+                        else source_connection_in.config_fields
+                    ),
+                )
+                source_connection_in.config_fields = validated_config_fields
+
             # 1. Update source connection
             source_connection = await crud.source_connection.update(
                 db=uow.session,
@@ -584,6 +740,7 @@ class SourceConnectionService:
         db: AsyncSession,
         source_connection_id: UUID,
         current_user: schemas.User,
+        access_token: Optional[str] = None,
     ) -> schemas.SyncJob:
         """Trigger a sync run for a source connection.
 
@@ -591,6 +748,7 @@ class SourceConnectionService:
             db: The database session
             source_connection_id: The ID of the source connection to run
             current_user: The current user
+            access_token: Optional access token to use instead of stored credentials
 
         Returns:
             The created sync job
@@ -611,6 +769,10 @@ class SourceConnectionService:
         sync, sync_job, sync_dag = await sync_service.trigger_sync_run(
             db=db, sync_id=source_connection.sync_id, current_user=current_user
         )
+
+        # Store access token directly without validation if provided
+        if access_token:
+            sync_job.access_token = access_token
 
         return sync_job
 
@@ -780,136 +942,189 @@ class SourceConnectionService:
             await uow.commit()
             return source_connection
 
-    async def create_source_connection_from_oauth(
+    async def get_oauth2_authorization_url(
+        self,
+        source_short_name: str,
+        client_id: Optional[str] = None,
+    ) -> schemas.OAuth2AuthUrl:
+        """Get the OAuth2 authorization URL for a source.
+
+        Args:
+            source_short_name: The short name of the source
+            client_id: Optional client ID to override the default one
+
+        Returns:
+            The OAuth2 authorization URL
+
+        Raises:
+            HTTPException: If the source is not found or doesn't support OAuth2
+        """
+        # Get the settings for this source to generate the URL
+        oauth2_settings = await integration_settings.get_by_short_name(source_short_name)
+        if not oauth2_settings:
+            raise HTTPException(
+                status_code=404, detail=f"Settings not found for source: {source_short_name}"
+            )
+
+        if oauth2_settings.auth_type not in [
+            AuthType.oauth2,
+            AuthType.oauth2_with_refresh,
+            AuthType.oauth2_with_refresh_rotating,
+        ]:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Source {source_short_name} does not support OAuth2 authentication",
+            )
+
+        # Generate the authorization URL
+        auth_url = await oauth2_service.generate_auth_url(oauth2_settings, client_id)
+
+        # Return as schema
+        return schemas.OAuth2AuthUrl(url=auth_url)
+
+    async def create_credential_from_oauth2_code(
         self,
         db: AsyncSession,
-        source_connection_in: schemas.SourceConnectionCreate,
-        connection_id: UUID,
-        current_user: schemas.User,
-    ) -> Tuple[schemas.SourceConnection, Optional[schemas.SyncJob]]:
-        """Create a source connection using an existing OAuth connection.
+        source_short_name: str,
+        code: str,
+        credential_name: Optional[str] = None,
+        credential_description: Optional[str] = None,
+        client_id: Optional[str] = None,
+        client_secret: Optional[str] = None,
+        current_user: schemas.User = None,
+    ) -> schemas.IntegrationCredentialInDB:
+        """Exchange OAuth2 code for token and create integration credentials.
 
-        This method skips the credential and connection creation steps from the
-        standard flow, and uses the provided connection_id instead. It's designed
-        specifically for OAuth flows where the connection has already been created.
+        This method:
+        1. Exchanges the authorization code for a token
+        2. Validates the token against the auth config class
+        3. Creates and stores the integration credential
+        4. Returns the stored credential
 
         Args:
             db: The database session
-            source_connection_in: The source connection creation parameters
-            connection_id: UUID of an existing connection (from OAuth)
+            source_short_name: The short name of the source
+            code: The authorization code to exchange
+            credential_name: Optional custom name for the credential
+            credential_description: Optional description for the credential
+            client_id: Optional client ID to override the default
+            client_secret: Optional client secret to override the default
             current_user: The current user
 
         Returns:
-            A tuple of (source_connection, sync_job)
+            The created integration credential
 
         Raises:
-            HTTPException: If the connection doesn't exist or belongs to another user
+            HTTPException: If code exchange fails or validation fails
         """
-        core_attrs, aux_attrs = source_connection_in.map_to_core_and_auxiliary_attributes()
-
-        async with UnitOfWork(db) as uow:
-            # Get the source information
-            source = await crud.source.get_by_short_name(
-                db, short_name=source_connection_in.short_name
-            )
+        try:
+            # Get the source information first
+            source = await crud.source.get_by_short_name(db, short_name=source_short_name)
             if not source:
                 raise HTTPException(
-                    status_code=404, detail=f"Source not found: {source_connection_in.short_name}"
+                    status_code=404, detail=f"Source not found: {source_short_name}"
                 )
 
-            # Verify the connection exists and belongs to this user
-            connection = await crud.connection.get(
-                uow.session, id=connection_id, current_user=current_user
-            )
-            if not connection:
-                raise HTTPException(status_code=404, detail="Connection not found")
-
-            if connection.integration_type != IntegrationType.SOURCE:
-                raise HTTPException(
-                    status_code=400, detail="Invalid connection type. Must be a source connection."
-                )
-
-            # Check if the connection's short_name matches the source_connection's short_name
-            if connection.short_name != source_connection_in.short_name:
+            # Check if auth type is OAuth2
+            if not source.auth_type or not source.auth_type.startswith("oauth2"):
                 raise HTTPException(
                     status_code=400,
-                    detail=(
-                        f"Connection short_name '{connection.short_name}' "
-                        f"does not match '{source_connection_in.short_name}'"
-                    ),
+                    detail=f"Source {source_short_name} does not support OAuth2 authentication",
                 )
 
-            # 1. Check if we need to create a collection first
-            if "collection" not in core_attrs:
-                # Create a collection with the same name as the source connection
-                collection_create = schemas.CollectionCreate(
-                    name=f"Collection for {source_connection_in.name}",
-                    description=f"Auto-generated collection for {source_connection_in.name}",
+            # Exchange the authorization code for a token
+            token_response = await self._exchange_authorization_code_for_token(
+                source_short_name=source_short_name,
+                code=code,
+                client_id=client_id,
+                client_secret=client_secret,
+            )
+
+            # Convert token response to auth fields
+            auth_fields = token_response.model_dump()
+
+            # Add client_id and client_secret to auth_fields if they were provided
+            if client_id:
+                auth_fields["client_id"] = client_id
+            if client_secret:
+                auth_fields["client_secret"] = client_secret
+
+            # Validate the auth fields against the auth config class (critical step!)
+            validated_auth_fields = await self._validate_auth_fields(
+                db=db, source_short_name=source_short_name, auth_fields=auth_fields
+            )
+
+            # Create the integration credential
+            async with UnitOfWork(db) as uow:
+                # Encrypt the validated auth fields
+                encrypted_credentials = credentials.encrypt(validated_auth_fields)
+
+                # Default name and description if not provided
+                name = credential_name or f"{source.name} OAuth2 Credential"
+                description = credential_description or f"OAuth2 credentials for {source.name}"
+
+                integration_cred_in = schemas.IntegrationCredentialCreateEncrypted(
+                    name=name,
+                    description=description,
+                    integration_short_name=source_short_name,
+                    integration_type=IntegrationType.SOURCE,
+                    auth_type=source.auth_type,
+                    encrypted_credentials=encrypted_credentials,
+                    auth_config_class=source.auth_config_class,
                 )
 
-                collection = await collection_service.create(
-                    db=uow.session,
-                    collection_in=collection_create,
-                    current_user=current_user,
-                    uow=uow,
+                integration_credential = await crud.integration_credential.create(
+                    uow.session, obj_in=integration_cred_in, current_user=current_user, uow=uow
                 )
-            else:
-                readable_collection_id = core_attrs["collection"]
-                if "collection" in core_attrs:
-                    del core_attrs["collection"]
-                collection = await crud.collection.get_by_readable_id(
-                    db=uow.session, readable_id=readable_collection_id, current_user=current_user
+
+                await uow.commit()
+                await uow.session.refresh(integration_credential)
+
+                # Get the schema model from the database object and return
+                return schemas.IntegrationCredentialInDB.model_validate(
+                    integration_credential, from_attributes=True
                 )
-                if not collection:
-                    raise HTTPException(
-                        status_code=404, detail=f"Collection '{readable_collection_id}' not found"
-                    )
 
-            # 2. Create the sync
-            sync_in = schemas.SyncCreate(
-                name=f"Sync for {source_connection_in.name}",
-                description=f"Auto-generated sync for {source_connection_in.name}",
-                source_connection_id=connection_id,  # Use the provided connection ID
-                embedding_model_connection_id=NATIVE_TEXT2VEC_UUID,
-                destination_connection_ids=[NATIVE_QDRANT_UUID],
-                cron_schedule=aux_attrs["cron_schedule"],
-                status=SyncStatus.ACTIVE,
-                run_immediately=aux_attrs["sync_immediately"],
+        except Exception as e:
+            source_connection_logger.error(f"Failed to create credential from OAuth2 code: {e}")
+            if isinstance(e, HTTPException):
+                raise
+            raise HTTPException(
+                status_code=400, detail=f"Failed to create credential from OAuth2 code: {str(e)}"
+            ) from e
+
+    async def _exchange_authorization_code_for_token(
+        self,
+        source_short_name: str,
+        code: str,
+        client_id: Optional[str] = None,
+        client_secret: Optional[str] = None,
+    ) -> OAuth2TokenResponse:
+        """Exchange an OAuth2 authorization code for a token.
+
+        Args:
+            source_short_name: The short name of the source
+            code: The authorization code to exchange
+            client_id: Optional client ID to override the default
+            client_secret: Optional client secret to override the default
+
+        Returns:
+            The OAuth2 token response with access token and other details
+
+        Raises:
+            HTTPException: If the token exchange fails
+        """
+        try:
+            return await oauth2_service.exchange_authorization_code_for_token(
+                source_short_name=source_short_name,
+                code=code,
+                client_id=client_id,
+                client_secret=client_secret,
             )
-
-            # 3. Use the sync service to create the sync and automatically the DAG
-            sync, sync_job = await sync_service.create_and_run_sync(
-                db=uow.session, sync_in=sync_in, current_user=current_user, uow=uow
-            )
-
-            # 4. Create the source connection from core attributes
-            source_connection_create = {
-                **core_attrs,
-                "connection_id": connection_id,  # Use the provided connection ID
-                "readable_collection_id": collection.readable_id,
-                "sync_id": sync.id,
-            }
-
-            source_connection = await crud.source_connection.create(
-                db=uow.session, obj_in=source_connection_create, current_user=current_user, uow=uow
-            )
-            await uow.session.flush()
-
-            # map to schemas and return
-            source_connection = schemas.SourceConnection.from_orm_with_collection_mapping(
-                source_connection
-            )
-            sync_job = schemas.SyncJob.model_validate(sync_job, from_attributes=True)
-
-            # Update the source connection status
-            source_connection.auth_fields = "********"  # Hide auth fields by default
-            source_connection.status = SourceConnectionStatus.IN_PROGRESS
-            source_connection.latest_sync_job_status = sync_job.status
-            source_connection.latest_sync_job_id = sync_job.id
-            source_connection.latest_sync_job_started_at = sync_job.started_at
-            source_connection.latest_sync_job_completed_at = sync_job.completed_at
-
-        return source_connection, sync_job
+        except Exception as e:
+            raise HTTPException(
+                status_code=400, detail="Failed to exchange authorization code for token"
+            ) from e
 
 
 # Singleton instance

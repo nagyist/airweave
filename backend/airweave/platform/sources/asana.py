@@ -1,6 +1,6 @@
 """Asana source implementation."""
 
-from typing import AsyncGenerator, Dict, List, Optional
+from typing import Any, AsyncGenerator, Dict, List, Optional
 
 import httpx
 from tenacity import retry, stop_after_attempt, wait_exponential
@@ -20,15 +20,39 @@ from airweave.platform.entities.asana import (
 from airweave.platform.sources._base import BaseSource
 
 
-@source("Asana", "asana", AuthType.oauth2_with_refresh, labels=["Project Management"])
+@source(
+    name="Asana",
+    short_name="asana",
+    auth_type=AuthType.oauth2_with_refresh,
+    auth_config_class="AsanaAuthConfig",
+    config_class="AsanaConfig",
+    labels=["Project Management"],
+)
 class AsanaSource(BaseSource):
     """Asana source implementation."""
 
     @classmethod
-    async def create(cls, access_token: str) -> "AsanaSource":
-        """Create a new Asana source."""
+    async def create(
+        cls, access_token: str, config: Optional[Dict[str, Any]] = None
+    ) -> "AsanaSource":
+        """Create a new Asana source.
+
+        Args:
+            access_token: OAuth access token for Asana API
+            config: Optional configuration parameters, like exclude_path
+
+        Returns:
+            Configured AsanaSource instance
+        """
         instance = cls()
         instance.access_token = access_token
+
+        # Store config values as instance attributes
+        if config:
+            instance.exclude_path = config.get("exclude_path", "")
+        else:
+            instance.exclude_path = ""
+
         return instance
 
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
@@ -69,6 +93,13 @@ class AsanaSource(BaseSource):
         )
 
         for project in projects_data.get("data", []):
+            project_name = project["name"]
+
+            # Skip projects matching exclude_path
+            if self.exclude_path and self.exclude_path in project_name:
+                logger.info(f"Skipping excluded project: {project_name}")
+                continue
+
             yield AsanaProjectEntity(
                 entity_id=project["gid"],
                 breadcrumbs=[workspace_breadcrumb],

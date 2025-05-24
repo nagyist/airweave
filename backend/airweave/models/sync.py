@@ -2,9 +2,8 @@
 
 from datetime import datetime
 from typing import TYPE_CHECKING, Optional
-from uuid import UUID
 
-from sqlalchemy import JSON, DateTime, ForeignKey, String, UniqueConstraint
+from sqlalchemy import JSON, DateTime, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from airweave.core.shared_models import SyncStatus
@@ -16,7 +15,6 @@ if TYPE_CHECKING:
     from airweave.models.source_connection import SourceConnection
     from airweave.models.sync_connection import SyncConnection
     from airweave.models.sync_job import SyncJob
-    from airweave.models.white_label import WhiteLabel
 
 
 class Sync(OrganizationBase, UserMixin):
@@ -31,10 +29,6 @@ class Sync(OrganizationBase, UserMixin):
     next_scheduled_run: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
-    white_label_id: Mapped[Optional[UUID]] = mapped_column(
-        ForeignKey("white_label.id", ondelete="CASCADE"), nullable=True
-    )
-    white_label_user_identifier: Mapped[str] = mapped_column(String(256), nullable=True)
     sync_metadata: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
 
     jobs: Mapped[list["SyncJob"]] = relationship(
@@ -60,12 +54,6 @@ class Sync(OrganizationBase, UserMixin):
         cascade="all, delete-orphan",
         passive_deletes=True,
     )
-    white_label: Mapped[Optional["WhiteLabel"]] = relationship(
-        "WhiteLabel",
-        back_populates="syncs",
-        lazy="noload",
-        cascade="save-update, merge",
-    )
 
     source_connection: Mapped[Optional["SourceConnection"]] = relationship(
         "SourceConnection",
@@ -81,12 +69,4 @@ class Sync(OrganizationBase, UserMixin):
         lazy="noload",
         cascade="all, delete-orphan",
         passive_deletes=True,
-    )
-
-    __table_args__ = (
-        UniqueConstraint(
-            "white_label_id",
-            "white_label_user_identifier",
-            name="uq_white_label_user",
-        ),
     )

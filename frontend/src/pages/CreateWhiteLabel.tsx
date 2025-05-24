@@ -5,8 +5,9 @@ import { CodeSnippet } from "@/components/white-label/CodeSnippet";
 import { HowItWorksAccordion } from "@/components/white-label/HowItWorksAccordion";
 import { TestIntegrationCard } from "@/components/white-label/TestIntegrationCard";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, InfoIcon } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 interface WhiteLabelData {
   id: string;
@@ -14,6 +15,7 @@ interface WhiteLabelData {
   source_short_name: string;
   redirect_url: string;
   client_id: string;
+  allowed_origins: string;
 }
 
 const CreateWhiteLabel = () => {

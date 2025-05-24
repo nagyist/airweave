@@ -100,18 +100,13 @@ pip install airweave-sdk
 ```
 
 ```python
-from airweave import AirweaveClient
+from airweave import AirweaveSDK
 
-client = AirweaveClient(api_key="your-api-key")
-
-# List all sources
-sources = client.sources.list()
-
-# Create a sync job
-job = client.sync.create_sync(
-  name="My first sync",
-  source_connection_id=source_id,
-  run_immediately=True
+client = AirweaveSDK(
+    api_key="YOUR_API_KEY",
+)
+client.collections.create_collection(
+    name="name",
 )
 ```
 
@@ -124,20 +119,11 @@ yarn add @airweave/sdk
 ```
 
 ```typescript
-import { AirweaveClient } from "@airweave/sdk";
+import { AirweaveSDKClient } from "@airweave/sdk";
 
-const client = new AirweaveClient({
-  apiKey: "your-api-key",
-});
-
-// List sources
-const sources = await client.sources.list();
-
-// Create a sync job
-const job = await client.sync.create_sync({
-  name: "My first sync",
-  source_connection_id: sourceId,
-  run_immediately: true,
+const client = new AirweaveSDKClient({ apiKey: "YOUR_API_KEY" });
+await client.collections.createCollection({
+    name: "name",
 });
 ```
 

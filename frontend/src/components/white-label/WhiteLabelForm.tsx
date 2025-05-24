@@ -41,10 +41,13 @@ interface WhiteLabelResponse {
   source_short_name: string;
   redirect_url: string;
   client_id: string;
+  allowed_origins: string;
 }
 
 interface WhiteLabelFormProps {
   onSuccess?: (data: WhiteLabelResponse) => void;
+  initialData?: WhiteLabelResponse;
+  isEditing?: boolean;
 }
 
 interface WhiteLabelFormData {
@@ -53,6 +56,7 @@ interface WhiteLabelFormData {
   redirect_url: string;
   client_id: string;
   client_secret: string;
+  allowed_origins: string;
 }
 
 // The shape we want for our create/update form
@@ -62,19 +66,28 @@ const formSchema = z.object({
   redirect_url: z.string().url("Must be a valid URL"),
   client_id: z.string().min(1, "Client ID is required"),
   client_secret: z.string().min(1, "Client Secret is required"),
+  allowed_origins: z.string().min(1, "Allowed origins is required"),
 });
 
-export function WhiteLabelForm({ onSuccess }: WhiteLabelFormProps) {
-  const { whiteLabelId } = useParams();
+export function WhiteLabelForm({ onSuccess, initialData, isEditing }: WhiteLabelFormProps) {
+  const { id } = useParams();
   const navigate = useNavigate();
   const form = useForm<WhiteLabelFormData>({
     resolver: zodResolver(formSchema),
-    defaultValues: {
+    defaultValues: initialData ? {
+      name: initialData.name,
+      source_short_name: initialData.source_short_name,
+      redirect_url: initialData.redirect_url,
+      client_id: initialData.client_id,
+      client_secret: "", // Client secret is not returned from API for security
+      allowed_origins: initialData.allowed_origins || "",
+    } : {
       name: "",
       source_short_name: "",
       redirect_url: "",
       client_id: "",
       client_secret: "",
+      allowed_origins: "",
     },
   });
 
@@ -103,14 +116,14 @@ export function WhiteLabelForm({ onSuccess }: WhiteLabelFormProps) {
     fetchSources();
   }, []);
 
-  // If editing an existing WhiteLabel, fetch it
+  // If editing an existing WhiteLabel and no initialData was provided, fetch it
   useEffect(() => {
-    if (!whiteLabelId) return;
+    if (!id || initialData) return;
     async function fetchWhiteLabel() {
       setLoading(true);
       setError(null);
       try {
-        const response = await apiClient.get(`/white_labels/${whiteLabelId}`);
+        const response = await apiClient.get(`/white-labels/${id}`);
         if (!response.ok) {
           throw new Error(`Failed to fetch white label. Status: ${response.status}`);
         }
@@ -121,6 +134,7 @@ export function WhiteLabelForm({ onSuccess }: WhiteLabelFormProps) {
           redirect_url: data.redirect_url,
           client_id: data.client_id,
           client_secret: data.client_secret,
+          allowed_origins: data.allowed_origins || "",
         });
       } catch (err: any) {
         setError(err.message);
@@ -129,18 +143,25 @@ export function WhiteLabelForm({ onSuccess }: WhiteLabelFormProps) {
       }
     }
     fetchWhiteLabel();
-  }, [whiteLabelId, form]);
+  }, [id, form, initialData]);
 
   const onSubmit = async (values: WhiteLabelFormData) => {
     setLoading(true);
     setError(null);
     try {
-      const method = whiteLabelId ? "PUT" : "POST";
-      const url = whiteLabelId
-        ? `/white_labels/${whiteLabelId}`
-        : "/white_labels";
+      const method = id ? "PUT" : "POST";
+      const url = id
+        ? `/white-labels/${id}`
+        : "/white-labels";
 
-      const response = await apiClient.post(url, values);
+      let response;
+      if (id) {
+        // Use PUT for updates - note: apiClient.put takes (endpoint, params, data)
+        response = await apiClient.put(url, undefined, values);
+      } else {
+        // Use POST for creates
+        response = await apiClient.post(url, values);
+      }
 
       if (!response.ok) {
         // Handle validation errors from backend
@@ -165,7 +186,7 @@ export function WhiteLabelForm({ onSuccess }: WhiteLabelFormProps) {
         }
 
         throw new Error(
-          `Failed to ${whiteLabelId ? "update" : "create"} white label. Status: ${
+          `Failed to ${id ? "update" : "create"} white label. Status: ${
             response.status
           }`
         );
@@ -173,7 +194,7 @@ export function WhiteLabelForm({ onSuccess }: WhiteLabelFormProps) {
 
       const data: WhiteLabelResponse = await response.json();
 
-      if (whiteLabelId) {
+      if (id || isEditing) {
         navigate("/white-label");
       } else {
         // Instead of navigating, emit the created data
@@ -187,12 +208,12 @@ export function WhiteLabelForm({ onSuccess }: WhiteLabelFormProps) {
   };
 
   const handleDelete = async () => {
-    if (!whiteLabelId) return;
+    if (!id) return;
     if (!confirm("Are you sure you want to delete this integration?")) return;
 
     try {
       setLoading(true);
-      const response = await apiClient.delete(`/white_labels/${whiteLabelId}`);
+      const response = await apiClient.delete(`/white-labels/${id}`);
       if (!response.ok) {
         throw new Error(`Failed to delete white label. Status: ${response.status}`);
       }
@@ -207,7 +228,7 @@ export function WhiteLabelForm({ onSuccess }: WhiteLabelFormProps) {
   return (
     <div className="space-y-4">
       <h2 className="text-xl font-semibold">
-        {whiteLabelId ? "Edit White Label" : "Create White Label"}
+        {id || isEditing ? "Edit White Label" : "Create White Label"}
       </h2>
 
       {error && <p className="text-red-500">{error}</p>}
@@ -301,6 +322,26 @@ export function WhiteLabelForm({ onSuccess }: WhiteLabelFormProps) {
 
           <FormField
             control={form.control}
+            name="allowed_origins"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Allowed Origins</FormLabel>
+                <FormControl>
+                  <Input
+                    placeholder="https://your-app.com,https://sub.your-app.com"
+                    {...field}
+                  />
+                </FormControl>
+                <FormMessage />
+                <p className="text-xs text-muted-foreground">
+                  Comma-separated list of domains that can make requests to this integration (required).
+                </p>
+              </FormItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
             name="client_id"
             render={({ field }) => (
               <FormItem>
@@ -333,10 +374,10 @@ export function WhiteLabelForm({ onSuccess }: WhiteLabelFormProps) {
 
           <div className="flex items-center gap-4">
             <Button type="submit" disabled={loading}>
-              {whiteLabelId ? "Update" : "Create"}
+              {id ? "Update" : "Create"}
             </Button>
 
-            {whiteLabelId && (
+            {id && (
               <Button
                 variant="destructive"
                 onClick={handleDelete}

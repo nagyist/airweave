@@ -55,17 +55,21 @@ class BaseEntity(BaseModel):
     sync_metadata: Optional[Dict[str, Any]] = Field(
         None, description="Additional metadata for the sync."
     )
-    white_label_user_identifier: Optional[str] = Field(
-        None, description="White label user identifier."
-    )
-    white_label_id: Optional[UUID] = Field(None, description="White label ID.")
-    white_label_name: Optional[str] = Field(None, description="White label name.")
 
     parent_entity_id: Optional[str] = Field(
         None, description="ID of the parent entity in the source."
     )
 
     vector: Optional[List[float]] = Field(None, description="Vector representation of the entity.")
+    chunk_index: Optional[int] = Field(
+        None,
+        description=(
+            "Index of the chunk in the file, if applicable. "
+            "Example: If a file is split into 2 chunks, "
+            "the first chunk will have a chunk_index of 0, "
+            "the second chunk will have a chunk_index of 1."
+        ),
+    )
 
     class Config:
         """Pydantic config."""
@@ -86,9 +90,6 @@ class BaseEntity(BaseModel):
             "source_name",
             "sync_id",
             "sync_metadata",
-            "white_label_user_identifier",
-            "white_label_id",
-            "white_label_name",
         }
 
         # Get field names from the model
@@ -159,9 +160,6 @@ class ChunkEntity(BaseEntity):
     default_exclude_fields: List[str] = [
         "vector",  # Exclude the vector itself from the payload
         "sync_job_id",
-        "white_label_user_identifier",
-        "white_label_id",
-        "white_label_name",
         "sync_metadata",
         "parent_entity_id",
         "default_exclude_fields",

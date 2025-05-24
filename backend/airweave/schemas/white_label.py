@@ -15,6 +15,7 @@ class WhiteLabelBase(BaseModel):
     redirect_url: str
     client_id: str
     client_secret: str
+    allowed_origins: str
 
     class Config:
         """Pydantic config for WhiteLabelBase."""
@@ -33,6 +34,7 @@ class WhiteLabelUpdate(BaseModel):
     redirect_url: Optional[str] = None
     client_id: Optional[str] = None
     client_secret: Optional[str] = None
+    allowed_origins: Optional[str] = None
 
 
 class WhiteLabelInDBBase(WhiteLabelBase):

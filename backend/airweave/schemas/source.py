@@ -16,7 +16,8 @@ class SourceBase(BaseModel):
     name: str
     description: Optional[str] = None
     auth_type: Optional[AuthType] = None
-    auth_config_class: Optional[str] = None
+    auth_config_class: str
+    config_class: str  # Required field
     short_name: str
     class_name: str
     output_entity_definition_ids: Optional[List[UUID]] = None
@@ -77,10 +78,5 @@ class SourceInDBBase(SourceBase):
 class Source(SourceInDBBase):
     """Schema for Source."""
 
-    pass
-
-
-class SourceWithAuthenticationFields(Source):
-    """Schema for Source with auth config."""
-
-    auth_fields: Fields | None = None
+    auth_fields: Fields
+    config_fields: Optional[Fields] = None  # Not stored in DB, added during API response

@@ -18,6 +18,7 @@ class SourceConnectionBase(BaseModel):
     description: Optional[str] = None
     config_fields: Optional[ConfigValues] = None  # stored in core table
     short_name: str  # Short name of the source
+    white_label_id: Optional[UUID] = None  # ID of the white label integration
 
     class Config:
         """Pydantic config for SourceConnectionBase."""
@@ -34,7 +35,8 @@ class SourceConnectionCreate(SourceConnectionBase):
 
     collection: Optional[str] = None
     cron_schedule: Optional[str] = None
-    auth_fields: Optional[ConfigValues] = None  # part of create, stored in integration_credential
+    auth_fields: Optional[ConfigValues] = None
+    credential_id: Optional[UUID] = None
     sync_immediately: bool = True
 
     @field_validator("cron_schedule")
@@ -78,6 +80,7 @@ class SourceConnectionCreate(SourceConnectionBase):
         # Auxiliary attributes used in the creation process but not directly in the model
         auxiliary_attrs = {
             "auth_fields": data.pop("auth_fields", None),
+            "credential_id": data.pop("credential_id", None),
             "cron_schedule": data.pop("cron_schedule", None),
             "sync_immediately": data.pop("sync_immediately", True),
         }
@@ -99,6 +102,7 @@ class SourceConnectionUpdate(BaseModel):
     config_fields: Optional[ConfigValues] = None
     cron_schedule: Optional[str] = None
     connection_id: Optional[UUID] = None
+    white_label_id: Optional[UUID] = None
 
 
 class SourceConnectionInDBBase(SourceConnectionBase):
@@ -111,6 +115,7 @@ class SourceConnectionInDBBase(SourceConnectionBase):
     modified_at: datetime
     connection_id: Optional[UUID] = None  # ID of the underlying connection object
     collection: str
+    white_label_id: Optional[UUID] = None
     created_by_email: EmailStr
     modified_by_email: EmailStr
 
@@ -125,7 +130,7 @@ class SourceConnection(SourceConnectionInDBBase):
 
     # str if encrypted, ConfigValues if not
     # comes from integration_credential
-    auth_fields: Optional[ConfigValues | str] = None
+    auth_fields: Optional[ConfigValues] = None
 
     # Ephemeral status derived from the latest sync job
     status: Optional[SourceConnectionStatus] = None
@@ -135,8 +140,9 @@ class SourceConnection(SourceConnectionInDBBase):
     latest_sync_job_id: Optional[UUID] = None
     latest_sync_job_started_at: Optional[datetime] = None
     latest_sync_job_completed_at: Optional[datetime] = None
+    latest_sync_job_error: Optional[str] = None
 
-    # Ephemeral schedule info derived from the sync
+    # Sync schedule information
     cron_schedule: Optional[str] = None
     next_scheduled_run: Optional[datetime] = None
 
@@ -169,6 +175,7 @@ class SourceConnectionListItem(BaseModel):
     modified_at: datetime
     sync_id: UUID
     collection: str
+    white_label_id: Optional[UUID] = None
 
     class Config:
         """Pydantic config for SourceConnectionListItem."""

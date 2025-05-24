@@ -7,10 +7,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import crud
 from airweave.core.config import settings
-from airweave.platform.entities._base import BaseEntity, CodeFileEntity, PolymorphicEntity
+from airweave.core.logging import logger
+from airweave.platform.entities._base import (
+    BaseEntity,
+    ChunkEntity,
+    CodeFileEntity,
+    FileEntity,
+    PolymorphicEntity,
+)
 from airweave.platform.locator import resource_locator
 from airweave.platform.transformers.code_file_chunker import code_file_chunker
 from airweave.platform.transformers.code_file_summarizer import code_file_summarizer
+from airweave.platform.transformers.entity_field_chunker import entity_chunker
 from airweave.schemas.dag import DagNode, NodeType, SyncDag
 
 
@@ -146,6 +154,24 @@ class SyncDAGRouter:
                     transformed_entity = await code_file_summarizer(transformed_entity)
             return transformed_entities
 
+        # Apply entity_field_chunker ONLY to ChunkEntity subclasses that are NOT FileEntity
+        # subclasses
+        entity_type = type(entity)
+        if (
+            issubclass(entity_type, ChunkEntity)
+            and not issubclass(entity_type, FileEntity)
+            and not isinstance(entity, FileEntity)
+        ):
+            chunked_entities = await entity_chunker(entity)
+            if len(chunked_entities) > 1:
+                # If the entity was chunked, return the chunked entities
+                logger.info(
+                    f"Entity {entity.entity_id} of type {entity_type.__name__} was chunked into "
+                    f"{len(chunked_entities)} parts"
+                )
+                return chunked_entities
+
+        # Continue with normal routing
         entity_definition_id = self._get_entity_definition_id(type(entity))
         route_key = (producer_id, entity_definition_id)
         if route_key not in self.route or self.route[route_key] is None:

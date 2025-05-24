@@ -30,7 +30,7 @@ export const WhiteLabelTable = () => {
   async function fetchWhiteLabels() {
     try {
       setLoading(true);
-      const response = await apiClient.get("/white_labels/list");
+      const response = await apiClient.get("/white-labels/list");
       if (!response.ok) {
         throw new Error(`Failed to load white labels. Status: ${response.status}`);
       }
@@ -47,8 +47,16 @@ export const WhiteLabelTable = () => {
     fetchWhiteLabels();
   }, []);
 
+  const navigateToWhiteLabel = (id: string, e?: React.MouseEvent) => {
+    if (e) {
+      e.stopPropagation();
+    }
+    navigate(`/white-label/${id}`);
+  };
+
   if (loading) return <p className="p-2">Loading...</p>;
   if (error) return <p className="p-2 text-red-500">Error: {error}</p>;
+  if (whiteLabels.length === 0) return <p className="p-2">No white labels found. Create your first one!</p>;
 
   return (
     <Table>
@@ -66,7 +74,7 @@ export const WhiteLabelTable = () => {
           <TableRow
             key={whiteLabel.id}
             className="cursor-pointer hover:bg-muted/50"
-            onClick={() => navigate(`/white-label/${whiteLabel.id}`)}
+            onClick={() => navigateToWhiteLabel(whiteLabel.id)}
           >
             <TableCell className="font-medium">{whiteLabel.name}</TableCell>
             <TableCell>{whiteLabel.id}</TableCell>
@@ -80,10 +88,7 @@ export const WhiteLabelTable = () => {
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  navigate(`/white-label/${whiteLabel.id}`);
-                }}
+                onClick={(e) => navigateToWhiteLabel(whiteLabel.id, e)}
               >
                 <Eye className="h-4 w-4" />
               </Button>

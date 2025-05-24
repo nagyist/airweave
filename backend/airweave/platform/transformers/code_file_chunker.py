@@ -1,17 +1,20 @@
 """Code file chunker."""
 
-import logging
 import os
 from copy import deepcopy
 from typing import List
 
 from chonkie import CodeChunker, SemanticChunker
 
+from airweave.core.logging import logger
 from airweave.platform.decorators import transformer
 from airweave.platform.entities._base import CodeFileEntity
-from airweave.platform.transformers.utils import MAX_CHUNK_SIZE, count_tokens
-
-logger = logging.getLogger(__name__)
+from airweave.platform.transformers.utils import (
+    MARGIN_OF_ERROR,
+    MAX_CHUNK_SIZE,
+    METADATA_SIZE,
+    count_tokens,
+)
 
 
 @transformer(name="Code File Chunker")
@@ -41,7 +44,7 @@ async def code_file_chunker(file: CodeFileEntity) -> List[CodeFileEntity]:
     logger.info(f"File {file.name} has {token_count} tokens")
 
     # If the entire entity is small enough, return it as is
-    if token_count <= MAX_CHUNK_SIZE - 191:
+    if token_count <= MAX_CHUNK_SIZE - MARGIN_OF_ERROR:
         logger.info(f"File {file.name} is small enough ({token_count} tokens), no chunking needed")
         return [file]
 
@@ -55,7 +58,7 @@ async def code_file_chunker(file: CodeFileEntity) -> List[CodeFileEntity]:
         logger.info(f"Using semantic chunker for text file {file.name}")
         semantic_chunker = SemanticChunker(
             tokenizer_or_token_counter=count_tokens,
-            chunk_size=MAX_CHUNK_SIZE - 2000,  # Leave room for metadata
+            chunk_size=MAX_CHUNK_SIZE - METADATA_SIZE,  # Leave room for metadata
             min_sentences=1,  # Start with minimum 1 sentence
             threshold=0.5,  # Similarity threshold
             mode="window",  # Use window mode for comparison
@@ -68,7 +71,7 @@ async def code_file_chunker(file: CodeFileEntity) -> List[CodeFileEntity]:
         logger.info(f"Using code chunker for code file {file.name}")
         code_chunker = CodeChunker(
             tokenizer_or_token_counter=count_tokens,
-            chunk_size=MAX_CHUNK_SIZE - 2000,  # Leave room for metadata
+            chunk_size=MAX_CHUNK_SIZE - METADATA_SIZE,  # Leave room for metadata
         )
         chunks = code_chunker.chunk(file.content)
         logger.debug(f"Code chunker produced {len(chunks)} chunks")

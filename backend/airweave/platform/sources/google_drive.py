@@ -14,9 +14,10 @@ References:
     https://developers.google.com/drive/api/v3/reference/files  (Files)
 """
 
-from typing import AsyncGenerator, Dict, Optional
+from typing import Any, AsyncGenerator, Dict, Optional
 
 import httpx
+from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from airweave.core.logging import logger
 from airweave.platform.auth.schemas import AuthType
@@ -27,10 +28,11 @@ from airweave.platform.sources._base import BaseSource
 
 
 @source(
-    "Google Drive",
-    "google_drive",
-    AuthType.oauth2_with_refresh,
-    auth_config_class="GoogleAuthConfig",
+    name="Google Drive",
+    short_name="google_drive",
+    auth_type=AuthType.oauth2_with_refresh,
+    auth_config_class="GoogleDriveAuthConfig",
+    config_class="GoogleDriveConfig",
     labels=["File Storage"],
 )
 class GoogleDriveSource(BaseSource):
@@ -43,21 +45,48 @@ class GoogleDriveSource(BaseSource):
     """
 
     @classmethod
-    async def create(cls, access_token: str) -> "GoogleDriveSource":
+    async def create(
+        cls, access_token: str, config: Optional[Dict[str, Any]] = None
+    ) -> "GoogleDriveSource":
         """Create a new Google Drive source instance with the provided OAuth access token."""
         instance = cls()
         instance.access_token = access_token
+
+        instance.exclude_patterns = config.get("exclude_patterns", [])
+
         return instance
 
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        retry=retry_if_exception_type((httpx.ConnectTimeout, httpx.ReadTimeout)),
+    )
     async def _get_with_auth(
         self, client: httpx.AsyncClient, url: str, params: Optional[Dict] = None
     ) -> Dict:
-        """Make an authenticated GET request to the Google Drive API."""
+        """Make an authenticated GET request to the Google Drive API with retry logic."""
         headers = {"Authorization": f"Bearer {self.access_token}"}
-        resp = await client.get(url, headers=headers, params=params)
-        logger.error(f"Request URL: {url}")
-        resp.raise_for_status()
-        return resp.json()
+        try:
+            # Add a longer timeout (30 seconds)
+            resp = await client.get(url, headers=headers, params=params, timeout=30.0)
+            logger.info(f"Request URL: {url}")  # Changed from error to info level
+            resp.raise_for_status()
+            return resp.json()
+        except httpx.ConnectTimeout:
+            logger.error(f"Connection timeout accessing Google Drive API: {url}")
+            raise
+        except httpx.ReadTimeout:
+            logger.error(f"Read timeout accessing Google Drive API: {url}")
+            raise
+        except httpx.HTTPStatusError as e:
+            logger.error(f"HTTP status error {e.response.status_code} from Google Drive API: {url}")
+            raise
+        except httpx.HTTPError as e:
+            logger.error(f"HTTP error when accessing Google Drive API: {url}, {str(e)}")
+            raise
+        except Exception as e:
+            logger.error(f"Unexpected error accessing Google Drive API: {url}, {str(e)}")
+            raise
 
     async def _list_drives(self, client: httpx.AsyncClient) -> AsyncGenerator[Dict, None]:
         """List all shared drives (Drive objects) using pagination.
@@ -206,6 +235,10 @@ class GoogleDriveSource(BaseSource):
             client, corpora, include_all_drives, drive_id, context
         ):
             try:
+                # Check if file should be included based on exclusion patterns
+                if not await self._should_include_file(client, file_obj):
+                    continue  # Skip this file
+
                 # Get file entity (might be None for trashed files)
                 file_entity = self._build_file_entity(file_obj)
 
@@ -218,7 +251,6 @@ class GoogleDriveSource(BaseSource):
                     processed_entity = await self.process_file_entity(
                         file_entity=file_entity, access_token=self.access_token
                     )
-
                     yield processed_entity
                 else:
                     # This should never happen now that we return None for files without URLs
@@ -280,3 +312,94 @@ class GoogleDriveSource(BaseSource):
                     if stop_after_first_file and file_entity_count >= 4:
                         logger.info("Stopping after first file entity for testing purposes")
                         return
+
+    async def _get_file_path(self, client: httpx.AsyncClient, file_obj: Dict) -> str:
+        """Get full path of file by recursively fetching parent folders."""
+        path_parts = [file_obj.get("name", "")]
+        file_id = file_obj.get("id", "unknown")
+
+        logger.debug(f"Building path for file: {path_parts[0]} (ID: {file_id})")
+
+        # Get parents from file object
+        parents = file_obj.get("parents", [])
+        if not parents:
+            logger.debug(f"No parents found for file: {path_parts[0]}")
+            return path_parts[0]
+
+        # Start with the first parent
+        current_parent_id = parents[0]
+        logger.debug(f"Starting parent resolution with ID: {current_parent_id}")
+
+        # Limit recursion depth to avoid potential infinite loops
+        max_depth = 20
+        depth = 0
+
+        while current_parent_id and depth < max_depth:
+            depth += 1
+            try:
+                # Get folder information
+                folder_url = f"https://www.googleapis.com/drive/v3/files/{current_parent_id}"
+                folder_params = {"fields": "id,name,parents,mimeType"}
+                folder_data = await self._get_with_auth(client, folder_url, params=folder_params)
+
+                # If this is the root folder or My Drive, stop recursion
+                if folder_data.get("id") == "root" or not folder_data.get("parents"):
+                    path_parts.insert(0, folder_data.get("name", "") or "My Drive")
+                    break
+
+                # Add folder name to path
+                path_parts.insert(0, folder_data.get("name", ""))
+
+                # Move to parent folder
+                parents = folder_data.get("parents", [])
+                current_parent_id = parents[0] if parents else None
+
+            except Exception as e:
+                logger.error(f"Error retrieving parent folder {current_parent_id}: {str(e)}")
+                break
+
+        # Build path string
+        final_path = "/".join(path_parts)
+        logger.debug(f"Final path for {file_id}: {final_path}")
+        return final_path
+
+    async def _should_include_file(self, client: httpx.AsyncClient, file_obj: Dict) -> bool:
+        """Determine if a file should be included based on exclusion patterns."""
+        file_name = file_obj.get("name", "unknown")
+
+        # Get the full file path with async call
+        file_path = await self._get_file_path(client, file_obj)
+
+        # Log full path info for EVERY file - this makes debugging easier
+        logger.info(
+            f"FILE PATH: '{file_path}' (name: {file_name}, id: {file_obj.get('id', 'unknown')})"
+        )
+
+        # If no exclusion patterns, include everything
+        if not self.exclude_patterns:
+            logger.info(f"No exclusion patterns set, including file: {file_name}")
+            return True
+
+        # Check against each exclusion pattern
+        for pattern in self.exclude_patterns:
+            if self._path_matches_pattern(file_path, pattern):
+                logger.info(
+                    f"EXCLUDED: File '{file_name}' (path: {file_path}) matches "
+                    f"exclusion pattern '{pattern}'"
+                )
+                return False
+
+        logger.info(
+            f"INCLUDED: File '{file_name}' (path: {file_path}) doesn't match any exclusion patterns"
+        )
+        return True
+
+    def _path_matches_pattern(self, path: str, pattern: str) -> bool:
+        """Check if a path matches a pattern using glob-style matching."""
+        import fnmatch
+
+        match_result = fnmatch.fnmatch(path, pattern)
+        logger.debug(
+            f"Pattern match check: path '{path}' against pattern '{pattern}' -> {match_result}"
+        )
+        return match_result

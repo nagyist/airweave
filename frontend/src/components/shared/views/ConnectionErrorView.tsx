@@ -16,7 +16,7 @@ import { Button } from "@/components/ui/button";
 import { RefreshCw, Copy, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useTheme } from "@/lib/theme-provider";
-import { DialogViewProps } from "../FlowDialog";
+import { DialogViewProps } from "../DialogFlow";
 import { getAppIconUrl } from "@/lib/utils/icons";
 
 /**
@@ -35,6 +35,8 @@ export interface ConnectionErrorViewProps extends DialogViewProps {
         errorDetails?: string;
         /** Optional function to retry the failed operation */
         retryAction?: () => void;
+        /** Indicates if retry is possible */
+        canRetry?: boolean;
     };
 }
 
@@ -53,11 +55,12 @@ export const ConnectionErrorView: React.FC<ConnectionErrorViewProps> = ({
 
     // Destructure error information from viewData
     const {
-        serviceName = "Asana",
-        sourceShortName = serviceName?.toLowerCase() || "the-service",
+        serviceName = "Unknown service",
+        sourceShortName = serviceName?.toLowerCase() || "unknown-service",
         errorMessage = "Connection failed",
         errorDetails,
-        retryAction
+        retryAction,
+        canRetry
     } = viewData || {};
 
     // Log when this component is rendered with data
@@ -65,27 +68,56 @@ export const ConnectionErrorView: React.FC<ConnectionErrorViewProps> = ({
         console.log("🔔 [ConnectionErrorView] Rendered with data:", {
             serviceName,
             sourceShortName,
-            errorMessage,
+            errorMessage: errorMessage?.substring(0, 100), // Truncate for logging
             hasErrorDetails: !!errorDetails,
+            errorDetailsLength: errorDetails?.length,
             hasRetryAction: !!retryAction
         });
     }, [serviceName, sourceShortName, errorMessage, errorDetails, retryAction]);
 
-    // Format technical details for display
-    const formattedDetails = errorDetails ? (
-        typeof errorDetails === 'string' ? errorDetails : JSON.stringify(errorDetails, null, 2)
-    ) : null;
+    // Format error details section to handle nested JSON strings
+    let displayedDetails = errorDetails;
+    if (errorDetails && typeof errorDetails === 'string') {
+        // Extract JSON if the error is a stringified object
+        if (errorDetails.includes('{') && errorDetails.includes('}')) {
+            try {
+                // Try to extract JSON from error string (handles cases like "Error: {"detail":"..."}")
+                const jsonStart = errorDetails.indexOf('{');
+                const jsonEnd = errorDetails.lastIndexOf('}') + 1;
+                if (jsonStart > -1 && jsonEnd > jsonStart) {
+                    const jsonStr = errorDetails.substring(jsonStart, jsonEnd);
+                    const parsed = JSON.parse(jsonStr);
+                    // Display the detail from JSON if available
+                    if (parsed.detail) {
+                        displayedDetails = parsed.detail;
+                    }
+                }
+            } catch (e) {
+                console.warn("Could not parse error JSON:", e);
+                // Fall back to the original error details
+                displayedDetails = errorDetails;
+            }
+        }
+    }
 
     // Copy technical details to clipboard
     const handleCopyDetails = () => {
-        if (formattedDetails) {
-            navigator.clipboard.writeText(formattedDetails);
+        if (displayedDetails) {
+            navigator.clipboard.writeText(displayedDetails);
             setIsDetailsCopied(true);
 
             // Reset after animation completes
             setTimeout(() => {
                 setIsDetailsCopied(false);
             }, 1500);
+        }
+    };
+
+    // IMPORTANT: We do NOT clear error state on component mount
+    // Only clear it when the user clicks the "Go back" button
+    const handleCancel = () => {
+        if (onCancel) {
+            onCancel();
         }
     };
 
@@ -141,7 +173,7 @@ export const ConnectionErrorView: React.FC<ConnectionErrorViewProps> = ({
                     )}>
                         <p className="font-medium mb-3 text-base">Error: {errorMessage}</p>
 
-                        {formattedDetails && (
+                        {displayedDetails && (
                             <div className="mt-1 pt-3 border-t border-gray-700 flex-grow flex flex-col">
                                 <div className="flex items-center justify-between mb-2">
                                     <p className="text-xs text-gray-400 font-medium">Technical details:</p>
@@ -168,7 +200,7 @@ export const ConnectionErrorView: React.FC<ConnectionErrorViewProps> = ({
                                         "text-xs p-4 bg-black/50 overflow-y-auto whitespace-pre-wrap break-words",
                                         "h-full min-h-[120px] flex-grow"
                                     )}>
-                                        {formattedDetails}
+                                        {displayedDetails}
                                     </pre>
                                 </div>
                             </div>
@@ -182,7 +214,7 @@ export const ConnectionErrorView: React.FC<ConnectionErrorViewProps> = ({
                 <DialogFooter className="flex justify-between p-6">
                     <Button
                         variant="outline"
-                        onClick={onCancel}
+                        onClick={handleCancel}
                         className={cn(
                             isDark ? "border-gray-700 hover:bg-gray-800" : "border-gray-300 hover:bg-gray-100"
                         )}
@@ -190,10 +222,11 @@ export const ConnectionErrorView: React.FC<ConnectionErrorViewProps> = ({
                         Go back
                     </Button>
 
-                    {retryAction && (
+                    {(retryAction || canRetry === true) && (
                         <Button
-                            onClick={retryAction}
+                            onClick={retryAction || (() => console.log("No retry action defined"))}
                             className="bg-blue-600 hover:bg-blue-700 text-white"
+                            disabled={!retryAction && canRetry}
                         >
                             <RefreshCw className="mr-2 h-4 w-4" />
                             Try again

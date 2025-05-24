@@ -72,21 +72,27 @@ if docker compose version >/dev/null 2>&1; then
 # Else, fall back to "docker-compose" (Docker Compose v1)
 elif docker-compose --version >/dev/null 2>&1; then
   COMPOSE_CMD="docker-compose"
+elif podman-compose --version > /dev/null 2>&1; then
+  COMPOSE_CMD="podman-compose"
 else
-  echo "Neither 'docker compose' nor 'docker-compose' found. Please install Docker Compose."
+  echo "Neither 'docker compose', 'docker-compose', nor 'podman-compose' found. Please install Docker Compose."
   exit 1
 fi
 
 # Add this block: Check if Docker daemon is running
-if ! docker info > /dev/null 2>&1; then
-  echo "Error: Docker daemon is not running. Please start Docker and try again."
-  exit 1
+if docker info > /dev/null 2>&1; then
+    CONTAINER_CMD="docker"
+elif podman info > /dev/null 2>&1; then
+    CONTAINER_CMD="podman"
+else
+    echo "Error: Docker daemon is not running. Please start Docker and try again."
+    exit 1
 fi
 
-echo "Using command: $COMPOSE_CMD"
+echo "Using commands: ${CONTAINER_CMD} and ${COMPOSE_CMD}"
 
 # Check for existing airweave containers
-EXISTING_CONTAINERS=$(docker ps -a --filter "name=airweave" --format "{{.Names}}" | tr '\n' ' ')
+EXISTING_CONTAINERS=$(${CONTAINER_CMD} ps -a --filter "name=airweave" --format "{{.Names}}" | tr '\n' ' ')
 
 if [ -n "$EXISTING_CONTAINERS" ]; then
   echo "Found existing airweave containers: $EXISTING_CONTAINERS"
@@ -94,11 +100,11 @@ if [ -n "$EXISTING_CONTAINERS" ]; then
 
   if [ "$REMOVE_CONTAINERS" = "y" ] || [ "$REMOVE_CONTAINERS" = "Y" ]; then
     echo "Removing existing containers..."
-    docker rm -f $EXISTING_CONTAINERS
+    ${CONTAINER_CMD} rm -f $EXISTING_CONTAINERS
 
     # Also remove the database volume
     echo "Removing database volume..."
-    docker volume rm airweave_postgres_data
+    ${CONTAINER_CMD} volume rm airweave_postgres_data
 
     echo "Containers and volumes removed."
   else

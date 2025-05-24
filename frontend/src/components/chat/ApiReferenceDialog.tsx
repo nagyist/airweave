@@ -131,7 +131,6 @@ searchWithMCP();`;
         </DialogHeader>
 
         <div className="space-y-6 py-4 max-h-[70vh] overflow-y-auto">
-          {/* Tabs - styled like SyncTableView.tsx */}
           <div className="flex space-x-1 p-1 rounded-md mb-4 w-fit">
             <Button
               variant={apiDialogTab === "rest" ? "default" : "ghost"}

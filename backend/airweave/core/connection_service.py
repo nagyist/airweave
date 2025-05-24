@@ -1,6 +1,6 @@
 """Service layer for managing connections to external services."""
 
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, Optional
 from uuid import UUID
 
 import httpx
@@ -15,10 +15,7 @@ from airweave.core.logging import logger
 from airweave.core.shared_models import ConnectionStatus, SyncStatus
 from airweave.db.unit_of_work import UnitOfWork
 from airweave.models.integration_credential import IntegrationType
-from airweave.platform.auth.schemas import AuthType, OAuth2TokenResponse
-from airweave.platform.auth.services import oauth2_service
-from airweave.platform.auth.settings import integration_settings
-from airweave.platform.locator import resource_locator
+from airweave.platform.auth.schemas import AuthType
 from airweave.schemas.connection import ConnectionCreate
 
 connection_logger = logger.with_prefix("Connection Service: ").with_context(
@@ -88,233 +85,176 @@ class ConnectionService:
             db, integration_type=integration_type, organization_id=user.organization_id
         )
 
-    async def connect_with_config(
-        self,
-        db: AsyncSession,
-        integration_type: IntegrationType,
-        short_name: str,
-        name: Optional[str],
-        auth_fields: Dict[str, Any],
-        user: schemas.User,
-    ) -> schemas.Connection:
-        """Connect to a service using authentication fields.
+    # async def connect_with_config(
+    #     self,
+    #     db: AsyncSession,
+    #     integration_type: IntegrationType,
+    #     short_name: str,
+    #     name: Optional[str],
+    #     auth_fields: Dict[str, Any],
+    #     user: schemas.User,
+    # ) -> schemas.Connection:
+    #     """Connect to a service using authentication fields.
 
-        Args:
-            db: The database session
-            integration_type: The type of integration
-            short_name: The short name of the integration
-            name: The name of the connection
-            auth_fields: The authentication fields
-            user: The current user
+    #     Args:
+    #         db: The database session
+    #         integration_type: The type of integration
+    #         short_name: The short name of the integration
+    #         name: The name of the connection
+    #         auth_fields: The authentication fields
+    #         user: The current user
 
-        Returns:
-            The created connection
+    #     Returns:
+    #         The created connection
 
-        Raises:
-            HTTPException: If the integration is not found or doesn't support config fields
-        """
-        async with UnitOfWork(db) as uow:
-            integration = await self._get_integration_by_type(
-                uow.session, integration_type, short_name
-            )
+    #     Raises:
+    #         HTTPException: If the integration is not found or doesn't support config fields
+    #     """
+    #     async with UnitOfWork(db) as uow:
+    #         integration = await self._get_integration_by_type(
+    #             uow.session, integration_type, short_name
+    #         )
 
-            if not integration:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"{integration_type} with short_name '{short_name}' does not exist",
-                )
+    #         if not integration:
+    #             raise HTTPException(
+    #                 status_code=400,
+    #                 detail=f"{integration_type} with short_name '{short_name}' does not exist",
+    #             )
 
-            # For AuthType.none sources, we don't need integration credentials
-            if integration.auth_type == AuthType.none or integration.auth_type is None:
-                connection = await self._create_connection_without_credential(
-                    uow=uow,
-                    integration_type=integration_type,
-                    short_name=short_name,
-                    name=name,
-                    integration_name=integration.name,
-                    user=user,
-                )
-                await uow.commit()
-                await uow.session.refresh(connection)
-                return connection
+    #         # For AuthType.none sources, we don't need integration credentials
+    #         if integration.auth_type == AuthType.none or integration.auth_type is None:
+    #             connection = await self._create_connection_without_credential(
+    #                 uow=uow,
+    #                 integration_type=integration_type,
+    #                 short_name=short_name,
+    #                 name=name,
+    #                 integration_name=integration.name,
+    #                 user=user,
+    #             )
+    #             await uow.commit()
+    #             await uow.session.refresh(connection)
+    #             return connection
 
-            # For config_class auth type, validate config fields
-            if integration.auth_type == AuthType.config_class:
-                if not integration.auth_config_class:
-                    raise HTTPException(
-                        status_code=400,
-                        detail=f"Integration {integration.name} does not have an auth config class",
-                    )
-                # Create and validate auth config
-                auth_config_class = resource_locator.get_auth_config(integration.auth_config_class)
-                auth_config = auth_config_class(**auth_fields)
-                encrypted_creds = credentials.encrypt(auth_config.model_dump())
+    #         # For config_class auth type, validate config fields
+    #         if integration.auth_type == AuthType.config_class:
+    #             if not integration.auth_config_class:
+    #                 raise HTTPException(
+    #                     status_code=400,
+    #                     detail=(
+    #                         f"Integration {integration.name} does not have an auth config class"
+    #                     ),
+    #                 )
+    #             # Create and validate auth config
+    #             auth_config_class = resource_locator.get_auth_config(
+    #                 integration.auth_config_class
+    #             )
+    #             auth_config = auth_config_class(**auth_fields)
+    #             encrypted_creds = credentials.encrypt(auth_config.model_dump())
 
-                # Create the connection with credentials
-                connection = await self._create_connection_with_credential(
-                    uow=uow,
-                    integration_type=integration_type,
-                    short_name=short_name,
-                    name=name,
-                    integration_name=integration.name,
-                    auth_type=integration.auth_type,
-                    encrypted_credentials=encrypted_creds,
-                    auth_config_class=integration.auth_config_class,
-                    user=user,
-                )
-                await uow.commit()
-                await uow.session.refresh(connection)
-                return connection
-            else:
-                raise HTTPException(
-                    status_code=400,
-                    detail=(
-                        f"Integration {integration.name} does not support config fields, "
-                        "use the UI to connect"
-                    ),
-                )
+    #             # Create the connection with credentials
+    #             connection = await self._create_connection_with_credential(
+    #                 uow=uow,
+    #                 integration_type=integration_type,
+    #                 short_name=short_name,
+    #                 name=name,
+    #                 integration_name=integration.name,
+    #                 auth_type=integration.auth_type,
+    #                 encrypted_credentials=encrypted_creds,
+    #                 auth_config_class=integration.auth_config_class,
+    #                 user=user,
+    #             )
+    #             await uow.commit()
+    #             await uow.session.refresh(connection)
+    #             return connection
+    #         else:
+    #             raise HTTPException(
+    #                 status_code=400,
+    #                 detail=(
+    #                     f"Integration {integration.name} does not support config fields, "
+    #                     "use the UI to connect"
+    #                 ),
+    #             )
 
-    async def get_oauth2_auth_url(
-        self, short_name: str, auth_fields: Optional[Dict[str, Any]] = None
-    ) -> str:
-        """Get the OAuth2 authorization URL for a source.
+    # async def get_oauth2_auth_url(
+    #     self, short_name: str, auth_fields: Optional[Dict[str, Any]] = None
+    # ) -> str:
+    #     """Get the OAuth2 authorization URL for a source.
 
-        Args:
-            short_name: The short name of the source
-            auth_fields: Optional authentication fields which may include client_id
+    #     Args:
+    #         short_name: The short name of the source
+    #         auth_fields: Optional authentication fields which may include client_id
 
-        Returns:
-            The OAuth2 authorization URL
+    #     Returns:
+    #         The OAuth2 authorization URL
 
-        Raises:
-            HTTPException: If the integration doesn't support OAuth2
-        """
-        settings = await integration_settings.get_by_short_name(short_name)
-        if not settings:
-            raise HTTPException(status_code=404, detail="Integration not found")
+    #     Raises:
+    #         HTTPException: If the integration doesn't support OAuth2
+    #     """
+    #     settings = await integration_settings.get_by_short_name(short_name)
+    #     if not settings:
+    #         raise HTTPException(status_code=404, detail="Integration not found")
 
-        if short_name == "trello":
-            return await oauth2_service.generate_auth_url_for_trello()
+    #     if short_name == "trello":
+    #         return await oauth2_service.generate_auth_url_for_trello()
 
-        if not self._supports_oauth2(settings.auth_type):
-            raise HTTPException(status_code=400, detail="Integration does not support OAuth2")
+    #     if not self._supports_oauth2(settings.auth_type):
+    #         raise HTTPException(status_code=400, detail="Integration does not support OAuth2")
 
-        return await oauth2_service.generate_auth_url(settings, auth_fields)
+    #     return await oauth2_service.generate_auth_url(settings, auth_fields)
 
-    async def connect_with_oauth2_code(
-        self,
-        db: AsyncSession,
-        short_name: str,
-        code: str,
-        user: schemas.User,
-        connection_name: Optional[str] = None,
-        auth_fields: Optional[dict] = None,
-    ) -> schemas.Connection:
-        """Create a connection using an OAuth2 code.
+    # async def connect_with_oauth2_code(
+    #     self,
+    #     db: AsyncSession,
+    #     short_name: str,
+    #     code: str,
+    #     user: schemas.User,
+    #     connection_name: Optional[str] = None,
+    #     auth_fields: Optional[dict] = None,
+    # ) -> schemas.Connection:
+    #     """Create a connection using an OAuth2 code.
 
-        Args:
-            db: The database session
-            short_name: The short name of the integration
-            code: The OAuth2 authorization code
-            user: The current user
-            connection_name: Optional custom name for the connection
-            auth_fields: Optional additional authentication fields for the connection
+    #     Args:
+    #         db: The database session
+    #         short_name: The short name of the integration
+    #         code: The OAuth2 authorization code
+    #         user: The current user
+    #         connection_name: Optional custom name for the connection
+    #         auth_fields: Optional additional authentication fields for the connection
 
-        Returns:
-            The created connection
+    #     Returns:
+    #         The created connection
 
-        Raises:
-            HTTPException: If code exchange fails
-        """
-        try:
-            # Exchange the authorization code for a token
-            oauth2_response = await oauth2_service.exchange_autorization_code_for_token(
-                short_name, code, auth_fields
-            )
+    #     Raises:
+    #         HTTPException: If code exchange fails
+    #     """
+    #     try:
+    #         # Exchange the authorization code for a token
+    #         oauth2_response = await oauth2_service.exchange_autorization_code_for_token(
+    #             short_name, code, auth_fields
+    #         )
 
-            # Get the source information
-            source = await crud.source.get_by_short_name(db, short_name)
-            if not source:
-                raise HTTPException(status_code=404, detail="Source not found")
+    #         # Get the source information
+    #         source = await crud.source.get_by_short_name(db, short_name)
+    #         if not source:
+    #             raise HTTPException(status_code=404, detail="Source not found")
 
-            # Get OAuth2 settings
-            settings = await integration_settings.get_by_short_name(short_name)
-            if not settings:
-                raise HTTPException(status_code=404, detail="Integration settings not found")
+    #         # Get OAuth2 settings
+    #         settings = await integration_settings.get_by_short_name(short_name)
+    #         if not settings:
+    #             raise HTTPException(status_code=404, detail="Integration settings not found")
 
-            return await self._create_oauth2_connection(
-                db=db,
-                source=source,
-                settings=settings,
-                oauth2_response=oauth2_response,
-                user=user,
-                connection_name=connection_name,
-                auth_fields=auth_fields,
-            )
-        except Exception as e:
-            connection_logger.error(f"Failed to exchange OAuth2 code: {e}")
-            raise HTTPException(status_code=400, detail="Failed to exchange OAuth2 code") from e
-
-    async def connect_with_white_label_oauth2_code(
-        self, db: AsyncSession, white_label_id: UUID, code: str, user: schemas.User
-    ) -> schemas.Connection:
-        """Connect using an OAuth2 code from a white label.
-
-        Args:
-            db: The database session
-            white_label_id: The ID of the white label
-            code: The OAuth2 code
-            user: The current user
-
-        Returns:
-            The created connection
-
-        Raises:
-            HTTPException: If white label is not found or code exchange fails
-        """
-        try:
-            white_label = await crud.white_label.get(db, id=white_label_id, current_user=user)
-            if not white_label:
-                raise HTTPException(status_code=404, detail="White label integration not found")
-
-            return await oauth2_service.create_oauth2_connection_for_whitelabel(
-                db=db, white_label=white_label, code=code, user=user
-            )
-        except HTTPException as e:
-            # Re-raise HTTPExceptions directly to preserve the status code
-            connection_logger.error(f"Failed to exchange OAuth2 code for white label: {e}")
-            raise
-        except Exception as e:
-            connection_logger.error(f"Failed to exchange OAuth2 code for white label: {e}")
-            raise HTTPException(
-                status_code=400, detail="Failed to exchange OAuth2 code for white label"
-            ) from e
-
-    async def get_white_label_oauth2_auth_url(
-        self, db: AsyncSession, white_label_id: UUID, user: schemas.User
-    ) -> str:
-        """Get the OAuth2 authorization URL for a white label integration.
-
-        Args:
-            db: The database session
-            white_label_id: The ID of the white label
-            user: The current user
-
-        Returns:
-            The OAuth2 authorization URL
-
-        Raises:
-            HTTPException: If white label is not found
-        """
-        try:
-            white_label = await crud.white_label.get(db, id=white_label_id, current_user=user)
-            if not white_label:
-                raise HTTPException(status_code=404, detail="White label integration not found")
-
-            return await oauth2_service.generate_auth_url_for_whitelabel(db, white_label)
-        except Exception as e:
-            connection_logger.error(f"Failed to generate auth URL for white label: {e}")
-            raise HTTPException(status_code=400, detail="Failed to generate auth URL") from e
+    #         return await self._create_oauth2_connection(
+    #             db=db,
+    #             source=source,
+    #             settings=settings,
+    #             oauth2_response=oauth2_response,
+    #             user=user,
+    #             connection_name=connection_name,
+    #             auth_fields=auth_fields,
+    #         )
+    #     except Exception as e:
+    #         connection_logger.error(f"Failed to exchange OAuth2 code: {e}")
+    #         raise HTTPException(status_code=400, detail="Failed to exchange OAuth2 code") from e
 
     async def connect_with_direct_token(
         self,
@@ -501,61 +441,61 @@ class ConnectionService:
 
     # Private helper methods
 
-    async def _get_integration_by_type(
-        self, db: AsyncSession, integration_type: IntegrationType, short_name: str
-    ) -> Union[schemas.Source, schemas.Destination, schemas.EmbeddingModel, None]:
-        """Get integration based on its type.
+    # async def _get_integration_by_type(
+    #     self, db: AsyncSession, integration_type: IntegrationType, short_name: str
+    # ) -> Union[schemas.Source, schemas.Destination, schemas.EmbeddingModel, None]:
+    #     """Get integration based on its type.
 
-        Args:
-            db: The database session
-            integration_type: The type of integration
-            short_name: The short name of the integration
+    #     Args:
+    #         db: The database session
+    #         integration_type: The type of integration
+    #         short_name: The short name of the integration
 
-        Returns:
-            The integration or None if not found
-        """
-        if integration_type == IntegrationType.SOURCE:
-            return await crud.source.get_by_short_name(db, short_name)
-        elif integration_type == IntegrationType.DESTINATION:
-            return await crud.destination.get_by_short_name(db, short_name)
-        elif integration_type == IntegrationType.EMBEDDING_MODEL:
-            return await crud.embedding_model.get_by_short_name(db, short_name)
-        return None
+    #     Returns:
+    #         The integration or None if not found
+    #     """
+    #     if integration_type == IntegrationType.SOURCE:
+    #         return await crud.source.get_by_short_name(db, short_name)
+    #     elif integration_type == IntegrationType.DESTINATION:
+    #         return await crud.destination.get_by_short_name(db, short_name)
+    #     elif integration_type == IntegrationType.EMBEDDING_MODEL:
+    #         return await crud.embedding_model.get_by_short_name(db, short_name)
+    #     return None
 
-    async def _create_connection_without_credential(
-        self,
-        uow: UnitOfWork,
-        integration_type: IntegrationType,
-        short_name: str,
-        name: Optional[str],
-        integration_name: str,
-        user: schemas.User,
-    ) -> schemas.Connection:
-        """Create a connection that doesn't require credentials.
+    # async def _create_connection_without_credential(
+    #     self,
+    #     uow: UnitOfWork,
+    #     integration_type: IntegrationType,
+    #     short_name: str,
+    #     name: Optional[str],
+    #     integration_name: str,
+    #     user: schemas.User,
+    # ) -> schemas.Connection:
+    #     """Create a connection that doesn't require credentials.
 
-        Args:
-            uow: The unit of work
-            integration_type: The type of integration
-            short_name: The short name of the integration
-            name: The name of the connection
-            integration_name: The name of the integration
-            user: The current user
+    #     Args:
+    #         uow: The unit of work
+    #         integration_type: The type of integration
+    #         short_name: The short name of the integration
+    #         name: The name of the connection
+    #         integration_name: The name of the integration
+    #         user: The current user
 
-        Returns:
-            The created connection
-        """
-        connection_data = {
-            "name": name if name else f"Connection to {integration_name}",
-            "integration_type": integration_type,
-            "status": ConnectionStatus.ACTIVE,
-            "integration_credential_id": None,
-            "short_name": short_name,
-        }
+    #     Returns:
+    #         The created connection
+    #     """
+    #     connection_data = {
+    #         "name": name if name else f"Connection to {integration_name}",
+    #         "integration_type": integration_type,
+    #         "status": ConnectionStatus.ACTIVE,
+    #         "integration_credential_id": None,
+    #         "short_name": short_name,
+    #     }
 
-        connection_in = ConnectionCreate(**connection_data)
-        return await crud.connection.create(
-            uow.session, obj_in=connection_in, current_user=user, uow=uow
-        )
+    #     connection_in = ConnectionCreate(**connection_data)
+    #     return await crud.connection.create(
+    #         uow.session, obj_in=connection_in, current_user=user, uow=uow
+    #     )
 
     async def _create_connection_with_credential(
         self,
@@ -615,73 +555,73 @@ class ConnectionService:
             uow.session, obj_in=connection_in, current_user=user, uow=uow
         )
 
-    async def _create_oauth2_connection(
-        self,
-        db: AsyncSession,
-        source: schemas.Source,
-        settings: Any,
-        oauth2_response: OAuth2TokenResponse,
-        user: schemas.User,
-        connection_name: Optional[str] = None,
-        auth_fields: Optional[dict] = None,
-    ) -> schemas.Connection:
-        """Create a connection with OAuth2 credentials.
+    # async def _create_oauth2_connection(
+    #     self,
+    #     db: AsyncSession,
+    #     source: schemas.Source,
+    #     settings: Any,
+    #     oauth2_response: OAuth2TokenResponse,
+    #     user: schemas.User,
+    #     connection_name: Optional[str] = None,
+    #     auth_fields: Optional[dict] = None,
+    # ) -> schemas.Connection:
+    #     """Create a connection with OAuth2 credentials.
 
-        Args:
-            db: The database session
-            source: The source
-            settings: The OAuth2 settings
-            oauth2_response: The OAuth2 token response
-            user: The current user
-            connection_name: Optional custom name for the connection
-            auth_fields: Optional additional authentication fields for the connection
+    #     Args:
+    #         db: The database session
+    #         source: The source
+    #         settings: The OAuth2 settings
+    #         oauth2_response: The OAuth2 token response
+    #         user: The current user
+    #         connection_name: Optional custom name for the connection
+    #         auth_fields: Optional additional authentication fields for the connection
 
-        Returns:
-            The created connection
-        """
-        # Get the credentials to store
-        credentials_data = oauth2_response.model_dump()
+    #     Returns:
+    #         The created connection
+    #     """
+    #     # Get the credentials to store
+    #     credentials_data = oauth2_response.model_dump()
 
-        # Store config fields in credentials if provided
-        if auth_fields:
-            for key, value in auth_fields.items():
-                if key not in credentials_data:
-                    credentials_data[key] = value
+    #     # Store config fields in credentials if provided
+    #     if auth_fields:
+    #         for key, value in auth_fields.items():
+    #             if key not in credentials_data:
+    #                 credentials_data[key] = value
 
-        encrypted_creds = credentials.encrypt(credentials_data)
+    #     encrypted_creds = credentials.encrypt(credentials_data)
 
-        async with UnitOfWork(db) as uow:
-            integration_cred_in = schemas.IntegrationCredentialCreateEncrypted(
-                name=f"{source.name} OAuth2 - {user.email}",
-                description=f"OAuth2 credentials for {source.name} - {user.email}",
-                integration_short_name=source.short_name,
-                integration_type=IntegrationType.SOURCE,
-                auth_type=source.auth_type,
-                encrypted_credentials=encrypted_creds,
-            )
+    #     async with UnitOfWork(db) as uow:
+    #         integration_cred_in = schemas.IntegrationCredentialCreateEncrypted(
+    #             name=f"{source.name} OAuth2 - {user.email}",
+    #             description=f"OAuth2 credentials for {source.name} - {user.email}",
+    #             integration_short_name=source.short_name,
+    #             integration_type=IntegrationType.SOURCE,
+    #             auth_type=source.auth_type,
+    #             encrypted_credentials=encrypted_creds,
+    #         )
 
-            integration_cred = await crud.integration_credential.create(
-                uow.session, obj_in=integration_cred_in, current_user=user, uow=uow
-            )
-            await uow.session.flush()
+    #         integration_cred = await crud.integration_credential.create(
+    #             uow.session, obj_in=integration_cred_in, current_user=user, uow=uow
+    #         )
+    #         await uow.session.flush()
 
-            # Create connection with credentials
-            connection_data = {
-                "name": connection_name if connection_name else f"Connection to {source.name}",
-                "integration_type": IntegrationType.SOURCE,
-                "status": ConnectionStatus.ACTIVE,
-                "integration_credential_id": integration_cred.id,
-                "short_name": source.short_name,
-            }
+    #         # Create connection with credentials
+    #         connection_data = {
+    #             "name": connection_name if connection_name else f"Connection to {source.name}",
+    #             "integration_type": IntegrationType.SOURCE,
+    #             "status": ConnectionStatus.ACTIVE,
+    #             "integration_credential_id": integration_cred.id,
+    #             "short_name": source.short_name,
+    #         }
 
-            connection_in = ConnectionCreate(**connection_data)
-            connection = await crud.connection.create(
-                uow.session, obj_in=connection_in, current_user=user, uow=uow
-            )
+    #         connection_in = ConnectionCreate(**connection_data)
+    #         connection = await crud.connection.create(
+    #             uow.session, obj_in=connection_in, current_user=user, uow=uow
+    #         )
 
-            await uow.commit()
-            await uow.session.refresh(connection)
-            return connection
+    #         await uow.commit()
+    #         await uow.session.refresh(connection)
+    #         return connection
 
     async def _validate_slack_token(self, token: str, name: Optional[str]) -> str:
         """Validate a Slack token by making a test API call.
@@ -727,6 +667,161 @@ class ConnectionService:
             AuthType.oauth2_with_refresh,
             AuthType.oauth2_with_refresh_rotating,
         )
+
+    async def create_integration_credential(
+        self,
+        db: AsyncSession,
+        integration_type: IntegrationType,
+        short_name: str,
+        credential_in: schemas.IntegrationCredentialRawCreate,
+        user: schemas.User,
+    ) -> schemas.IntegrationCredentialInDB:
+        """Create an integration credential with validation.
+
+        Args:
+            db: The database session
+            integration_type: Type of integration
+            short_name: Short name of the integration
+            credential_in: The credential data with auth fields
+            user: The current user
+
+        Returns:
+            The created integration credential with ID
+
+        Raises:
+            HTTPException: If validation fails or integration not found
+        """
+        # Get the integration based on type
+        integration = None
+        auth_type = None
+        auth_config_class = None
+
+        if integration_type == IntegrationType.SOURCE:
+            integration = await crud.source.get_by_short_name(db, short_name=short_name)
+            if integration:
+                auth_type = integration.auth_type
+                auth_config_class = integration.auth_config_class
+        elif integration_type == IntegrationType.DESTINATION:
+            integration = await crud.destination.get_by_short_name(db, short_name=short_name)
+            if integration:
+                auth_type = integration.auth_type
+                auth_config_class = integration.auth_config_class
+        elif integration_type == IntegrationType.EMBEDDING_MODEL:
+            integration = await crud.embedding_model.get_by_short_name(db, short_name=short_name)
+            if integration:
+                auth_type = integration.auth_type
+                auth_config_class = integration.auth_config_class
+
+        if not integration:
+            raise HTTPException(
+                status_code=404, detail=f"Integration not found: {integration_type} {short_name}"
+            )
+
+        # Check if auth config class is defined
+        BASE_ERROR_MESSAGE = (
+            f"See https://docs.airweave.ai/docs/connectors/{short_name}#authentication "
+            f"for more information."
+        )
+
+        if not auth_config_class:
+            error_msg = (
+                f"{integration_type} {short_name} does not have an auth configuration defined."
+            )
+            raise HTTPException(
+                status_code=422,
+                detail=error_msg + BASE_ERROR_MESSAGE,
+            )
+
+        # Validate auth fields
+        validated_auth_fields = None
+        try:
+            from airweave.platform.locator import resource_locator
+
+            auth_config_class_obj = resource_locator.get_auth_config(auth_config_class)
+            auth_config = auth_config_class_obj(**credential_in.auth_fields)
+            validated_auth_fields = auth_config.model_dump()
+        except Exception as e:
+            connection_logger.error(f"Failed to validate auth fields: {e}")
+            self._handle_validation_error(e, auth_config_class, BASE_ERROR_MESSAGE)
+
+        # Encrypt the validated auth fields
+        encrypted_credentials = credentials.encrypt(validated_auth_fields)
+
+        # Create the integration credential
+        return await self._create_credential_in_db(
+            db,
+            credential_in,
+            integration,
+            integration_type,
+            short_name,
+            auth_type,
+            encrypted_credentials,
+            auth_config_class,
+            user,
+        )
+
+    def _handle_validation_error(self, error, auth_config_class, base_error_message):
+        """Handle validation errors for auth fields."""
+        from pydantic import ValidationError
+
+        if isinstance(error, ValidationError):
+            # Extract the field names and error messages
+            error_messages = []
+            for err in error.errors():
+                field = ".".join(str(loc) for loc in err.get("loc", []))
+                msg = err.get("msg", "")
+                error_messages.append(f"Field '{field}': {msg}")
+
+            error_detail = f"Invalid configuration for {auth_config_class}:\n" + "\n".join(
+                error_messages
+            )
+            raise HTTPException(
+                status_code=422,
+                detail=f"Invalid auth fields: {error_detail}. " + base_error_message,
+            ) from error
+        else:
+            # For other types of errors
+            raise HTTPException(
+                status_code=422,
+                detail=f"Invalid auth fields: {str(error)}. " + base_error_message,
+            ) from error
+
+    async def _create_credential_in_db(
+        self,
+        db,
+        credential_in,
+        integration,
+        integration_type,
+        short_name,
+        auth_type,
+        encrypted_credentials,
+        auth_config_class,
+        user,
+    ):
+        """Create the integration credential in the database."""
+        async with UnitOfWork(db) as uow:
+            integration_cred_in = schemas.IntegrationCredentialCreateEncrypted(
+                name=credential_in.name,
+                description=credential_in.description
+                or f"Credentials for {integration.name} - {user.email}",
+                integration_short_name=short_name,
+                integration_type=integration_type,
+                auth_type=auth_type,
+                encrypted_credentials=encrypted_credentials,
+                auth_config_class=auth_config_class,
+            )
+
+            integration_credential = await crud.integration_credential.create(
+                uow.session, obj_in=integration_cred_in, current_user=user, uow=uow
+            )
+
+            await uow.commit()
+            await uow.session.refresh(integration_credential)
+
+            # Get the schema model from the database object and return
+            return schemas.IntegrationCredentialInDB.model_validate(
+                integration_credential, from_attributes=True
+            )
 
 
 connection_service = ConnectionService()

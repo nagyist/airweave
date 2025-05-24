@@ -1,6 +1,6 @@
 """Trello source implementation."""
 
-from typing import AsyncGenerator, Dict, List, Optional
+from typing import Any, AsyncGenerator, Dict, List, Optional
 
 import httpx
 
@@ -18,7 +18,14 @@ from airweave.platform.entities.trello import (
 from airweave.platform.sources._base import BaseSource
 
 
-@source("Trello", "trello", AuthType.trello_auth, labels=["Project Management"])
+@source(
+    name="Trello",
+    short_name="trello",
+    auth_type=AuthType.trello_auth,
+    auth_config_class="TrelloAuthConfig",
+    config_class="TrelloConfig",
+    labels=["Project Management"],
+)
 class TrelloSource(BaseSource):
     """Trello source implementation.
 
@@ -32,7 +39,9 @@ class TrelloSource(BaseSource):
     TRELLO_API_BASE = "https://api.trello.com/1"
 
     @classmethod
-    async def create(cls, access_token: str) -> "TrelloSource":
+    async def create(
+        cls, access_token: str, config: Optional[Dict[str, Any]] = None
+    ) -> "TrelloSource":
         """Create a new Trello source instance."""
         instance = cls()
         instance.access_token = access_token

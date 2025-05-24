@@ -18,7 +18,7 @@ References:
   https://developer.zendesk.com/api-reference/ticketing/tickets/ticket_comments/
 """
 
-from typing import AsyncGenerator, Dict
+from typing import Any, AsyncGenerator, Dict, Optional
 
 import httpx
 
@@ -34,7 +34,14 @@ from airweave.platform.entities.zendesk import (
 from airweave.platform.sources._base import BaseSource
 
 
-@source("Zendesk", "zendesk", AuthType.oauth2_with_refresh, labels=["Customer Service", "Support"])
+@source(
+    name="Zendesk",
+    short_name="zendesk",
+    auth_type=AuthType.oauth2_with_refresh,
+    auth_config_class="ZenDeskAuthConfig",
+    config_class="ZenDeskConfig",
+    labels=["Customer Service", "Support"],
+)
 class ZendeskSource(BaseSource):
     """Zendesk source implementation (read-only).
 
@@ -49,7 +56,9 @@ class ZendeskSource(BaseSource):
     """
 
     @classmethod
-    async def create(cls, access_token: str) -> "ZendeskSource":
+    async def create(
+        cls, access_token: str, config: Optional[Dict[str, Any]] = None
+    ) -> "ZendeskSource":
         """Create a new Zendesk source instance."""
         instance = cls()
         instance.access_token = access_token

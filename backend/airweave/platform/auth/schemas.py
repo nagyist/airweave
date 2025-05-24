@@ -161,3 +161,14 @@ class ConfigClassAuthSettings(BaseAuthSettings):
     """Config class authentication settings schema."""
 
     pass
+
+
+class OAuth2AuthUrl(BaseModel):
+    """OAuth2 authorization URL schema.
+
+    Attributes:
+    ----------
+        url (str): The authorization URL.
+    """
+
+    url: str

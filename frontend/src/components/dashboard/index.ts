@@ -11,5 +11,3 @@ export * from './CollectionCard';
 export * from './SourceButton';
 export * from './ApiKeyCard';
 export * from './ExampleProjectCard';
-
-export { ConnectFlow } from '@/components/shared';

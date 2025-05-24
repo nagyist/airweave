@@ -24,6 +24,7 @@ class SyncJobBase(BaseModel):
     completed_at: Optional[datetime] = None
     failed_at: Optional[datetime] = None
     error: Optional[str] = None
+    access_token: Optional[str] = None
 
     class Config:
         """Pydantic config for SyncJobBase."""

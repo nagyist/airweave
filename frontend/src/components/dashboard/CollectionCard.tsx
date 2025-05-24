@@ -1,25 +1,17 @@
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { Eye, ExternalLink, Plus } from "lucide-react";
+import { Eye, ExternalLink, Plus, Loader2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { getAppIconUrl } from "@/lib/utils/icons";
 import { useTheme } from "@/lib/theme-provider";
 import { cn } from "@/lib/utils";
 import { StatusBadge } from "@/components/ui/StatusBadge";
-
-// Interface for source connections
-interface SourceConnection {
-  id: string;
-  name: string;
-  short_name: string;
-  collection: string;
-  status?: string;
-}
+import { useCollectionsStore, SourceConnection } from "@/lib/stores";
 
 interface CollectionCardProps {
   id: string;
   name: string;
   readableId: string;
-  sourceConnections: SourceConnection[];
   status?: string;
   onClick?: () => void;
 }
@@ -28,12 +20,40 @@ export const CollectionCard = ({
   id,
   name,
   readableId,
-  sourceConnections = [],
   status = "active",
   onClick,
 }: CollectionCardProps) => {
   const navigate = useNavigate();
   const { resolvedTheme } = useTheme();
+  const { fetchSourceConnections, sourceConnections } = useCollectionsStore();
+  const [isLoadingConnections, setIsLoadingConnections] = useState(false);
+
+  // Fetch source connections for this collection when the component mounts
+  useEffect(() => {
+    const loadSourceConnections = async () => {
+      if (sourceConnections[readableId]) {
+        // Already have the source connections in the store
+        return;
+      }
+
+      // Set loading state
+      setIsLoadingConnections(true);
+
+      try {
+        // Fetch source connections from the store (which will cache them)
+        await fetchSourceConnections(readableId);
+      } catch (error) {
+        console.error(`Error fetching source connections for ${readableId}:`, error);
+      } finally {
+        setIsLoadingConnections(false);
+      }
+    };
+
+    loadSourceConnections();
+  }, [readableId, fetchSourceConnections, sourceConnections]);
+
+  // Get connections for this collection from the store
+  const collectionSourceConnections = sourceConnections[readableId] || [];
 
   const handleClick = () => {
     if (onClick) {
@@ -89,21 +109,25 @@ export const CollectionCard = ({
           </Button>
 
           {/* Source connection icons */}
-          {sourceConnections.length > 0 ? (
-            sourceConnections.length === 1 ? (
+          {isLoadingConnections ? (
+            <div className="h-10 w-10 rounded-lg flex items-center justify-center">
+              <Loader2 className="h-5 w-5 text-slate-400 animate-spin" />
+            </div>
+          ) : collectionSourceConnections.length > 0 ? (
+            collectionSourceConnections.length === 1 ? (
               <div className="flex items-center justify-center">
-                <div className="h-12 w-12 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-1 flex items-center justify-center overflow-hidden">
+                <div className="h-10 w-10 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-1 flex items-center justify-center overflow-hidden">
                   <img
-                    src={getAppIconUrl(sourceConnections[0].short_name, resolvedTheme)}
-                    alt={sourceConnections[0].name}
+                    src={getAppIconUrl(collectionSourceConnections[0].short_name, resolvedTheme)}
+                    alt={collectionSourceConnections[0].name}
                     className="h-full w-full object-contain"
                   />
                 </div>
               </div>
             ) : (
               <div className="flex items-center">
-                <div className="flex -space-x-1">
-                  {sourceConnections.slice(0, 2).map((connection, index) => (
+                <div className="flex -space-x-2">
+                  {collectionSourceConnections.slice(0, 2).map((connection, index) => (
                     <div
                       key={connection.id}
                       className="h-10 w-10 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-1.5 flex items-center justify-center overflow-hidden"
@@ -117,9 +141,9 @@ export const CollectionCard = ({
                     </div>
                   ))}
                 </div>
-                {sourceConnections.length > 2 && (
+                {collectionSourceConnections.length > 2 && (
                   <div className="ml-1 text-xs font-medium text-slate-500 dark:text-slate-400">
-                    +{sourceConnections.length - 2}
+                    +{collectionSourceConnections.length - 2}
                   </div>
                 )}
               </div>

@@ -1,6 +1,6 @@
 """Intercom source implementation."""
 
-from typing import AsyncGenerator, Dict, Optional
+from typing import Any, AsyncGenerator, Dict, Optional
 
 import httpx
 
@@ -16,7 +16,14 @@ from airweave.platform.entities.intercom import (
 from airweave.platform.sources._base import BaseSource
 
 
-@source("Intercom", "intercom", AuthType.oauth2, labels=["Customer Service", "Support"])
+@source(
+    name="Intercom",
+    short_name="intercom",
+    auth_type=AuthType.oauth2,
+    auth_config_class="IntercomAuthConfig",
+    config_class="IntercomConfig",
+    labels=["Customer Service", "Support"],
+)
 class IntercomSource(BaseSource):
     """Intercom source implementation.
 
@@ -26,7 +33,9 @@ class IntercomSource(BaseSource):
     """
 
     @classmethod
-    async def create(cls, access_token: str) -> "IntercomSource":
+    async def create(
+        cls, access_token: str, config: Optional[Dict[str, Any]] = None
+    ) -> "IntercomSource":
         """Create a new Intercom source instance."""
         instance = cls()
         instance.access_token = access_token

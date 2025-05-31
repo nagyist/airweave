@@ -18,7 +18,7 @@
             "console": "integratedTerminal",
             "jinja": true,
             "justMyCode": true,
-            "preLaunchTask": "start-docker-services",
+            "preLaunchTask": "start-docker-and-restart-temporal",
             "envFile": "${workspaceFolder}/.env",
             "env": {
                 "LOCAL_DEVELOPMENT": "true"

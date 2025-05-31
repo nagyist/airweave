@@ -77,10 +77,6 @@ navigation:
       path: docs/pages/connectors/stripe/main.mdx
     - page: Todoist
       path: docs/pages/connectors/todoist/main.mdx
-    - page: Trello
-      path: docs/pages/connectors/trello/main.mdx
-    - page: Zendesk
-      path: docs/pages/connectors/zendesk/main.mdx
 - api: API Reference
   snippets:
     python: airweave-sdk

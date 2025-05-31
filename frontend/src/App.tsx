@@ -1,68 +1,57 @@
-import { Route, Routes } from "react-router-dom";
-import { Toaster } from "@/components/ui/toaster";
-import Dashboard from "@/pages/Dashboard";
-import DashboardLayout from "@/components/DashboardLayout";
-import WhiteLabel from "@/pages/WhiteLabel";
-import CreateWhiteLabel from "@/pages/CreateWhiteLabel";
-import { NotFound } from "@/pages/NotFound";
-import SyncTableView from "@/pages/SyncTableView";
-import Destinations from "@/pages/Destinations";
-import Profile from "@/pages/Profile";
-import Chat from "@/pages/Chat";
-import { AuthCallback } from "./pages/AuthCallback";
-import ViewEditWhiteLabel from "./pages/ViewEditWhiteLabel";
-import { LoginPage } from "./pages/LoginPage";
-import { CallbackPage } from "./pages/CallbackPage";
-import { AuthGuard } from "./components/AuthGuard";
-import CollectionsView from "./pages/CollectionsView";
-import CollectionDetailView from "./pages/CollectionDetailView";
-import { CollectionsProvider } from "./lib/collectionsContext";
+import { useEffect } from 'react';
+import { ThemeProvider } from '@/lib/theme-provider';
+import { Routes, Route } from 'react-router-dom';
+import { Toaster } from '@/components/ui/toaster';
+
+import DashboardLayout from '@/components/DashboardLayout';
+import Dashboard from '@/pages/Dashboard';
+import CollectionDetailView from "@/pages/CollectionDetailView";
+import CollectionsView from "@/pages/CollectionsView";
+import Chat from '@/pages/Chat';
+import WhiteLabel from '@/pages/WhiteLabel';
+import CreateWhiteLabel from '@/pages/CreateWhiteLabel';
+import WhiteLabelDetail from '@/pages/WhiteLabelDetail';
+import WhiteLabelEdit from '@/pages/WhiteLabelEdit';
+import { useCollectionsStore } from '@/lib/stores';
+import { NotFound } from '@/pages/NotFound';
+import { AuthGuard } from '@/components/AuthGuard';
+import Login from '@/pages/Login';
+import Callback from '@/pages/Callback';
+import { protectedPaths, publicPaths } from '@/constants/paths';
+import { AuthCallback } from '@/pages/AuthCallback';
 
 function App() {
+  // Initialize collections event listeners when the app loads
+  useEffect(() => {
+    const unsubscribe = useCollectionsStore.getState().subscribeToEvents();
+    return unsubscribe;
+  }, []);
+
   return (
-    <CollectionsProvider>
+    <ThemeProvider defaultTheme="dark" storageKey="airweave-ui-theme">
       <Routes>
-        <Route
-          element={
-            <AuthGuard>
-              <DashboardLayout />
-            </AuthGuard>
-          }
-        >
-          <Route path="/" element={<Dashboard />} />
-          <Route path="/dashboard" element={<Dashboard />} />
-
-          <Route path="/sync">
-            <Route index element={<SyncTableView />} />
-          </Route>
-
-          <Route path="/api-keys" />
-
-          <Route path="/destinations" element={<Destinations />} />
-
-          <Route path="/white-label">
-            <Route index element={<WhiteLabel />} />
-            <Route path="create" element={<CreateWhiteLabel />} />
-            <Route path=":id" element={<ViewEditWhiteLabel />} />
-          </Route>
-
-          <Route path="/profile" element={<Profile />} />
-          <Route path="/chat" element={<Chat />} />
-          <Route path="/chat/:id" element={<Chat />} />
-          <Route path="/collections" element={<CollectionsView />} />
-          <Route path="/collections/:readable_id" element={<CollectionDetailView />} />
-        </Route>
-
         {/* Public routes */}
-        <Route path="/login" element={<LoginPage />} />
-        <Route path="/callback" element={<CallbackPage />} />
-        <Route path="/auth/callback/:short_name" element={<AuthCallback />} />
+        <Route path={publicPaths.login} element={<Login />} />
+        <Route path={publicPaths.callback} element={<Callback />} />
 
-        {/* 404 route */}
+
+        {/* Protected routes */}
+        <Route element={<AuthGuard><DashboardLayout /></AuthGuard>}>
+          <Route path={protectedPaths.dashboard} element={<Dashboard />} />
+          <Route path={protectedPaths.collections} element={<CollectionsView />} />
+          <Route path={protectedPaths.collectionDetail} element={<CollectionDetailView />} />
+          <Route path={protectedPaths.apiKeys} />
+          <Route path={protectedPaths.authCallback} element={<AuthCallback />} />
+          <Route path={protectedPaths.whiteLabel} element={<WhiteLabel />} />
+          <Route path={protectedPaths.whiteLabelTab} element={<WhiteLabelDetail />} />
+          <Route path={protectedPaths.whiteLabelCreate} element={<CreateWhiteLabel />} />
+          <Route path={protectedPaths.whiteLabelDetail} element={<WhiteLabelDetail />} />
+          <Route path={protectedPaths.whiteLabelEdit} element={<WhiteLabelEdit />} />
+        </Route>
         <Route path="*" element={<NotFound />} />
       </Routes>
       <Toaster />
-    </CollectionsProvider>
+    </ThemeProvider>
   );
 }
 

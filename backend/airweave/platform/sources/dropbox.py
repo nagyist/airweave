@@ -1,6 +1,6 @@
 """Dropbox source implementation."""
 
-from typing import AsyncGenerator, Dict, List, Tuple
+from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple
 
 import httpx
 from tenacity import retry, stop_after_attempt, wait_exponential
@@ -18,27 +18,38 @@ from airweave.platform.sources._base import BaseSource
 
 
 @source(
-    "Dropbox",
-    "dropbox",
-    AuthType.oauth2_with_refresh,
+    name="Dropbox",
+    short_name="dropbox",
+    auth_type=AuthType.oauth2_with_refresh,
     auth_config_class="DropboxAuthConfig",
+    config_class="DropboxConfig",
     labels=["File Storage"],
 )
 class DropboxSource(BaseSource):
     """Dropbox source implementation."""
 
     @classmethod
-    async def create(cls, access_token: str) -> "DropboxSource":
-        """Create a new Dropbox source.
+    async def create(
+        cls, credentials: str, config: Optional[Dict[str, Any]] = None
+    ) -> "DropboxSource":
+        """Create a new Dropbox source with credentials and config.
 
         Args:
-            access_token: The OAuth2 access token for Dropbox API access.
+            credentials: The OAuth access token for Dropbox API access
+            config: Optional configuration parameters, like exclude_path
 
         Returns:
-            A configured DropboxSource instance.
+            A configured DropboxSource instance
         """
         instance = cls()
-        instance.access_token = access_token
+        instance.access_token = credentials
+
+        # Store config values as instance attributes
+        if config:
+            instance.exclude_path = config.get("exclude_path", "")
+        else:
+            instance.exclude_path = ""
+
         return instance
 
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
@@ -483,6 +494,16 @@ class DropboxSource(BaseSource):
                 async for folder_entity in self._generate_folder_entities(
                     client, account_breadcrumb
                 ):
+                    # Skip excluded paths
+                    # TODO: change for code that works!
+                    if (
+                        self.exclude_path
+                        and folder_entity.path_lower
+                        and self.exclude_path in folder_entity.path_lower
+                    ):
+                        logger.info(f"Skipping excluded folder: {folder_entity.path_lower}")
+                        continue
+
                     yield folder_entity
 
                     folder_breadcrumb = Breadcrumb(

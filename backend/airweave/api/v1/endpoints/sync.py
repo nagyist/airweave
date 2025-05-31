@@ -287,21 +287,23 @@ async def subscribe_sync_job(
 
         logger.info(f"SSE sync subscription authenticated for user: {user.id}, job: {job_id}")
 
-    # Get queue from service
-    queue = await sync_service.subscribe_to_sync_job(job_id=job_id)
+    # Get a new pubsub instance subscribed to this job
+    pubsub = await sync_pubsub.subscribe(job_id)
 
     async def event_stream() -> AsyncGenerator[str, None]:
         try:
-            while True:
-                try:
-                    update = await queue.get()
-                    # Proper SSE format requires each message to start with "data: "
-                    # and end with two newlines
-                    yield f"data: {update.model_dump_json()}\n\n"
-                except asyncio.CancelledError:
-                    break
+            async for message in pubsub.listen():
+                if message["type"] == "message":
+                    # Parse and forward the sync progress update
+                    yield f"data: {message['data']}\n\n"
+                elif message["type"] == "subscribe":
+                    # Optionally log subscription confirmation
+                    logger.info(f"SSE subscribed to job {job_id}")
+        except asyncio.CancelledError:
+            logger.info(f"SSE connection cancelled for job {job_id}")
         finally:
-            sync_pubsub.unsubscribe(job_id, queue)
+            # Clean up when SSE connection closes
+            await pubsub.close()
 
     return StreamingResponse(
         event_stream(),

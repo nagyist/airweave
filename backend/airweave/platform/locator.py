@@ -78,6 +78,20 @@ class ResourceLocator:
         return auth_config_class
 
     @staticmethod
+    def get_config(config_class: str) -> Type[BaseConfig]:
+        """Get the config class.
+
+        Args:
+            config_class (str): Config class name
+
+        Returns:
+            Type[BaseConfig]: Config class
+        """
+        module = importlib.import_module(f"{PLATFORM_PATH}.configs.config")
+        config_class = getattr(module, config_class)
+        return config_class
+
+    @staticmethod
     def get_transformer(transformer: schemas.Transformer) -> Callable:
         """Get the transformer function.
 

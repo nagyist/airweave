@@ -1,7 +1,7 @@
 ---
-description: Description of repo structure.
+description:
 globs:
-alwaysApply: true
+alwaysApply: false
 ---
 # Airweave Repository Structure
 
@@ -32,6 +32,7 @@ airweave/
 │   ├── src/                      # Source code
 │   │   ├── components/           # React components
 │   │   ├── config/               # Configuration
+│   │   ├── constants/            # Constant variables
 │   │   ├── hooks/                # React hooks
 │   │   ├── lib/                  # Utility libraries
 │   │   ├── pages/                # Page components
@@ -40,11 +41,14 @@ airweave/
 │   ├── public/                   # Static assets
 │   └── package.json              # JavaScript dependencies
 │
-├── docker-compose.yml            # Main Docker Compose config
-├── docker-compose.dev.yml        # Development Docker Compose config
+├── docker/                       # Docker configuration files
+│   ├── docker-compose.yml        # Main Docker Compose config
+│   ├── docker-compose.dev.yml    # Development Docker Compose config
+│   ├── docker-compose.test.yml   # Test Docker Compose config
+│   └── temporal-config/          # Temporal configuration
+│
 ├── start.sh                      # Startup script
-└── .env/.env.example             # Environment variables
-```
+└── .env.example                  # Example environment variables
 
 
 ### Important: whenever a folder is created or removed, edit it here.

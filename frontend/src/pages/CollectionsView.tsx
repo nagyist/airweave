@@ -1,90 +1,41 @@
 import { useState, useEffect } from "react";
-import { apiClient } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Search, Plus } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { CollectionCard } from "@/components/dashboard";
-
-// Collection type definition
-interface Collection {
-  id: string;
-  name: string;
-  readable_id: string;
-  status: string;
-}
-
-// Source Connection definition
-interface SourceConnection {
-  id: string;
-  name: string;
-  short_name: string;
-  collection: string;
-  status?: string;
-}
+import { useCollectionsStore, useSourcesStore } from "@/lib/stores";
+import { DialogFlow } from "@/components/shared";
 
 const CollectionsView = () => {
   const navigate = useNavigate();
-  const [collections, setCollections] = useState<Collection[]>([]);
-  const [filteredCollections, setFilteredCollections] = useState<Collection[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const {
+    collections,
+    isLoading: isLoadingCollections,
+    fetchCollections
+  } = useCollectionsStore();
+
+  const { fetchSources } = useSourcesStore();
+  const [filteredCollections, setFilteredCollections] = useState([]);
   const [searchQuery, setSearchQuery] = useState("");
-  const [collectionsWithSources, setCollectionsWithSources] = useState<Record<string, SourceConnection[]>>({});
 
   // Dialog state
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [selectedSourceId, setSelectedSourceId] = useState<string | null>(null);
 
-  // Fetch source connections for a specific collection
-  const fetchSourceConnectionsForCollection = async (
-    collectionId: string,
-    sourcesMap: Record<string, SourceConnection[]>
-  ) => {
-    try {
-      const response = await apiClient.get(`/source-connections/?collection=${collectionId}`);
-      if (response.ok) {
-        const data = await response.json();
-        sourcesMap[collectionId] = data;
-      } else {
-        console.error(`Failed to load source connections for collection ${collectionId}:`, await response.text());
-        sourcesMap[collectionId] = [];
-      }
-    } catch (err) {
-      console.error(`Error fetching source connections for collection ${collectionId}:`, err);
-      sourcesMap[collectionId] = [];
-    }
-  };
-
-  // Fetch all collections
-  const fetchCollections = async () => {
-    setIsLoading(true);
-    try {
-      const response = await apiClient.get("/collections");
-      if (response.ok) {
-        const data = await response.json();
-        setCollections(data);
-        setFilteredCollections(data);
-
-        // Fetch source connections for all collections
-        const sourcesMap: Record<string, SourceConnection[]> = {};
-        for (const collection of data) {
-          await fetchSourceConnectionsForCollection(collection.readable_id, sourcesMap);
-        }
-        setCollectionsWithSources(sourcesMap);
-      } else {
-        console.error("Failed to load collections:", await response.text());
-      }
-    } catch (err) {
-      console.error("Error fetching collections:", err);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  // Fetch collections on component mount
+  // Initialize collections and event listeners
   useEffect(() => {
-    fetchCollections();
-  }, []);
+    console.log("🔄 [CollectionsView] Initializing");
+
+    // Subscribe to collection events
+    const unsubscribe = useCollectionsStore.getState().subscribeToEvents();
+
+    // Load collections (will use cache if available)
+    fetchCollections().then(collections => {
+      console.log(`🔄 [CollectionsView] Collections loaded: ${collections.length} collections available`);
+    });
+
+    return unsubscribe;
+  }, [fetchCollections]);
 
   // Filter collections based on search query
   useEffect(() => {
@@ -104,20 +55,36 @@ const CollectionsView = () => {
   // Refresh collections after creating a new one
   const handleDialogClose = () => {
     setDialogOpen(false);
-    setSelectedSourceId(null);
-    fetchCollections();
+    // Force refresh collections to get the newly created one
+    fetchCollections(true);
   };
 
   // Open create collection dialog
   const handleCreateCollection = () => {
-    // For simplicity, we're not selecting a specific source here
-    // You could modify this to show a source selection first
-    setSelectedSourceId("");
-    setDialogOpen(true);
+    // Prefetch sources before opening the dialog
+    console.log("🔍 [CollectionsView] Pre-fetching sources before showing DialogFlow");
+    fetchSources()
+      .then(() => {
+        // Open the DialogFlow with create-collection mode
+        setDialogOpen(true);
+      })
+      .catch(err => {
+        console.error("❌ [CollectionsView] Error prefetching sources:", err);
+        // Still open the dialog even if prefetch fails
+        setDialogOpen(true);
+      });
   };
 
   return (
     <div className="mx-auto w-full max-w-[1800px] px-6 py-6 pb-8">
+      {/* DialogFlow Dialog */}
+      <DialogFlow
+        isOpen={dialogOpen}
+        onOpenChange={setDialogOpen}
+        mode="create-collection"
+        dialogId="collections-view-create-collection"
+        onComplete={handleDialogClose}
+      />
 
       {/* Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-6 gap-4">
@@ -152,7 +119,7 @@ const CollectionsView = () => {
 
       {/* Collections Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4 gap-6 sm:gap-8 auto-rows-fr">
-        {isLoading ? (
+        {isLoadingCollections ? (
           Array.from({ length: 8 }).map((_, index) => (
             <div
               key={index}
@@ -170,8 +137,8 @@ const CollectionsView = () => {
               id={collection.id}
               name={collection.name}
               readableId={collection.readable_id}
-              sourceConnections={collectionsWithSources[collection.readable_id] || []}
               status={collection.status}
+              onClick={() => navigate(`/collections/${collection.readable_id}`)}
             />
           ))
         )}

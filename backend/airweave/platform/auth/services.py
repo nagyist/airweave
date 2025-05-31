@@ -35,23 +35,26 @@ class OAuth2Service:
 
     @staticmethod
     async def generate_auth_url(
-        oauth2_settings: OAuth2Settings, auth_fields: Optional[dict] = None
+        oauth2_settings: OAuth2Settings,
+        client_id: Optional[str] = None,
     ) -> str:
-        """Generate the OAuth2 authorization URL with the required query parameters.
+        """Generate the OAuth2 authorization URL for an integration.
 
         Args:
-        ----
-            oauth2_settings: The OAuth2 settings for the integration.
-            auth_fields: Optional dict containing configuration parameters like client_id
+            oauth2_settings: The OAuth2 settings for the integration
+            client_id: Optional client ID to override the default one
 
         Returns:
-        -------
-            str: The authorization URL.
+            The authorization URL for the OAuth2 flow
 
+        Raises:
+            HTTPException: If there's an error generating the authorization URL
         """
         redirect_uri = OAuth2Service._get_redirect_url(oauth2_settings.integration_short_name)
 
-        client_id, _ = await OAuth2Service._get_client_credentials(oauth2_settings, auth_fields)
+        # if client_id is not provided, get it from the integration settings
+        if not client_id:
+            client_id = oauth2_settings.client_id
 
         params = {
             "response_type": "code",
@@ -68,69 +71,48 @@ class OAuth2Service:
         return auth_url
 
     @staticmethod
-    async def _url_for_trello() -> str:
-        """Generate the authorization URL for Trello.
-
-        This method could potentially be generalized to work with similar authorization flows.
-
-        Returns:
-        -------
-            str: The authorization URL.
-
-        """
-        integration_short_name = "trello"
-        integration_config = await integration_settings.get_by_short_name(integration_short_name)
-        redirect_uri = await OAuth2Service._get_redirect_url(integration_short_name)
-
-        params = {
-            "response_type": "token",
-            "scope": "read,write",
-            "name": integration_config.name,
-            "expiration": "never",
-            "return_url": redirect_uri,
-            "key": integration_config.key,
-        }
-
-        auth_url = f"{integration_config.url}?{urlencode(params)}"
-
-        return auth_url
-
-    @staticmethod
-    async def exchange_autorization_code_for_token(
-        integration_short_name: str, code: str, auth_fields: Optional[dict] = None
+    async def exchange_authorization_code_for_token(
+        source_short_name: str,
+        code: str,
+        client_id: Optional[str] = None,
+        client_secret: Optional[str] = None,
     ) -> OAuth2TokenResponse:
-        """Exchanges an authorization code for an access token.
+        """Exchange an authorization code for an OAuth2 token.
 
         Args:
         ----
-            integration_short_name (str): The short name of the integration.
-            code (str): The authorization code received from the OAuth provider.
-            auth_fields: Optional additional authentication fields for the connection
+            source_short_name (str): The short name of the integration source.
+            code (str): The authorization code to exchange.
+            client_id (Optional[str]): Optional client ID to override the default.
+            client_secret (Optional[str]): Optional client secret to override the default.
 
         Returns:
         -------
-            OAuth2TokenResponse: The response containing the access token and other token details.
+            OAuth2TokenResponse: The response containing the access token and other details.
 
         Raises:
         ------
-            NotFoundException: If the integration is not found
+            HTTPException: If settings are not found for the source or token exchange fails.
         """
-        integration_config = await integration_settings.get_by_short_name(integration_short_name)
-        if not integration_config:
-            raise NotFoundException(f"Integration {integration_short_name} not found.")
+        # Get the settings for this source to generate the URL
+        oauth2_settings = await integration_settings.get_by_short_name(source_short_name)
+        if not oauth2_settings:
+            raise HTTPException(
+                status_code=404, detail=f"Settings not found for source: {source_short_name}"
+            )
 
-        redirect_uri = OAuth2Service._get_redirect_url(integration_short_name)
+        redirect_uri = OAuth2Service._get_redirect_url(source_short_name)
 
-        client_id, client_secret = await OAuth2Service._get_client_credentials(
-            integration_config, auth_fields
-        )
+        if not client_id and not client_secret:
+            client_id = oauth2_settings.client_id
+            client_secret = oauth2_settings.client_secret
 
         return await OAuth2Service._exchange_code(
             code=code,
             redirect_uri=redirect_uri,
             client_id=client_id,
             client_secret=client_secret,
-            integration_config=integration_config,
+            integration_config=oauth2_settings,
         )
 
     @staticmethod
@@ -174,6 +156,7 @@ class OAuth2Service:
             integration_config = await OAuth2Service._get_integration_config(integration_short_name)
 
             # Get client credentials
+            # TODO: this is the only place we need to check the db for client credentials
             client_id, client_secret = await OAuth2Service._get_client_credentials(
                 integration_config, None, decrypted_credential
             )
@@ -467,6 +450,11 @@ class OAuth2Service:
 
         """
         app_url = settings.app_url
+
+        # if the oauth app cannot redirect to localhost because of http
+        # paste: https://redirectmeto.com/ before the redirect uri
+        # and set change the redirect uri in the oauth app as well
+
         return f"{app_url}/auth/callback/{integration_short_name}"
 
     @staticmethod
@@ -593,54 +581,6 @@ class OAuth2Service:
             ) from e
 
         return OAuth2TokenResponse(**response.json())
-
-    @staticmethod
-    async def create_oauth2_connection(
-        db: AsyncSession,
-        short_name: str,
-        code: str,
-        user: schemas.User,
-    ) -> schemas.Connection:
-        """Create a new OAuth2 connection for a source.
-
-        Does the following:
-        1. Get the OAuth2 settings for the source
-        2. Exchange the authorization code for a token
-        3. Create an integration credential with the token
-        4. Create a connection with the integration credential
-
-        Args:
-        ----
-            db: Database session
-            short_name: The short name of the source
-            code: The authorization code to exchange
-            user: The user creating the connection
-
-        Returns:
-        -------
-            schemas.Connection: The created connection
-        """
-        settings = await integration_settings.get_by_short_name(short_name)
-        if not settings:
-            raise NotFoundException("Integration not found")
-
-        source = await crud.source.get_by_short_name(db, short_name)
-        if not source:
-            raise NotFoundException(f"Source not found: {short_name}")
-
-        if not OAuth2Service._supports_oauth2(source.auth_type):
-            raise HTTPException(status_code=400, detail="Source does not support OAuth2")
-
-        # Exchange code for token using default credentials
-        oauth2_response = await OAuth2Service.exchange_autorization_code_for_token(short_name, code)
-
-        return await OAuth2Service._create_connection(
-            db=db,
-            source=source,
-            settings=settings,
-            oauth2_response=oauth2_response,
-            user=user,
-        )
 
     @staticmethod
     async def create_oauth2_connection_for_whitelabel(

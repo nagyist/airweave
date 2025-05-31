@@ -113,14 +113,7 @@ export function SyncSchedule({ value, onChange }: SyncScheduleProps) {
   };
 
   return (
-    <Card className="shadow-sm bg-background border-muted">
-      <CardHeader className="pb-3">
-        <CardTitle className="flex items-center gap-2 text-2xl">
-          <ClockIcon className="h-6 w-6 text-primary" />
-          Sync Schedule
-        </CardTitle>
-        <CardDescription>Choose when and how often to sync your data</CardDescription>
-      </CardHeader>
+    <Card className="bg-background border-none">
       <CardContent className="space-y-6">
         {/* Main options as clickable cards */}
         <div className="grid grid-cols-3 gap-4">
@@ -335,7 +328,6 @@ export function SyncSchedule({ value, onChange }: SyncScheduleProps) {
                   {value.frequency === "custom" && (
                     <div className="max-w-xl mx-auto mt-3">
                       <div className="rounded-lg bg-muted p-4">
-                        <Label className="block mb-2 text-sm font-medium">CRON expression:</Label>
                         <CronExpressionInput
                           value={value.cronExpression || "* * * * *"}
                           onChange={(cronExp) => handleTimeChange("cronExpression", cronExp)}
@@ -360,10 +352,6 @@ export function SyncSchedule({ value, onChange }: SyncScheduleProps) {
             </motion.div>
           )}
         </AnimatePresence>
-
-        <div className="mt-2 text-xs text-muted-foreground text-center">
-          All times are shown in your local timezone but stored in UTC for consistent scheduling.
-        </div>
 
       </CardContent>
     </Card>

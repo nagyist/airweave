@@ -1,6 +1,6 @@
 api:
-  path: ./definition/openapi.json
-  overrides: ./definition/overrides.yml
+  specs:
+    - openapi: ./definition/openapi.json
 
 groups:
   public:

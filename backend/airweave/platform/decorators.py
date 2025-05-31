@@ -10,8 +10,9 @@ from airweave.platform.entities._base import ChunkEntity
 def source(
     name: str,
     short_name: str,
-    auth_type: Optional[AuthType] = None,
-    auth_config_class: Optional[str] = None,
+    auth_type: AuthType,
+    auth_config_class: str,
+    config_class: Optional[str] = None,
     labels: Optional[List[str]] = None,
 ) -> Callable[[type], type]:
     """Class decorator to mark a class as representing an Airweave source.
@@ -21,7 +22,8 @@ def source(
         name (str): The name of the source.
         short_name (str): The short name of the source.
         auth_type (AuthType): The authentication type of the source.
-        auth_config_class (Optional[str]): The authentication config class of the source.
+        auth_config_class (str): The authentication config class of the source.
+        config_class (Optional[str]): The configuration class for the source.
         labels (Optional[List[str]]): Labels categorizing this source (e.g., "CRM", "Database").
 
     Returns:
@@ -36,6 +38,7 @@ def source(
         cls._short_name = short_name
         cls._auth_type = auth_type
         cls._auth_config_class = auth_config_class
+        cls._config_class = config_class
         cls._labels = labels or []
         return cls
 

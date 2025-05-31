@@ -1,6 +1,6 @@
 """HubSpot source implementation."""
 
-from typing import AsyncGenerator, Dict
+from typing import Any, AsyncGenerator, Dict, Optional
 
 import httpx
 
@@ -16,7 +16,14 @@ from airweave.platform.entities.hubspot import (
 from airweave.platform.sources._base import BaseSource
 
 
-@source("HubSpot", "hubspot", AuthType.oauth2_with_refresh, labels=["CRM", "Marketing"])
+@source(
+    name="HubSpot",
+    short_name="hubspot",
+    auth_type=AuthType.oauth2_with_refresh,
+    auth_config_class="HubspotAuthConfig",
+    config_class="HubspotConfig",
+    labels=["CRM", "Marketing"],
+)
 class HubspotSource(BaseSource):
     """HubSpot source implementation.
 
@@ -26,7 +33,9 @@ class HubspotSource(BaseSource):
     """
 
     @classmethod
-    async def create(cls, access_token: str) -> "HubspotSource":
+    async def create(
+        cls, access_token: str, config: Optional[Dict[str, Any]] = None
+    ) -> "HubspotSource":
         """Create a new HubSpot source instance."""
         instance = cls()
         instance.access_token = access_token

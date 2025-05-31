@@ -15,7 +15,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from airweave import crud, schemas
 from airweave.core.logging import logger
 from airweave.core.shared_models import SyncJobStatus, SyncStatus
+from airweave.core.source_connection_service import source_connection_service
 from airweave.core.sync_service import sync_service
+from airweave.core.temporal_service import temporal_service
 from airweave.db.session import get_db_context
 from airweave.models.sync import Sync
 
@@ -398,26 +400,51 @@ class PlatformScheduler:
             sync_job_schema = schemas.SyncJob.model_validate(sync_job)
             sync_dag_schema = schemas.SyncDag.model_validate(sync_dag)
             collection = schemas.Collection.model_validate(collection, from_attributes=True)
-            source_connection = schemas.SourceConnection.from_orm_with_collection_mapping(
-                source_connection
-            )
 
-            # Run the sync using the original user
-            logger.info(f"Starting sync task for job {sync_job.id} (sync {sync.id})")
-            asyncio.create_task(
-                sync_service.run(
-                    sync,
-                    sync_job_schema,
-                    sync_dag_schema,
-                    collection,
-                    source_connection,
-                    current_user,
+            if await temporal_service.is_temporal_enabled():
+                # Get source connection with auth_fields for temporal processing
+                source_connection_with_auth = await source_connection_service.get_source_connection(
+                    db=db,
+                    source_connection_id=source_connection.id,
+                    show_auth_fields=True,  # Important: Need actual auth_fields for temporal
+                    current_user=current_user,
                 )
-            )
 
-            logger.info(
-                f"Successfully triggered sync job {sync_job.id} for sync {sync.id} ({sync.name})"
-            )
+                # Use Temporal workflow for sync execution
+                logger.info(
+                    f"Starting sync job {sync_job.id} (sync {sync.id}) via Temporal workflow"
+                )
+                await temporal_service.run_source_connection_workflow(
+                    sync=sync,
+                    sync_job=sync_job_schema,
+                    sync_dag=sync_dag_schema,
+                    collection=collection,
+                    source_connection=source_connection_with_auth,
+                    user=current_user,
+                    access_token=None,  # No access token for scheduled syncs
+                )
+                logger.info(
+                    f"Successfully triggered sync job {sync_job.id} for sync {sync.id} "
+                    f"  ({sync.name}) via Temporal"
+                )
+            else:
+                # For non-temporal, convert from ORM as before
+                source_connection_schema = (
+                    schemas.SourceConnection.from_orm_with_collection_mapping(source_connection)
+                )
+
+                # Run the sync using the original user
+                logger.info(f"Starting sync task for job {sync_job.id} (sync {sync.id})")
+                asyncio.create_task(
+                    sync_service.run(
+                        sync,
+                        sync_job_schema,
+                        sync_dag_schema,
+                        collection,
+                        source_connection_schema,
+                        current_user,
+                    )
+                )
         except Exception as e:
             logger.error(f"Error triggering sync {sync.id}: {e}", exc_info=True)
 

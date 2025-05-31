@@ -7,7 +7,7 @@ References:
     https://developer.atlassian.com/cloud/jira/platform/rest/v3/overview
 """
 
-from typing import Any, AsyncGenerator
+from typing import Any, AsyncGenerator, Dict, Optional
 
 import httpx
 import tenacity
@@ -25,7 +25,12 @@ from airweave.platform.sources._base import BaseSource
 
 
 @source(
-    "Jira", "jira", AuthType.oauth2_with_refresh, labels=["Project Management", "Issue Tracking"]
+    name="Jira",
+    short_name="jira",
+    auth_type=AuthType.oauth2_with_refresh,
+    auth_config_class="JiraAuthConfig",
+    config_class="JiraConfig",
+    labels=["Project Management", "Issue Tracking"],
 )
 class JiraSource(BaseSource):
     """Simplified Jira source implementation (read-only).
@@ -83,7 +88,9 @@ class JiraSource(BaseSource):
             return ""
 
     @classmethod
-    async def create(cls, access_token: str) -> "JiraSource":
+    async def create(
+        cls, access_token: str, config: Optional[Dict[str, Any]] = None
+    ) -> "JiraSource":
         """Create a new Jira source instance."""
         logger.info("Creating new Jira source instance")
         instance = cls()

@@ -12,6 +12,7 @@ from airweave.core.collection_service import collection_service
 from airweave.core.search_service import ResponseType, search_service
 from airweave.core.source_connection_service import source_connection_service
 from airweave.core.sync_service import sync_service
+from airweave.core.temporal_service import temporal_service
 from airweave.models.user import User
 
 router = TrailingSlashRouter()
@@ -197,8 +198,13 @@ async def refresh_all_source_connections(
         sync_dag = await sync_service.get_sync_dag(
             db=db, sync_id=sync_job.sync_id, current_user=current_user
         )
-        source_connection = await crud.source_connection.get(
-            db=db, id=sc.id, current_user=current_user
+
+        # Get source connection with auth_fields for temporal processing
+        source_connection = await source_connection_service.get_source_connection(
+            db=db,
+            source_connection_id=sc.id,
+            show_auth_fields=True,  # Important: Need actual auth_fields for temporal
+            current_user=current_user,
         )
 
         # Prepare objects for background task
@@ -211,15 +217,27 @@ async def refresh_all_source_connections(
         # Add to jobs list
         sync_jobs.append(sync_job.to_source_connection_job(sc.id))
 
-        # Start the sync job in the background
-        background_tasks.add_task(
-            sync_service.run,
-            sync,
-            sync_job,
-            sync_dag,
-            collection_obj,  # Use the already converted object
-            source_connection,
-            current_user,
-        )
+        # Start the sync job in the background or via Temporal
+        if await temporal_service.is_temporal_enabled():
+            # Use Temporal workflow
+            await temporal_service.run_source_connection_workflow(
+                sync=sync,
+                sync_job=sync_job,
+                sync_dag=sync_dag,
+                collection=collection_obj,  # Use the already converted object
+                source_connection=source_connection,
+                user=current_user,
+            )
+        else:
+            # Fall back to background tasks
+            background_tasks.add_task(
+                sync_service.run,
+                sync,
+                sync_job,
+                sync_dag,
+                collection_obj,  # Use the already converted object
+                source_connection,
+                current_user,
+            )
 
     return sync_jobs

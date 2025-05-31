@@ -17,19 +17,17 @@ chmod +x scripts/generate_openapi.py
 echo "📝 Generating connector documentation..."
 python scripts/update_connector_docs.py
 
-# Generate OpenAPI spec
-echo "📝 Generating OpenAPI spec..."
+# Generate OpenAPI spec - this now directly writes to definition/openapi.json
+echo "📝 Generating filtered OpenAPI spec..."
 cd ../backend
 poetry run python ../fern/scripts/generate_openapi.py
 cd ../fern
 
-# Ensure directories exist
-mkdir -p openapi
+# Ensure directory exists
 mkdir -p definition
 
-# Copy OpenAPI spec to Fern location
-echo "📋 Copying OpenAPI spec to Fern..."
-cp openapi/openapi.json definition/openapi.json
+# Note: We no longer need to copy the OpenAPI spec since generate_openapi.py
+# already writes to the correct location (definition/openapi.json)
 
 # Check if fern CLI is installed
 if ! command -v fern &> /dev/null; then
@@ -44,7 +42,7 @@ if [ -z "$FERN_TOKEN" ]; then
 fi
 
 echo "🚀 Running Fern generators..."
-fern generate --group public --log-level debug
+fern generate --group public --log-level debug --version v0.1.45
 
 echo "✅ Done! Generated files:"
 ls -la definition/

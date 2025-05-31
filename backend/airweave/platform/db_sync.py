@@ -296,6 +296,7 @@ async def _sync_sources(
             description=source_class.__doc__,
             auth_type=source_class._auth_type,
             auth_config_class=source_class._auth_config_class,
+            config_class=source_class._config_class,
             short_name=source_class._short_name,
             class_name=source_class.__name__,
             output_entity_definition_ids=output_entity_ids,

@@ -17,8 +17,8 @@ export function dagNodeToFlowNode(dagNode, xPosition, sourceName = '') {
         displayName = cleanEntityName(dagNode.name, sourceName);
     }
 
-    // Generate shortName from name
-    const shortName = displayName.toLowerCase().replace(/\s+/g, '');
+    // Use sourceName directly for source nodes, otherwise generate shortName from displayName
+    const shortName = dagNode.type === 'source' ? sourceName : displayName.toLowerCase().replace(/\s+/g, '');
 
     console.log(displayName)
 
@@ -28,7 +28,8 @@ export function dagNodeToFlowNode(dagNode, xPosition, sourceName = '') {
             label: displayName,
             name: displayName,
             originalName: dagNode.name, // Store original name for reference
-            shortName: shortName
+            shortName: shortName,
+            connection_id: dagNode.connection_id
         },
         position: { x: xPosition, y: 0 },
         type: nodeTypeMap[dagNode.type] || 'default',
@@ -65,7 +66,8 @@ export function convertDagToFlowGraph(dag, setNodes, setEdges) {
 
     // Find the source node
     let currentNode = dag.nodes.find(node => node.type === 'source')
-    const sourceName = currentNode?.name || '';
+    // Use dag.sourceShortName if available, otherwise use node name
+    const sourceName = dag.sourceShortName || currentNode?.name || '';
 
     // Process each node until we reach the end or a destination
     let isFirstEdge = true;

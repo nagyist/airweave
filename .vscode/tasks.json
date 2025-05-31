@@ -3,8 +3,8 @@
     "tasks": [
         {
             "label": "start-docker-services",
+            "command": "docker compose -f docker/docker-compose.dev.yml up -d",
             "type": "shell",
-            "command": "docker compose -f docker-compose.dev.yml up -d",
             "presentation": {
                 "reveal": "always",
                 "panel": "new"
@@ -25,9 +25,26 @@
             }
         },
         {
-            "label": "stop-docker-services",
+            "label": "restart-temporal-worker",
+            "command": "docker compose -f docker/docker-compose.dev.yml restart temporal-worker",
             "type": "shell",
-            "command": "docker compose -f docker-compose.dev.yml down",
+            "presentation": {
+                "reveal": "always",
+                "panel": "new"
+            }
+        },
+        {
+            "label": "start-docker-and-restart-temporal",
+            "dependsOrder": "sequence",
+            "dependsOn": [
+                "start-docker-services",
+                "restart-temporal-worker"
+            ]
+        },
+        {
+            "label": "stop-docker-services",
+            "command": "docker compose -f docker/docker-compose.dev.yml down",
+            "type": "shell",
             "presentation": {
                 "reveal": "always",
                 "panel": "new"

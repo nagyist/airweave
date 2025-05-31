@@ -1,6 +1,6 @@
 """Slack source implementation."""
 
-from typing import AsyncGenerator, Dict, Optional
+from typing import Any, AsyncGenerator, Dict, Optional
 
 import httpx
 from tenacity import retry, stop_after_attempt, wait_exponential
@@ -16,7 +16,14 @@ from airweave.platform.entities.slack import (
 from airweave.platform.sources._base import BaseSource
 
 
-@source("Slack", "slack", AuthType.oauth2, labels=["Communication", "Team Collaboration"])
+@source(
+    name="Slack",
+    short_name="slack",
+    auth_type=AuthType.oauth2,
+    auth_config_class="SlackAuthConfig",
+    config_class="SlackConfig",
+    labels=["Communication", "Team Collaboration"],
+)
 class SlackSource(BaseSource):
     """Slack source implementation.
 
@@ -25,10 +32,10 @@ class SlackSource(BaseSource):
     """
 
     @classmethod
-    async def create(cls, access_token: str) -> "SlackSource":
+    async def create(cls, credentials, config: Optional[Dict[str, Any]] = None) -> "SlackSource":
         """Create a new Slack source instance."""
         instance = cls()
-        instance.access_token = access_token
+        instance.access_token = credentials.access_token
         return instance
 
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
@@ -49,8 +56,18 @@ class SlackSource(BaseSource):
         response = await client.get(url, headers=headers, params=params)
         response.raise_for_status()
         data = response.json()
+
         # Slack responses include "ok" to indicate success
         if not data.get("ok", False):
+            # Special handling for not_in_channel errors
+            if data.get("error") == "not_in_channel":
+                print(
+                    f"Warning: Cannot access resource - "
+                    f"not in channel. URL: {url}, params: {params}"
+                )
+                # Return an empty response with ok=True to prevent retry/error propagation
+                return {"ok": True, "channels": [], "messages": [], "members": []}
+            # For other errors, raise as usual
             raise httpx.HTTPError(f"Slack API error: {data}")
         return data
 
@@ -172,20 +189,29 @@ class SlackSource(BaseSource):
                     if "429" in str(e):
                         # Let tenacity retry with backoff
                         raise
+                    # Handle 'not_in_channel' error before re-raising other errors
+                    elif "not_in_channel" in str(e):
+                        print(
+                            f"Warning: Cannot access messages in channel {channel_id}. "
+                            f"User is not a member of this channel."
+                        )
+                        # Break out of the loop and yield nothing for this channel
+                        return
                     else:
                         # Re-raise any other HTTP errors
                         raise
         except httpx.HTTPError as e:
-            # Handle 'not_in_channel' error gracefully
+            # This is the critical part - we need to catch and
+            # handle the not_in_channel error completely
             if "not_in_channel" in str(e):
-                # Log a warning without yielding any messages
                 print(
                     f"Warning: Cannot access messages in channel {channel_id}. "
                     f"Bot is not a member of this channel."
                 )
-                return
-            # Re-raise all other HTTP errors
-            raise
+                return  # Don't re-raise, just return with no entities
+            else:
+                # For other errors, we can still re-raise
+                raise
 
     async def generate_entities(self) -> AsyncGenerator[ChunkEntity, None]:
         """Generate all entities from Slack.

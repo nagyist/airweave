@@ -1,7 +1,7 @@
 """CRUD operations for syncs."""
 
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Any, Optional, Union
 from uuid import UUID
 
 from fastapi import HTTPException
@@ -561,6 +561,62 @@ class CRUDSync(CRUDBase[Sync, SyncCreate, SyncUpdate]):
 
         # Return a properly model-validated instance
         return schemas.Sync.model_validate(sync_dict)
+
+    async def update(
+        self,
+        db: AsyncSession,
+        *,
+        db_obj: models.Sync,
+        obj_in: Union[SyncUpdate, dict[str, Any]],
+        current_user: schemas.User,
+        uow: Optional[UnitOfWork] = None,
+    ) -> models.Sync:
+        """Update a sync.
+
+        Overrides the base update method to automatically calculate next_scheduled_run
+        when cron_schedule is updated.
+
+        Args:
+            db: The database session
+            db_obj: The sync object to update
+            obj_in: The update data
+            current_user: The current user
+            uow: Optional unit of work
+
+        Returns:
+            The updated sync
+        """
+        if not isinstance(obj_in, dict):
+            obj_in = obj_in.model_dump(exclude_unset=True)
+
+        # Calculate next_scheduled_run if cron_schedule is being updated
+        if "cron_schedule" in obj_in:
+            cron_schedule = obj_in["cron_schedule"]
+            if cron_schedule is not None:
+                try:
+                    from datetime import datetime, timezone
+
+                    from croniter import croniter
+
+                    # Create a croniter instance with the cron expression
+                    base = datetime.now(timezone.utc)
+                    iter = croniter(cron_schedule, base)
+
+                    # Get the next run time
+                    next_run = iter.get_next(datetime)
+                    obj_in["next_scheduled_run"] = next_run
+                except Exception as e:
+                    import logging
+
+                    logging.error(f"Error calculating next run time: {e}")
+            else:
+                # If cron_schedule is None, also set next_scheduled_run to None
+                obj_in["next_scheduled_run"] = None
+
+        # Call the parent class update method
+        return await super().update(
+            db=db, db_obj=db_obj, obj_in=obj_in, current_user=current_user, uow=uow
+        )
 
 
 sync = CRUDSync(Sync)

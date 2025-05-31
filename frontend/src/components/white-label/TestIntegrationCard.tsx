@@ -25,8 +25,9 @@ export function TestIntegrationCard({
     if (!whitelabelId) return;
     try {
       setIsLoading(true);
+      // Updated to use the white-label endpoint directly instead of going through connections
       const response = await apiClient.get(
-        `/connections/oauth2/white-label/${whitelabelId}/auth_url`
+        `/white-labels/${whitelabelId}/oauth2/auth_url`
       );
       if (!response.ok) {
         throw new Error(`Failed to get auth URL. Status: ${response.status}`);

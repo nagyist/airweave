@@ -49,7 +49,7 @@ This connector uses **OAuth 2.0 with refresh token**.
   style={{ backgroundColor: 'rgba(0, 0, 0, 0.1)', padding: '16px', marginBottom: '24px' }}
 >
 
-Google authentication credentials schema.
+Google Calendar authentication credentials schema.
 <ParamField
   path="client_id"
   type="str"
@@ -63,6 +63,20 @@ Google authentication credentials schema.
   required={true}
 >
   The OAuth client secret for your Google app
+</ParamField>
+<ParamField
+  path="refresh_token"
+  type="str"
+  required={true}
+>
+  The refresh token for your Google Calendar app.
+</ParamField>
+<ParamField
+  path="access_token"
+  type="str"
+  required={true}
+>
+  The access token for your Google Calendar app.
 </ParamField>
 </Card>
 

@@ -35,8 +35,12 @@ logger = logging.getLogger(__name__)
 
 
 @source(
-    "ClickUp", "clickup", AuthType.oauth2
-)  # Using oauth2 as ClickUp doesn't support refresh tokens yet (as of March 2024)
+    name="ClickUp",
+    short_name="clickup",
+    auth_type=AuthType.oauth2,
+    auth_config_class="ClickUpAuthConfig",
+    config_class="ClickUpConfig",
+)
 class ClickUpSource(BaseSource):
     """ClickUp source implementation.
 
@@ -52,7 +56,9 @@ class ClickUpSource(BaseSource):
     BASE_URL = "https://api.clickup.com/api/v2/"
 
     @classmethod
-    async def create(cls, access_token: str) -> "ClickUpSource":
+    async def create(
+        cls, access_token: str, config: Optional[Dict[str, Any]] = None
+    ) -> "ClickUpSource":
         """Create a new Slack source instance."""
         instance = cls()
         instance.access_token = access_token

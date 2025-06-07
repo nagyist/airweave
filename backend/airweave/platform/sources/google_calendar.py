@@ -14,8 +14,9 @@ Reference:
     https://developers.google.com/calendar/api/v3/reference
 """
 
+import urllib.parse
 from datetime import datetime, timedelta
-from typing import AsyncGenerator, Dict, List, Optional
+from typing import Any, AsyncGenerator, Dict, List, Optional
 
 import httpx
 
@@ -32,10 +33,11 @@ from airweave.platform.sources._base import BaseSource
 
 
 @source(
-    "Google Calendar",
-    "google_calendar",
-    AuthType.oauth2_with_refresh,
-    auth_config_class="GoogleAuthConfig",
+    name="Google Calendar",
+    short_name="google_calendar",
+    auth_type=AuthType.oauth2_with_refresh,
+    auth_config_class="GoogleCalendarAuthConfig",
+    config_class="GoogleCalendarConfig",
     labels=["Productivity", "Calendar"],
 )
 class GoogleCalendarSource(BaseSource):
@@ -47,7 +49,9 @@ class GoogleCalendarSource(BaseSource):
     """
 
     @classmethod
-    async def create(cls, access_token: str) -> "GoogleCalendarSource":
+    async def create(
+        cls, access_token: str, config: Optional[Dict[str, Any]] = None
+    ) -> "GoogleCalendarSource":
         """Create a new Google Calendar source instance with the provided OAuth access token."""
         instance = cls()
         instance.access_token = access_token
@@ -106,7 +110,9 @@ class GoogleCalendarSource(BaseSource):
         self, client: httpx.AsyncClient, calendar_id: str
     ) -> AsyncGenerator[GoogleCalendarCalendarEntity, None]:
         """Yield a GoogleCalendarCalendarEntity for the specified calendar_id."""
-        url = f"https://www.googleapis.com/calendar/v3/calendars/{calendar_id}"
+        # URL encode the calendar_id to handle special characters like '#'
+        encoded_calendar_id = urllib.parse.quote(calendar_id)
+        url = f"https://www.googleapis.com/calendar/v3/calendars/{encoded_calendar_id}"
         data = await self._get_with_auth(client, url)
         yield GoogleCalendarCalendarEntity(
             entity_id=data["id"],
@@ -122,7 +128,9 @@ class GoogleCalendarSource(BaseSource):
         self, client: httpx.AsyncClient, calendar_list_entry: GoogleCalendarListEntity
     ) -> AsyncGenerator[GoogleCalendarEventEntity, None]:
         """Yield GoogleCalendarEventEntities for all events in the given calendar."""
-        base_url = f"https://www.googleapis.com/calendar/v3/calendars/{calendar_list_entry.calendar_id}/events"
+        # URL encode the calendar_id
+        encoded_calendar_id = urllib.parse.quote(calendar_list_entry.calendar_id)
+        base_url = f"https://www.googleapis.com/calendar/v3/calendars/{encoded_calendar_id}/events"
         params = {"maxResults": 100}
         # Create a breadcrumb for this calendar to attach to events
         cal_breadcrumb = Breadcrumb(

@@ -9,11 +9,11 @@ from airweave.core.config import settings
 
 async_engine = create_async_engine(
     str(settings.SQLALCHEMY_ASYNC_DATABASE_URI),
-    pool_size=50,
-    max_overflow=10,
+    pool_size=120,
+    max_overflow=30,
     pool_pre_ping=True,
     pool_recycle=300,
-    pool_timeout=60,
+    pool_timeout=120,
     isolation_level="READ COMMITTED",
 )
 AsyncSessionLocal = async_sessionmaker(autocommit=False, autoflush=False, bind=async_engine)

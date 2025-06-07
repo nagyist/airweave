@@ -22,8 +22,6 @@ class SyncBase(BaseModel):
     description: Optional[str] = None
     cron_schedule: Optional[str] = None  # Actual cron expression
     next_scheduled_run: Optional[datetime] = None
-    white_label_id: Optional[UUID] = None
-    white_label_user_identifier: Optional[str] = None
     sync_metadata: Optional[dict] = None
     status: Optional[SyncStatus] = SyncStatus.ACTIVE
 
@@ -75,8 +73,6 @@ class SyncUpdate(BaseModel):
     name: Optional[str] = None
     cron_schedule: Optional[str] = None
     next_scheduled_run: Optional[datetime] = None
-    white_label_id: Optional[UUID] = None
-    white_label_user_identifier: Optional[str] = None
     sync_metadata: Optional[dict] = None
     status: Optional[SyncStatus] = None
 
@@ -112,8 +108,7 @@ class SyncWithoutConnections(BaseModel):
     cron_schedule: Optional[str] = None
     next_scheduled_run: Optional[datetime] = None
     status: SyncStatus
-    white_label_id: Optional[UUID] = None
-    white_label_user_identifier: Optional[str] = None
+
     sync_metadata: Optional[dict] = None
 
     id: UUID

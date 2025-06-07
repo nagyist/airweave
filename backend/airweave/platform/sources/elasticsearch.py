@@ -21,10 +21,11 @@ from airweave.platform.sources._base import BaseSource
 
 
 @source(
-    "Elasticsearch",
-    "elasticsearch",
-    AuthType.config_class,
-    "ElasticsearchAuthConfig",
+    name="Elasticsearch",
+    short_name="elasticsearch",
+    auth_type=AuthType.config_class,
+    auth_config_class="ElasticsearchAuthConfig",
+    config_class="ElasticsearchConfig",
     labels=["Search", "Database"],
 )
 class ElasticsearchSource(BaseSource):
@@ -42,13 +43,15 @@ class ElasticsearchSource(BaseSource):
         self.fields: Optional[str] = None
 
     @classmethod
-    async def create(cls, config: ElasticsearchAuthConfig) -> "ElasticsearchSource":
+    async def create(
+        cls, credentials: ElasticsearchAuthConfig, config: Optional[Dict[str, Any]] = None
+    ) -> "ElasticsearchSource":
         """Create a new Elasticsearch source instance."""
         instance = cls()
-        instance.url = f"{config.host}:{config.port}"  # Trust host to have http/https
-        instance.api_key = getattr(config, "api_key", None)
-        instance.indices = config.indices
-        instance.fields = getattr(config, "fields", None)
+        instance.url = f"{credentials.host}:{credentials.port}"  # Trust host to have http/https
+        instance.api_key = credentials.api_key
+        instance.indices = credentials.indices
+        instance.fields = credentials.fields
         return instance
 
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))

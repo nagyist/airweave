@@ -21,7 +21,7 @@ class AsyncSourceStream(Generic[T]):
     def __init__(
         self,
         source_generator: AsyncGenerator[T, None],
-        queue_size: int = 100,
+        queue_size: int = 1000,
         logger: Optional[logging.Logger] = None,
     ):
         """Initialize the async source stream.

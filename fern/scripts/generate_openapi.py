@@ -1,20 +1,98 @@
 """Generate OpenAPI schema for Airweave API."""
 
+from airweave.main import app
+from api_config import API_GROUPS, is_included_endpoint
 from fastapi.openapi.utils import get_openapi
 import json
 import os
 import sys
 from pathlib import Path
+from typing import Dict, Any
 
 # Get the absolute path to the project root (2 levels up from fern/scripts)
 project_root = Path(__file__).parent.parent.parent.absolute()
 backend_dir = project_root / "backend"
+scripts_dir = Path(__file__).parent.absolute()
 
-# Add backend to Python path
+# Add scripts and backend to Python path
+sys.path.append(str(scripts_dir))
 sys.path.append(str(backend_dir))
 os.chdir(backend_dir)  # Change working directory to backend
 
-from airweave.main import app
+
+def filter_paths(openapi_schema: Dict[str, Any]) -> Dict[str, Any]:
+    """Filter OpenAPI paths to only include allowed endpoints."""
+    if "paths" not in openapi_schema:
+        return openapi_schema
+
+    filtered_paths = {}
+    for path, path_item in openapi_schema["paths"].items():
+        include_path = False
+        filtered_operations = {}
+
+        for method, operation in path_item.items():
+            if method.lower() in ["get", "post", "put", "delete", "patch"] and is_included_endpoint(
+                path, method
+            ):
+                filtered_operations[method] = operation
+                include_path = True
+
+        if include_path:
+            filtered_paths[path] = filtered_operations
+
+    openapi_schema["paths"] = filtered_paths
+    return openapi_schema
+
+
+def fix_security_scheme(openapi_schema: Dict[str, Any]) -> Dict[str, Any]:
+    """Fix the security scheme definition to handle authentication properly.
+
+    We'll completely replace the existing Auth0HTTPBearer security scheme with
+    just the ApiKeyAuth scheme, ensuring the SDK only requires an API key.
+
+    This function thoroughly removes any duplicated authentication parameters
+    to avoid the "duplicate parameter" error in generated SDKs.
+    """
+    if "components" in openapi_schema and "securitySchemes" in openapi_schema["components"]:
+        # Replace the security scheme to use only apiKey with header
+        openapi_schema["components"]["securitySchemes"] = {
+            "ApiKeyAuth": {
+                "type": "apiKey",
+                "in": "header",
+                "name": "x-api-key",
+                "description": "API key for authentication",
+            }
+        }
+
+        # Process all paths to fix authentication
+        for path, path_item in openapi_schema["paths"].items():
+            for method, operation in path_item.items():
+                if method.lower() in ["get", "post", "put", "delete", "patch"]:
+                    # Replace any existing security with just the API key
+                    operation["security"] = [{"ApiKeyAuth": []}]
+
+                    # Remove all auth-related parameters from operations
+                    # This is critical to avoid duplication with the security scheme
+                    if "parameters" in operation:
+                        operation["parameters"] = [
+                            param
+                            for param in operation["parameters"]
+                            if not (
+                                (
+                                    param.get("name") == "Authorization"
+                                    and param.get("in") == "header"
+                                )
+                                or (
+                                    param.get("name") == "x-api-key" and param.get("in") == "header"
+                                )
+                            )
+                        ]
+
+    # Remove any global security definitions if they exist
+    if "security" in openapi_schema:
+        openapi_schema["security"] = [{"ApiKeyAuth": []}]
+
+    return openapi_schema
 
 
 def generate_openapi():
@@ -29,8 +107,16 @@ def generate_openapi():
         routes=app.routes,
     )
 
+    # Filter the schema to only include allowed endpoints
+    print("Filtering OpenAPI schema to include only specified API groups...")
+    filtered_schema = filter_paths(openapi_schema)
+
+    # Fix the security scheme
+    print("Updating security scheme...")
+    filtered_schema = fix_security_scheme(filtered_schema)
+
     # Add server configurations
-    openapi_schema["servers"] = [
+    filtered_schema["servers"] = [
         {
             "url": "https://api.airweave.ai",
             "description": "Production",
@@ -43,17 +129,50 @@ def generate_openapi():
         },
     ]
 
+    # Add info about included API groups
+    if "info" in filtered_schema:
+        api_groups_desc = (
+            "\n\n## API Groups\nThis API spec only includes the following API groups:\n"
+        )
+        for group, description in API_GROUPS.items():
+            api_groups_desc += f"- **{group}**: {description}\n"
+
+        if "description" in filtered_schema["info"]:
+            filtered_schema["info"]["description"] += api_groups_desc
+        else:
+            filtered_schema["info"]["description"] = api_groups_desc
+
     # Path to fern/definition directory from project root
     fern_dir = project_root / "fern" / "definition"
     fern_dir.mkdir(parents=True, exist_ok=True)
 
     output_path = fern_dir / "openapi.json"
-    print(f"📝 Writing OpenAPI spec to: {output_path}")
+    print(f"📝 Writing filtered OpenAPI spec to: {output_path}")
 
     with open(output_path, "w") as f:
-        json.dump(openapi_schema, f, indent=2)
+        json.dump(filtered_schema, f, indent=2)
 
-    print(f"✅ OpenAPI schema saved to {output_path}")
+    # Count included endpoints and methods
+    endpoint_count = 0
+    method_count = 0
+    if "paths" in filtered_schema:
+        endpoint_count = len(filtered_schema["paths"])
+        for path_item in filtered_schema["paths"].values():
+            method_count += len(
+                [
+                    m
+                    for m in path_item.keys()
+                    if m.lower() in ["get", "post", "put", "delete", "patch"]
+                ]
+            )
+
+    print(f"✅ Filtered OpenAPI schema saved to {output_path}")
+    print(
+        f"Included {endpoint_count} endpoints with {method_count} HTTP methods in the OpenAPI spec"
+    )
+    print("API groups included:")
+    for group in API_GROUPS:
+        print(f"- {group}")
 
 
 if __name__ == "__main__":

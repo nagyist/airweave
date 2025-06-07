@@ -118,7 +118,7 @@ export function CodeBlock({
           {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
         </Button>
       </div>
-      <div className={cn("px-4 py-3 flex-1 overflow-auto", isDark ? "bg-black" : "bg-gray-50")}>
+      <div className={cn("px-4 py-3 flex-1 overflow-auto", isDark ? "bg-black" : "bg-white")}>
         <SyntaxHighlighter
           language={language}
           style={customStyle}

@@ -1,4 +1,5 @@
 import type { Config } from "tailwindcss";
+import tailwindAnimate from "tailwindcss-animate";
 
 export default {
   darkMode: ["class"],
@@ -50,22 +51,26 @@ export default {
         "popover-foreground": "hsl(var(--popover-foreground))",
 
         primary: {
-          DEFAULT: "#0066FF",
-          foreground: "#FFFFFF",
-          100: "#E6F0FF",
-          200: "#99C2FF",
-          300: "#4D94FF",
-          400: "#0066FF",
-          500: "#0047B3",
+          DEFAULT: "hsl(var(--primary))",
+          foreground: "hsl(var(--primary-foreground))",
+        },
+        blue: {
+          DEFAULT: "hsl(var(--blue))",
+          foreground: "hsl(var(--blue-foreground))",
+          50: "hsl(var(--blue-50))",
+          100: "hsl(var(--blue-100))",
+          200: "hsl(var(--blue-200))",
+          300: "hsl(var(--blue-300))",
+          400: "hsl(var(--blue-400))",
+          500: "hsl(var(--blue-500))",
+          600: "hsl(var(--blue-600))",
+          700: "hsl(var(--blue-700))",
+          800: "hsl(var(--blue-800))",
+          900: "hsl(var(--blue-900))",
         },
         secondary: {
-          DEFAULT: "#00B7C3",
-          foreground: "#FFFFFF",
-          100: "#E6FAFC",
-          200: "#99EEF4",
-          300: "#4DE2EC",
-          400: "#00B7C3",
-          500: "#008089",
+          DEFAULT: "hsl(var(--secondary))",
+          foreground: "hsl(var(--secondary-foreground))",
         },
         destructive: {
           DEFAULT: "hsl(var(--destructive))",
@@ -129,5 +134,5 @@ export default {
       },
     },
   },
-  plugins: [import("tailwindcss-animate")],
+  plugins: [tailwindAnimate],
 } satisfies Config;

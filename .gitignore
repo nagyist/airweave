@@ -56,6 +56,7 @@ Thumbs.db
 .coverage
 htmlcov/
 .env.local
+local_storage/
 
 .DS_Store
 __pycache__

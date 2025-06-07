@@ -105,6 +105,7 @@ export interface CreateCollectionViewProps extends DialogViewProps {
         /** ID of the source (if pre-selected) */
         sourceId?: string;
     };
+    onError?: (error: Error | string, errorSource?: string) => void;
 }
 
 /**
@@ -118,6 +119,7 @@ export const CreateCollectionView: React.FC<CreateCollectionViewProps> = ({
     onCancel,
     onComplete,
     viewData = {},
+    onError,
 }) => {
     const { sourceName, sourceShortName, sourceId } = viewData;
     const { resolvedTheme } = useTheme();
@@ -283,49 +285,21 @@ export const CreateCollectionView: React.FC<CreateCollectionViewProps> = ({
         e.preventDefault();
 
         try {
-            setIsSubmitting(true);
-
             // Validate the form
             const values = await form.trigger();
             if (!form.formState.isValid) return;
 
             // Get the values
             const collectionDetails = {
-                name: nameValue,
-                readable_id: readableIdValue || undefined,
+                created_collection_name: nameValue,
+                created_collection_id: readableIdValue
             };
 
-            console.log("🚀 [CreateCollectionView] Creating collection with:", {
-                name: collectionDetails.name,
-                readable_id: collectionDetails.readable_id,
-                sourceId,
-                sourceName,
-                sourceShortName
-            });
-
-            // If sourceId and sourceShortName are provided, continue to source config
-            if (sourceId && sourceShortName) {
-                console.log("🔄 [CreateCollectionView] Source details available, proceeding to source config");
-                // Pass data to the next view (SourceConfigView)
-                onNext?.({
-                    view: 'sourceConfig',
-                    data: {
-                        collectionDetails,
-                        sourceId,
-                        sourceName,
-                        sourceShortName
-                    }
-                });
-            } else {
-                // Complete the flow with collection details
-                console.log("🔄 [CreateCollectionView] No source details, completing flow with collection only");
-                onComplete?.(collectionDetails);
-            }
+            // Simply pass the data to the next view
+            onNext?.(collectionDetails);
         } catch (error) {
-            console.error("❌ [CreateCollectionView] Error in collection creation:", error);
+            console.error("Error in collection creation form:", error);
             handleError(error instanceof Error ? error : new Error(String(error)), "Collection creation error");
-        } finally {
-            setIsSubmitting(false);
         }
     };
 

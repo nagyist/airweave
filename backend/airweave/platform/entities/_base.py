@@ -55,17 +55,21 @@ class BaseEntity(BaseModel):
     sync_metadata: Optional[Dict[str, Any]] = Field(
         None, description="Additional metadata for the sync."
     )
-    white_label_user_identifier: Optional[str] = Field(
-        None, description="White label user identifier."
-    )
-    white_label_id: Optional[UUID] = Field(None, description="White label ID.")
-    white_label_name: Optional[str] = Field(None, description="White label name.")
 
     parent_entity_id: Optional[str] = Field(
         None, description="ID of the parent entity in the source."
     )
 
     vector: Optional[List[float]] = Field(None, description="Vector representation of the entity.")
+    chunk_index: Optional[int] = Field(
+        None,
+        description=(
+            "Index of the chunk in the file, if applicable. "
+            "Example: If a file is split into 2 chunks, "
+            "the first chunk will have a chunk_index of 0, "
+            "the second chunk will have a chunk_index of 1."
+        ),
+    )
 
     class Config:
         """Pydantic config."""
@@ -86,9 +90,6 @@ class BaseEntity(BaseModel):
             "source_name",
             "sync_id",
             "sync_metadata",
-            "white_label_user_identifier",
-            "white_label_id",
-            "white_label_name",
         }
 
         # Get field names from the model
@@ -135,11 +136,30 @@ class BaseEntity(BaseModel):
         # Start with the full model dump
         data = self.model_dump()
 
-        # Remove excluded fields
-        if exclude_fields:
-            for field in exclude_fields:
-                if field in data:
-                    del data[field]
+        # Helper function to recursively clean nested structures
+        def clean_nested_data(obj, exclude_set):
+            if isinstance(obj, dict):
+                # Remove excluded fields and recursively clean remaining values
+                cleaned = {}
+                for key, value in obj.items():
+                    if key not in exclude_set:
+                        cleaned[key] = clean_nested_data(value, exclude_set)
+                return cleaned
+            elif isinstance(obj, list):
+                # Recursively clean each item in the list
+                return [clean_nested_data(item, exclude_set) for item in obj]
+            elif isinstance(obj, UUID):
+                # Convert UUID objects to strings
+                return str(obj)
+            else:
+                # Return primitive types as-is
+                return obj
+
+        # Create set of fields to exclude for faster lookup
+        exclude_set = set(exclude_fields) if exclude_fields else set()
+
+        # Recursively clean the data
+        data = clean_nested_data(data, exclude_set)
 
         # Fields that should remain as objects and not be JSON serialized
         object_fields = {"breadcrumbs"}
@@ -149,7 +169,7 @@ class BaseEntity(BaseModel):
             if key not in object_fields and isinstance(value, (dict, list)):
                 data[key] = json.dumps(value)
 
-        return data
+            return data
 
 
 class ChunkEntity(BaseEntity):
@@ -159,9 +179,8 @@ class ChunkEntity(BaseEntity):
     default_exclude_fields: List[str] = [
         "vector",  # Exclude the vector itself from the payload
         "sync_job_id",
-        "white_label_user_identifier",
-        "white_label_id",
-        "white_label_name",
+        "sync_id",
+        "db_entity_id",
         "sync_metadata",
         "parent_entity_id",
         "default_exclude_fields",
@@ -264,6 +283,9 @@ class FileEntity(BaseEntity):
     size: Optional[int] = Field(None, description="Size of the file in bytes")
     download_url: str = Field(..., description="URL to download the file")
     should_skip: bool = Field(False, description="Flag indicating if this file should be skipped")
+    metadata: Optional[Dict[str, Any]] = Field(
+        default_factory=dict, description="Additional metadata about the file"
+    )
 
     # File handling fields - set by file handler
     file_uuid: Optional[UUID] = Field(None, description="UUID assigned by the file manager")
@@ -272,6 +294,16 @@ class FileEntity(BaseEntity):
     )
     checksum: Optional[str] = Field(None, description="File checksum/hash if available")
     total_size: Optional[int] = Field(None, description="Total size of the file in bytes")
+
+    # Storage fields - set by storage manager
+    storage_blob_name: Optional[str] = Field(
+        None, description="Blob name in persistent storage (e.g., Azure)"
+    )
+    is_cached: bool = Field(False, description="Flag indicating if this file was loaded from cache")
+    is_fully_processed: bool = Field(
+        False,
+        description="Flag indicating if this file was already fully processed (should be KEPT)",
+    )
 
     def hash(self) -> str:
         """Hash the file entity.
@@ -414,6 +446,18 @@ class CodeFileEntity(ChunkEntity):
     content: Optional[str] = Field(None, description="File content if available")
     breadcrumbs: List[Breadcrumb] = Field(
         default_factory=list, description="Breadcrumb navigation path"
+    )
+
+
+class WebEntity(BaseEntity):
+    """Entity representing a web page to be crawled."""
+
+    url: str = Field(..., description="URL to crawl")
+    title: Optional[str] = Field(None, description="Page title if known")
+    metadata: Optional[Dict[str, Any]] = Field(default_factory=dict)
+    is_fully_processed: bool = Field(
+        False,
+        description="Flag indicating if this entity was already fully processed (should be KEPT)",
     )
 
 

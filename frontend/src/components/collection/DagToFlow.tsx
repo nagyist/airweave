@@ -17,8 +17,8 @@ export function dagNodeToFlowNode(dagNode, xPosition, sourceName = '') {
         displayName = cleanEntityName(dagNode.name, sourceName);
     }
 
-    // Generate shortName from name
-    const shortName = displayName.toLowerCase().replace(/\s+/g, '');
+    // Use sourceName directly for source nodes, otherwise generate shortName from displayName
+    const shortName = dagNode.type === 'source' ? sourceName : displayName.toLowerCase().replace(/\s+/g, '');
 
     console.log(displayName)
 
@@ -28,7 +28,8 @@ export function dagNodeToFlowNode(dagNode, xPosition, sourceName = '') {
             label: displayName,
             name: displayName,
             originalName: dagNode.name, // Store original name for reference
-            shortName: shortName
+            shortName: shortName,
+            connection_id: dagNode.connection_id
         },
         position: { x: xPosition, y: 0 },
         type: nodeTypeMap[dagNode.type] || 'default',
@@ -65,7 +66,8 @@ export function convertDagToFlowGraph(dag, setNodes, setEdges) {
 
     // Find the source node
     let currentNode = dag.nodes.find(node => node.type === 'source')
-    const sourceName = currentNode?.name || '';
+    // Use dag.sourceShortName if available, otherwise use node name
+    const sourceName = dag.sourceShortName || currentNode?.name || '';
 
     // Process each node until we reach the end or a destination
     let isFirstEdge = true;
@@ -165,20 +167,25 @@ export function enrichFlowGraphVisualization(flowNodes, flowEdges) {
         type: 'straight'
     };
 
-    // if the dag contains a transformernode
-    const transformerNode = flowNodes.find(node => node.type === 'transformerNode');
-    if (transformerNode) {
-        // replace the transformer node by ocr, chunker
-        // how can I know the entity file type
-        console.log(transformerNode)
-        transformerNode.data = {
-            label: 'Chunker',
-            name: 'Chunker',
-            shortName: 'chunker',
-            model: 'chonkie'
-        };
-        console.log(transformerNode)
-    }
+    // Update transformer node labels for better display names
+    const transformerNodes = flowNodes.filter(node => node.type === 'transformerNode');
+    transformerNodes.forEach(transformerNode => {
+        const originalName = transformerNode.data.originalName || transformerNode.data.name;
+
+        // Map transformer names to better display names
+        if (originalName === 'Web Fetcher') {
+            transformerNode.data.label = 'Crawler';
+            transformerNode.data.name = 'Crawler';
+            transformerNode.data.shortName = 'crawler';
+            transformerNode.data.model = 'firecrawl';
+        } else if (originalName === 'File Chunker') {
+            transformerNode.data.label = 'Chunker';
+            transformerNode.data.name = 'Chunker';
+            transformerNode.data.shortName = 'chunker';
+            transformerNode.data.model = 'chonkie';
+        }
+        // Keep other transformers as they are
+    });
 
     // Return the enriched graph
     return {

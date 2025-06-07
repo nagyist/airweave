@@ -1,5 +1,7 @@
 """Initialize the database with the first superuser."""
 
+import datetime
+
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import crud, schemas
@@ -35,3 +37,13 @@ async def init_db(db: AsyncSession) -> None:
             organization_id=organization.id,
         )
         user = await crud.user.create(db, obj_in=user_in)
+        _ = await crud.api_key.create_with_user(
+            db,
+            obj_in=schemas.APIKeyCreate(
+                user_id=user.id,
+                name="Superuser API Key",
+                description="Superuser API Key",
+                expires_at=datetime.datetime.now() + datetime.timedelta(days=365),
+            ),
+            current_user=user,
+        )

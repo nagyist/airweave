@@ -27,6 +27,8 @@ import { QueryTool } from '@/components/collection/QueryTool';
 import { LiveApiDoc } from '@/components/collection/LiveApiDoc';
 import { useSyncSubscription } from "@/hooks/useSyncSubscription";
 import { cn } from "@/lib/utils";
+import { SyncErrorCard } from './SyncErrorCard';
+import { SyncDagCard, SourceConnection } from './SyncDagCard';
 
 const nodeTypes = {
     sourceNode: SourceNode,
@@ -34,30 +36,6 @@ const nodeTypes = {
     destinationNode: DestinationNode,
     entityNode: EntityNode
 };
-
-interface SourceConnection {
-    id: string;
-    name: string;
-    description?: string;
-    short_name: string;
-    config_fields?: Record<string, any>;
-    sync_id?: string;
-    organization_id: string;
-    created_at: string;
-    modified_at: string;
-    connection_id?: string;
-    collection: string;
-    created_by_email: string;
-    modified_by_email: string;
-    auth_fields?: Record<string, any> | string;
-    status?: string;
-    latest_sync_job_status?: string;
-    latest_sync_job_id?: string;
-    latest_sync_job_started_at?: string;
-    latest_sync_job_completed_at?: string;
-    cron_schedule?: string;
-    next_scheduled_run?: string;
-}
 
 interface SourceConnectionJob {
     source_connection_id: string;
@@ -112,6 +90,24 @@ const SourceConnectionDetailView = ({
         skipped: number;
         encountered: Record<string, number>;
     } | null>(null);
+    const [isLoading, setIsLoading] = useState(true); // Add loading state
+
+    // Cache previous connection data to prevent flashing during transitions
+    const prevConnectionRef = useRef<{
+        connection: SourceConnection | null;
+        syncJob: SourceConnectionJob | null;
+        entities: number;
+        runtime: number | null;
+        entityDict: Record<string, number>;
+        status: string;
+    }>({
+        connection: null,
+        syncJob: null,
+        entities: 0,
+        runtime: null,
+        entityDict: {},
+        status: ""
+    });
 
     // 2. Real-time updates state
     const [internalShouldForceSubscribe, setInternalShouldForceSubscribe] = useState(false);
@@ -145,16 +141,24 @@ const SourceConnectionDetailView = ({
      * COMPUTED VALUES & DERIVED STATE
      ********************************************/
 
-    // 1. Subscription control logic
+    // 1. Make jobId more stable
+    const stableJobId = useMemo(() => {
+        return lastSyncJob?.id || null;
+    }, [lastSyncJob?.id]);
+
+    // 2. Make shouldSubscribe more stable and explicit
     const shouldSubscribe = useMemo(() => {
-        return shouldForceSubscribe || internalShouldForceSubscribe ||
-            (lastSyncJob?.status === 'pending' || lastSyncJob?.status === 'in_progress');
-    }, [lastSyncJob?.status, internalShouldForceSubscribe, shouldForceSubscribe]);
+        const hasActiveJob = lastSyncJob?.status === 'pending' || lastSyncJob?.status === 'in_progress';
+        const forceSubscribe = shouldForceSubscribe || internalShouldForceSubscribe;
+
+        return Boolean(stableJobId && (hasActiveJob || forceSubscribe));
+    }, [stableJobId, lastSyncJob?.status, internalShouldForceSubscribe, shouldForceSubscribe]);
+
+    // 3. Only pass jobId when we actually want to subscribe
+    const subscriptionJobId = shouldSubscribe ? stableJobId : null;
 
     // Subscribe to real-time updates when necessary
-    const { updates, latestUpdate, isConnected: isPubSubConnected } = useSyncSubscription(
-        shouldSubscribe ? lastSyncJob?.id || null : null
-    );
+    const { updates, latestUpdate, isConnected: isPubSubConnected } = useSyncSubscription(subscriptionJobId);
 
     // 2. Status derived from most up-to-date source
     const status = useMemo(() => {
@@ -227,19 +231,30 @@ const SourceConnectionDetailView = ({
 
     // 1. Main connection data fetching
     const fetchSourceConnectionDetails = async () => {
+        setIsLoading(true);
         try {
             const response = await apiClient.get(`/source-connections/${sourceConnectionId}`);
 
             if (response.ok) {
                 const detailedData = await response.json();
-                console.log("source connection details", detailedData);
+                console.log("Source connection details received:", detailedData);
+                console.log("Cron schedule from API:", detailedData.cron_schedule);
                 setSelectedConnection(detailedData);
+
+                // Fetch entity DAGs immediately if we have a sync_id
+                if (detailedData.sync_id) {
+                    await fetchEntityDags(detailedData.sync_id);
+                }
+
+                // Then fetch job data
                 await fetchSourceConnectionJob(detailedData);
             } else {
                 console.error("Failed to load source connection details:", await response.text());
             }
         } catch (err) {
             console.error("Error fetching source connection details:", err);
+        } finally {
+            setIsLoading(false);
         }
     };
 
@@ -275,8 +290,8 @@ const SourceConnectionDetailView = ({
                 setTotalRuntime(runtime);
             }
 
-            // After we have the job data with entities_encountered, fetch entity DAGs
-            if (connection.sync_id && sourceConnectionJob.entities_encountered) {
+            // Always fetch entity DAGs if we have a sync_id
+            if (connection.sync_id) {
                 await fetchEntityDags(connection.sync_id);
             }
         } catch (err) {
@@ -299,6 +314,15 @@ const SourceConnectionDetailView = ({
             const data = await response.json();
             setEntityDags(data);
             console.log('DAG data loaded:', data);
+
+            // After getting the DAGs, process them with the actual short_name
+            if (selectedConnection && data.length > 0) {
+                // This will be used when rendering the DAG
+                data.forEach(dag => {
+                    dag.sourceShortName = selectedConnection.short_name;
+                    dag.nodes.find(node => node.type === 'source').connection_id = selectedConnection.connection_id;
+                });
+            }
         } catch (error) {
             console.error('Error fetching entity DAGs:', error);
         }
@@ -318,6 +342,7 @@ const SourceConnectionDetailView = ({
 
             const sourceData = await response.json();
             console.log("Got source connection data:", sourceData);
+            console.log("Cron schedule after update:", sourceData.cron_schedule);
 
             // Update the source connection state with the new schedule information
             setSelectedConnection(prev => {
@@ -336,6 +361,7 @@ const SourceConnectionDetailView = ({
             // Update the next run time
             const nextRun = calculateNextRunTime(sourceData.cron_schedule);
             setNextRunTime(nextRun);
+            console.log("Next run time calculated:", nextRun);
 
             toast({
                 title: "Success",
@@ -433,6 +459,8 @@ const SourceConnectionDetailView = ({
                 ? buildCronExpression(scheduleConfig)
                 : null;
 
+            console.log("Generated cron expression:", cronExpression);
+
             // Validate if needed
             if (scheduleConfig.type === "scheduled" &&
                 scheduleConfig.frequency === "custom" &&
@@ -493,17 +521,14 @@ const SourceConnectionDetailView = ({
             prevEntityDictRef.current = { ...entityDict };
         }
 
-        // If we have no encountered entities but had them before,
-        // don't empty the dictionary during state transitions
-        if ((!entitiesEncountered || Object.keys(entitiesEncountered).length === 0) &&
-            Object.keys(prevEntityDictRef.current).length > 0) {
-            console.log('Preserving previous entity dictionary during transition');
-            setEntityDict(prevEntityDictRef.current);
+        // Only update if we have actual encountered entities
+        if (!entitiesEncountered || Object.keys(entitiesEncountered).length === 0) {
+            // Don't clear the dictionary - let initializeEntityDictFromDags handle empty state
             return;
         }
 
-        if (!entitiesEncountered || !entityDags.length) {
-            return; // Need both entities and DAGs
+        if (!entityDags.length) {
+            return; // Need DAGs to process entities
         }
 
         // Get source name from entityDags
@@ -511,14 +536,19 @@ const SourceConnectionDetailView = ({
             .filter(node => node.type === 'source')
             .map(node => node.name)[0] || '';
 
-        // Process the entities_encountered data with source name
+        // Process the entities_encountered data with source name and filter out WebFileEntity
         const cleanedDict = Object.entries(entitiesEncountered).reduce((acc, [key, value]) => {
+            // Skip WebFileEntity as it's not a user-defined entity
+            if (key.includes('WebFile')) {
+                return acc;
+            }
+
             const cleanedName = cleanEntityName(key, sourceName);
             acc[cleanedName] = value as number;
             return acc;
         }, {} as Record<string, number>);
 
-        console.log('Created cleaned entity dictionary:', cleanedDict, 'with source name:', sourceName);
+        console.log('Updated entity dictionary with real values:', cleanedDict, 'with source name:', sourceName);
 
         // Only update if we have actual entities
         if (Object.keys(cleanedDict).length > 0) {
@@ -547,62 +577,126 @@ const SourceConnectionDetailView = ({
 
             const [minute, hour, dayOfMonth, month, dayOfWeek] = parts;
 
-            // Get current date
+            // Get current date in UTC
             const now = new Date();
-            const nextRun = new Date();
+            const nowUtc = new Date(Date.UTC(
+                now.getUTCFullYear(),
+                now.getUTCMonth(),
+                now.getUTCDate(),
+                now.getUTCHours(),
+                now.getUTCMinutes(),
+                now.getUTCSeconds()
+            ));
 
-            // Handle the case for specific hour and minute (basic daily schedule)
-            if (!isNaN(parseInt(hour)) && !isNaN(parseInt(minute)) &&
-                dayOfMonth === "*" && month === "*") {
+            let nextRun = new Date(Date.UTC(
+                nowUtc.getUTCFullYear(),
+                nowUtc.getUTCMonth(),
+                nowUtc.getUTCDate(),
+                nowUtc.getUTCHours(),
+                nowUtc.getUTCMinutes(),
+                nowUtc.getUTCSeconds()
+            ));
 
-                // Convert UTC cron time to local time for comparison
-                const cronMinute = parseInt(minute);
-                const cronHour = parseInt(hour);
+            // For weekly schedules (specific day of week)
+            if (dayOfWeek !== '*' && dayOfMonth === '*') {
+                const targetDay = parseInt(dayOfWeek) % 7; // 0-6, where 0 is Sunday
+                const currentDay = nowUtc.getUTCDay(); // 0-6, where 0 is Sunday
 
-                // Create a date object with the UTC time from cron
-                const scheduleTime = new Date();
-                scheduleTime.setUTCHours(cronHour, cronMinute, 0, 0);
+                // Calculate days to add to get to the target day
+                let daysToAdd = (targetDay - currentDay + 7) % 7;
+                if (daysToAdd === 0) {
+                    // If today is the target day, check if the time has already passed
+                    const targetHour = parseInt(hour);
+                    const targetMinute = parseInt(minute);
 
-                // Set nextRun to today's occurrence of this time
-                nextRun.setHours(scheduleTime.getHours(), scheduleTime.getMinutes(), 0, 0);
+                    if (hour !== '*' && minute !== '*') {
+                        const currentHour = nowUtc.getUTCHours();
+                        const currentMinute = nowUtc.getUTCMinutes();
 
-                // If this time has already passed today, move to tomorrow
-                if (nextRun < now) {
-                    nextRun.setDate(nextRun.getDate() + 1);
+                        if (currentHour > targetHour || (currentHour === targetHour && currentMinute >= targetMinute)) {
+                            // Time already passed today, go to next week
+                            daysToAdd = 7;
+                        }
+                    }
+                }
+
+                // Set the date to the next occurrence
+                nextRun.setUTCDate(nowUtc.getUTCDate() + daysToAdd);
+
+                // Set the time
+                if (hour !== '*') {
+                    nextRun.setUTCHours(parseInt(hour), parseInt(minute) || 0, 0, 0);
+                } else {
+                    nextRun.setUTCHours(nowUtc.getUTCHours(), parseInt(minute) || 0, 0, 0);
                 }
             }
-            // Handle other cases with the existing fallbacks
-            else if (minute === "0" && hour === "0" && dayOfMonth === "*" && month === "*") {
-                // Set to next midnight
-                nextRun.setDate(now.getDate() + 1);
-                nextRun.setHours(0, 0, 0, 0);
+            // For monthly schedules (specific day of month)
+            else if (dayOfMonth !== '*') {
+                const targetDay = parseInt(dayOfMonth);
+
+                // Create a date for the target day in current month (in UTC)
+                const targetDate = new Date(Date.UTC(
+                    nowUtc.getUTCFullYear(),
+                    nowUtc.getUTCMonth(),
+                    targetDay,
+                    hour !== '*' ? parseInt(hour) : nowUtc.getUTCHours(),
+                    minute !== '*' ? parseInt(minute) : 0,
+                    0, 0
+                ));
+
+                // If the target day already passed this month, go to next month
+                if (targetDate <= nowUtc) {
+                    targetDate.setUTCMonth(targetDate.getUTCMonth() + 1);
+                }
+
+                nextRun = targetDate;
             }
-            else if (minute === "0" && hour === "*") {
-                // Set to the next hour
-                nextRun.setHours(now.getHours() + 1, 0, 0, 0);
+            // For daily schedules
+            else if (hour !== '*' && dayOfMonth === '*' && dayOfWeek === '*') {
+                const targetHour = parseInt(hour);
+                const targetMinute = parseInt(minute) || 0;
+
+                nextRun.setUTCHours(targetHour, targetMinute, 0, 0);
+
+                // If the time already passed today, go to tomorrow
+                if (nextRun <= nowUtc) {
+                    nextRun.setUTCDate(nowUtc.getUTCDate() + 1);
+                }
             }
-            else {
-                // For complex patterns, parse properly or fallback to +1 day
-                // This is a simplified fallback
-                nextRun.setDate(now.getDate() + 1);
+            // For hourly schedules
+            else if (hour === '*' && minute !== '*') {
+                const targetMinute = parseInt(minute);
+                const currentMinute = nowUtc.getUTCMinutes();
+
+                nextRun.setUTCMinutes(targetMinute, 0, 0);
+
+                // If the minute already passed this hour, go to next hour
+                if (currentMinute >= targetMinute) {
+                    nextRun.setUTCHours(nowUtc.getUTCHours() + 1);
+                }
             }
 
-            // Calculate time difference
-            const diffMs = nextRun.getTime() - now.getTime();
-            const diffHrs = Math.floor(diffMs / (1000 * 60 * 60));
+            // Calculate time difference in UTC
+            const diffMs = nextRun.getTime() - nowUtc.getTime();
+            const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+            const diffHrs = Math.floor((diffMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
             const diffMins = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
 
             // Format the time difference
-            if (diffHrs > 24) {
-                const days = Math.floor(diffHrs / 24);
-                return `${days} day${days > 1 ? 's' : ''}`;
-            } else if (diffHrs > 0) {
-                return `${diffHrs}h ${diffMins}m`;
-            } else {
-                return `${diffMins}m`;
+            let result = '';
+            if (diffDays > 0) {
+                result += `${diffDays}d `;
             }
+            if (diffHrs > 0) {
+                result += `${diffHrs}h `;
+            }
+            if (diffMins > 0 || (diffDays === 0 && diffHrs === 0)) {
+                result += `${diffMins}m`;
+            }
+
+            return result.trim();
         } catch (error) {
-            console.error("Error parsing cron expression:", error);
+            console.error("Error calculating next run time:", error);
             return null;
         }
     }, []);
@@ -648,26 +742,73 @@ const SourceConnectionDetailView = ({
         return `${hour.padStart(2, '0')}:${minute.padStart(2, '0')}`;
     };
 
-    // Add this conversion function
-    const formatCronTimeToLocal = (cronExpression: string): string => {
+    // Replace formatCronTimeToLocal with a UTC-only version
+    const formatCronTimeUTC = (cronExpression: string): string => {
         const parts = cronExpression.split(' ');
-        const utcMinute = parseInt(parts[0]);
-        const utcHour = parseInt(parts[1]);
+        const minute = parts[0];
+        const hour = parts[1];
+        const dayOfMonth = parts[2];
+        const month = parts[3];
+        const dayOfWeek = parts[4];
 
-        // Skip conversion for non-specific times
-        if (isNaN(utcHour) || parts[1] === '*') return formatCronTime(cronExpression);
+        // Base time format
+        let timeInfo = `${hour !== '*' ? hour.padStart(2, '0') : '*'}:${minute.padStart(2, '0')} UTC`;
 
-        // Get timezone offset in hours (UTC+2 would be -120 minutes, so we use -1 to flip the sign)
-        const tzOffset = new Date().getTimezoneOffset() / -60;
+        // Format the date part if specific day
+        if (dayOfWeek !== '*' || dayOfMonth !== '*') {
+            const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
-        // Format the timezone string (UTC+X or UTC-X)
-        const tzString = tzOffset >= 0 ? `UTC+${tzOffset}` : `UTC${tzOffset}`;
+            // Build date context based on schedule type
+            if (dayOfMonth !== '*') {
+                // Monthly schedule
+                timeInfo += ` on day ${dayOfMonth}`;
+            } else if (dayOfWeek !== '*') {
+                // Weekly schedule (0 = Sunday, 6 = Saturday)
+                const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+                const dayIndex = parseInt(dayOfWeek) % 7;
+                timeInfo += ` on ${days[dayIndex]}`;
+            }
+        }
 
-        // Add timezone offset to UTC hour
-        const localHour = (utcHour + tzOffset + 24) % 24;
+        return timeInfo;
+    }
 
-        return `${Math.floor(localHour).toString().padStart(2, '0')}:${utcMinute.toString().padStart(2, '0')} (${tzString})`;
-    };
+    // Add function to initialize entity dictionary from DAGs with 0 values
+    const initializeEntityDictFromDags = useCallback(() => {
+        // Only initialize if we don't have real data yet
+        if (entityData.encountered && Object.keys(entityData.encountered).length > 0) {
+            return;
+        }
+
+        if (!entityDags || entityDags.length === 0) return;
+
+        // Check if we already have an entity dict to avoid re-initializing
+        if (Object.keys(entityDict).length > 0) return;
+
+        // Get source name from entityDags
+        const sourceName = entityDags[0].nodes
+            .filter(node => node.type === 'source')
+            .map(node => node.name)[0] || '';
+
+        // Extract entity names from DAGs and initialize with 0
+        const initialDict: Record<string, number> = {};
+        entityDags.forEach(dag => {
+            if (dag.name && !dag.name.includes('WebFile')) {
+                const cleanedName = cleanEntityName(dag.name, sourceName);
+                initialDict[cleanedName] = 0;
+            }
+        });
+
+        if (Object.keys(initialDict).length > 0) {
+            console.log('Initialized entity dictionary from DAGs with 0 values:', initialDict);
+            setEntityDict(initialDict);
+
+            // Select first entity if none selected
+            if (!selectedEntity) {
+                setSelectedEntity(Object.keys(initialDict)[0]);
+            }
+        }
+    }, [entityDags, entityData.encountered, selectedEntity, entityDict]);
 
     /********************************************
      * SIDE EFFECTS - ORDERED BY PRIORITY
@@ -709,8 +850,27 @@ const SourceConnectionDetailView = ({
                 ...prev,
                 status: latestUpdate.is_complete ? 'completed' : 'failed'
             } : prev);
+
+            // Fetch the latest job data including timestamps
+            if (selectedConnection?.id && lastSyncJob?.id) {
+                apiClient.get(`/source-connections/${selectedConnection.id}/jobs/${lastSyncJob.id}`)
+                    .then(async response => {
+                        if (response.ok) {
+                            const updatedJob = await response.json();
+                            setLastSyncJob(updatedJob);
+
+                            // Recalculate runtime with fresh timestamps
+                            if (updatedJob.started_at && (updatedJob.completed_at || updatedJob.failed_at)) {
+                                const endTime = updatedJob.completed_at || updatedJob.failed_at;
+                                const runtime = new Date(endTime).getTime() - new Date(updatedJob.started_at).getTime();
+                                setTotalRuntime(runtime);
+                            }
+                        }
+                    })
+                    .catch(err => console.error("Error fetching updated job data:", err));
+            }
         }
-    }, [latestUpdate?.is_complete, latestUpdate?.is_failed]);
+    }, [latestUpdate?.is_complete, latestUpdate?.is_failed, selectedConnection?.id, lastSyncJob?.id]);
 
     // 4. Entity data processing
     useEffect(() => {
@@ -772,33 +932,19 @@ const SourceConnectionDetailView = ({
     // 9. Schedule configuration
     useEffect(() => {
         if (selectedConnection?.sync_id && selectedConnection.cron_schedule) {
-            // Parse cron expression to get UTC time
+            // Parse cron expression in UTC (no conversion)
             const cronParts = selectedConnection.cron_schedule.split(' ');
             const utcMinute = parseInt(cronParts[0]);
             const utcHour = cronParts[1] !== '*' ? parseInt(cronParts[1]) : undefined;
 
-            // Convert to local time if hour is specified
-            let localHour = utcHour;
-            let localMinute = utcMinute;
-
-            if (utcHour !== undefined && !isNaN(utcHour)) {
-                // Create date in UTC and get local values
-                const date = new Date();
-                date.setUTCHours(utcHour, utcMinute, 0, 0);
-                localHour = date.getHours();
-                localMinute = date.getMinutes();
-            }
-
-            // Set config with local time values
+            // Set config with UTC time values
             setScheduleConfig({
                 type: "scheduled",
                 frequency: "custom",
-                hour: localHour,
-                minute: localMinute,
+                hour: utcHour,
+                minute: utcMinute,
                 cronExpression: selectedConnection.cron_schedule
             });
-
-            // Rest of the code...
         }
     }, [selectedConnection]);
 
@@ -845,27 +991,49 @@ const SourceConnectionDetailView = ({
         };
     }, [reactFlowInstance]);
 
-    // Modify the Reset ReactFlow instance when connection changes
+    // Store previous connection data before changes
     useEffect(() => {
-        // Clear the graph when connection changes
-        setNodes([]);
-        setEdges([]);
-        setSelectedEntity('');
-        setEntityDict({});
-        setSelectedDag(null);
-        setEntityDags([]); // Reset entity DAGs too
-
-        // If we have a ReactFlow instance, force a complete reset
-        if (reactFlowInstance) {
-            reactFlowInstance.setNodes([]);
-            reactFlowInstance.setEdges([]);
-
-            // Force a reset of the instance after a delay
-            setTimeout(() => {
-                reactFlowInstance.fitView({ padding: 0.2 });
-            }, 100);
+        if (!isLoading && selectedConnection) {
+            prevConnectionRef.current = {
+                connection: selectedConnection,
+                syncJob: lastSyncJob,
+                entities: totalEntities,
+                runtime: totalRuntime,
+                entityDict: { ...entityDict },
+                status: status
+            };
         }
-    }, [sourceConnectionId, reactFlowInstance]);
+    }, [isLoading, selectedConnection, lastSyncJob, totalEntities, totalRuntime, entityDict, status]);
+
+    // Replace the existing cleanup effect with this improved version
+    useEffect(() => {
+        // First set loading state when connection changes
+        if (sourceConnectionId) {
+            setIsLoading(true);
+        }
+
+        return () => {
+            // Only clean up when component unmounts, not on every sourceConnectionId change
+            if (!sourceConnectionId) {
+                setNodes([]);
+                setEdges([]);
+                setSelectedEntity('');
+                setEntityDict({});
+                setSelectedDag(null);
+                setEntityDags([]);
+                prevEntityDictRef.current = {};
+                setFinalPubSubData(null);
+                setLastSyncJob(null);
+                setTotalEntities(0);
+                setTotalRuntime(null);
+
+                if (reactFlowInstance) {
+                    reactFlowInstance.setNodes([]);
+                    reactFlowInstance.setEdges([]);
+                }
+            }
+        };
+    }, [sourceConnectionId, setNodes, setEdges, reactFlowInstance]);
 
     // Add this effect to initialize nextRunTime on component mount or when cron_schedule changes
     useEffect(() => {
@@ -875,13 +1043,29 @@ const SourceConnectionDetailView = ({
         }
     }, [selectedConnection?.cron_schedule, calculateNextRunTime]);
 
+    // Initialize entity dictionary from DAGs when they're loaded
+    useEffect(() => {
+        initializeEntityDictFromDags();
+    }, [entityDags, initializeEntityDictFromDags]); // Include the callback in dependencies
+
     console.log(`[PubSub] Data source for job ${lastSyncJob?.id}: ${isShowingRealtimeUpdates ? 'LIVE UPDATES' : 'DATABASE'}`);
+
+    // Render based on loading state
+    const connectionToDisplay = isLoading ? prevConnectionRef.current.connection : selectedConnection;
+    const jobToDisplay = isLoading ? prevConnectionRef.current.syncJob : lastSyncJob;
+    const entitiesToDisplay = isLoading ? prevConnectionRef.current.entities : totalEntities;
+    const runtimeToDisplay = isLoading ? prevConnectionRef.current.runtime : totalRuntime;
+    const statusToDisplay = isLoading ? prevConnectionRef.current.status : status;
+    const entityDictToDisplay = Object.keys(stableEntityDict).length > 0 ? stableEntityDict :
+        isLoading ? prevConnectionRef.current.entityDict : {};
+
+    console.log(`[Loading] State for ${sourceConnectionId}: ${isLoading ? 'LOADING' : 'LOADED'}`);
 
     /********************************************
      * RENDER
      ********************************************/
 
-    if (!selectedConnection) {
+    if (!connectionToDisplay) {
         return (
             <div className="w-full py-6">
                 <div className="flex items-center justify-center">
@@ -892,359 +1076,163 @@ const SourceConnectionDetailView = ({
         );
     }
 
+    console.log("Render state:", {
+        hasSchedule: !!selectedConnection?.cron_schedule,
+        cronSchedule: selectedConnection?.cron_schedule,
+        nextRunTime
+    });
+
     return (
         <div className={cn(isDark ? "text-foreground" : "")}>
             {/* Visualization Section */}
-            {lastSyncJob && (
-                <div className="py-2 space-y-3 mt-4">
-                    {/* Status Dashboard */}
-                    <div className="grid grid-cols-12 gap-3">
-                        {/* Status Stats Cards - Add stable min-height to prevent layout shifts */}
-                        <div className="col-span-12 md:col-span-8 grid grid-cols-3 gap-3">
-                            {/* Entities Card */}
-                            <div className={cn(
-                                "col-span-1 rounded-lg p-3 flex flex-col shadow-sm transition-all duration-200 min-h-[5.5rem]",
-                                isDark
-                                    ? "bg-gray-800/60 border border-gray-700/50"
-                                    : "bg-white border border-gray-100"
-                            )}>
-                                <div className="text-xs uppercase tracking-wider mb-1 font-medium opacity-60">
-                                    Entities
-                                </div>
-                                <div className="text-2xl font-semibold">
-                                    {totalEntities.toLocaleString()}
-                                </div>
-                            </div>
-
-                            {/* Status Card */}
-                            <div className={cn(
-                                "col-span-1 rounded-lg p-3 flex flex-col shadow-sm transition-all duration-200 min-h-[5.5rem]",
-                                isDark
-                                    ? "bg-gray-800/60 border border-gray-700/50"
-                                    : "bg-white border border-gray-100"
-                            )}>
-                                <div className="text-xs uppercase tracking-wider mb-1 font-medium opacity-60">
-                                    Status
-                                </div>
-                                <div className="text-lg font-medium flex items-center">
-                                    <span className={`inline-flex h-3 w-3 rounded-full mr-2
-                                        ${status === 'completed' ? 'bg-green-500' :
-                                            status === 'failed' ? 'bg-red-500' :
-                                                status === 'in_progress' ? 'bg-blue-500 animate-pulse' :
-                                                    'bg-amber-500'}`}
-                                    />
-                                    <span className="capitalize">
-                                        {status === 'in_progress' ? 'Running' : status}
-                                        {(status === 'in_progress' || status === 'pending') &&
-                                            <span className="animate-pulse ml-1">•••</span>
-                                        }
-                                    </span>
-                                </div>
-                            </div>
-
-                            {/* Runtime Card */}
-                            <div className={cn(
-                                "col-span-1 rounded-lg p-3 flex flex-col shadow-sm transition-all duration-200 min-h-[5.5rem]",
-                                isDark
-                                    ? "bg-gray-800/60 border border-gray-700/50"
-                                    : "bg-white border border-gray-100"
-                            )}>
-                                <div className="text-xs uppercase tracking-wider mb-1 font-medium opacity-60">
-                                    Runtime
-                                </div>
-                                <div className="text-lg font-medium">
-                                    {totalRuntime ? formatTotalRuntime(totalRuntime) : 'N/A'}
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Schedule Card */}
+            <div className="py-2 space-y-3 mt-4">
+                {/* Status Dashboard */}
+                <div className="grid grid-cols-12 gap-3">
+                    {/* Status Stats Cards - Add stable min-height to prevent layout shifts */}
+                    <div className="col-span-12 md:col-span-8 grid grid-cols-3 gap-3">
+                        {/* Entities Card */}
                         <div className={cn(
-                            "col-span-12 md:col-span-4 rounded-lg p-3 flex flex-col justify-between shadow-sm transition-all duration-200 min-h-[5.5rem]",
+                            "col-span-1 rounded-lg p-3 flex flex-col shadow-sm transition-all duration-200 min-h-[5.5rem]",
                             isDark
                                 ? "bg-gray-800/60 border border-gray-700/50"
                                 : "bg-white border border-gray-100"
                         )}>
-                            <div className="flex items-center justify-between mb-1">
-                                <div className="text-xs uppercase tracking-wider font-medium opacity-60">
-                                    Schedule
-                                </div>
-                                <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className="h-1 px-1 rounded-md"
-                                    onClick={() => {
-                                        setScheduleConfig({
-                                            type: selectedConnection.cron_schedule ? "scheduled" : "one-time",
-                                            frequency: "custom",
-                                            cronExpression: selectedConnection.cron_schedule || undefined
-                                        });
-                                        setShowScheduleDialog(true);
-                                    }}
-                                >
-                                    <Pencil className="h-3 w-3" />
-                                </Button>
+                            <div className="text-xs uppercase tracking-wider mb-1 font-medium opacity-60">
+                                Entities
                             </div>
-                            <div className="flex items-center">
-                                <Clock className={cn(
-                                    "w-5 h-5 mr-2",
-                                    isDark ? "text-gray-400" : "text-gray-500"
-                                )} />
-                                <div>
-                                    <div className="text-lg font-medium">
-                                        {nextRunTime ? `Due in ${nextRunTime}` : 'Scheduled'}
-                                    </div>
-                                    <div className="text-xs opacity-70 mt-0.5">
-                                        {selectedConnection.cron_schedule && (
-                                            <span>Runs at {formatCronTimeToLocal(selectedConnection.cron_schedule)}</span>
-                                        )}
-                                    </div>
+                            <div className="text-2xl font-semibold">
+                                {isLoading ? (
+                                    <span>{entitiesToDisplay.toLocaleString()}</span>
+                                ) : (
+                                    <span>{totalEntities.toLocaleString()}</span>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Status Card */}
+                        <div className={cn(
+                            "col-span-1 rounded-lg p-3 flex flex-col shadow-sm transition-all duration-200 min-h-[5.5rem]",
+                            isDark
+                                ? "bg-gray-800/60 border border-gray-700/50"
+                                : "bg-white border border-gray-100"
+                        )}>
+                            <div className="text-xs uppercase tracking-wider mb-1 font-medium opacity-60">
+                                Status
+                            </div>
+                            <div className="text-lg font-medium flex items-center">
+                                <span className={`inline-flex h-3 w-3 rounded-full mr-2
+                                    ${statusToDisplay === 'completed' ? 'bg-green-500' :
+                                        statusToDisplay === 'failed' ? 'bg-red-500' :
+                                            statusToDisplay === 'in_progress' ? 'bg-blue-500 animate-pulse' :
+                                                'bg-amber-500'}`}
+                                />
+                                <span className="capitalize">
+                                    {statusToDisplay === 'in_progress' ? 'Running' : statusToDisplay || 'Not run'}
+                                    {(statusToDisplay === 'in_progress' || statusToDisplay === 'pending') &&
+                                        <span className="animate-pulse ml-1">•••</span>
+                                    }
+                                </span>
+                            </div>
+                        </div>
+
+                        {/* Runtime Card */}
+                        <div className={cn(
+                            "col-span-1 rounded-lg p-3 flex flex-col shadow-sm transition-all duration-200 min-h-[5.5rem]",
+                            isDark
+                                ? "bg-gray-800/60 border border-gray-700/50"
+                                : "bg-white border border-gray-100"
+                        )}>
+                            <div className="text-xs uppercase tracking-wider mb-1 font-medium opacity-60">
+                                Runtime
+                            </div>
+                            <div className="text-lg font-medium">
+                                {runtimeToDisplay ? formatTotalRuntime(runtimeToDisplay) : 'Not available'}
+                            </div>
+                            {lastSyncJob?.completed_at && <div className="text-xs opacity-70 mt-1">
+                                Completed {formatTimeSince(lastSyncJob.completed_at)}
+                            </div>}
+                        </div>
+                    </div>
+
+                    {/* Schedule Card */}
+                    <div className={cn(
+                        "col-span-12 md:col-span-4 rounded-lg p-3 flex flex-col justify-between shadow-sm transition-all duration-200 min-h-[5.5rem]",
+                        isDark
+                            ? "bg-gray-800/60 border border-gray-700/50"
+                            : "bg-white border border-gray-100"
+                    )}>
+                        <div className="flex items-center justify-between mb-1">
+                            <div className="text-xs uppercase tracking-wider font-medium opacity-60">
+                                Schedule
+                            </div>
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-1 px-1 rounded-md"
+                                onClick={() => {
+                                    setScheduleConfig({
+                                        type: connectionToDisplay.cron_schedule ? "scheduled" : "one-time",
+                                        frequency: "custom",
+                                        cronExpression: connectionToDisplay.cron_schedule || undefined
+                                    });
+                                    setShowScheduleDialog(true);
+                                }}
+                            >
+                                <Pencil className="h-3 w-3" />
+                            </Button>
+                        </div>
+                        <div className="flex items-center">
+                            <Clock className={cn(
+                                "w-5 h-5 mr-2",
+                                isDark ? "text-gray-400" : "text-gray-500"
+                            )} />
+                            <div>
+                                <div className="text-lg font-medium">
+                                    {connectionToDisplay.cron_schedule
+                                        ? (nextRunTime ? `Due in ${nextRunTime}` : 'Scheduled')
+                                        : 'Manual only'}
+                                </div>
+                                <div className="text-xs opacity-70 mt-0.5">
+                                    {connectionToDisplay.cron_schedule && (
+                                        <span>Runs at {formatCronTimeUTC(connectionToDisplay.cron_schedule)}</span>
+                                    )}
                                 </div>
                             </div>
                         </div>
                     </div>
-
-                    {/* Entity Visualization */}
-                    <Card className={cn(
-                        "overflow-hidden border rounded-lg",
-                        isDark ? "border-gray-700/50 bg-gray-800/30" : "border-gray-200 bg-white"
-                    )}>
-                        <CardHeader className="p-3">
-                            <div className="flex justify-between items-center">
-                                <h3 className={cn(
-                                    "text-base font-medium",
-                                    isDark ? "text-gray-200" : "text-gray-700"
-                                )}>
-                                    Entity Graph
-                                </h3>
-
-                                {/* Action Buttons */}
-                                <div className="flex gap-2">
-
-
-                                    <Button
-                                        variant="outline"
-                                        size="sm"
-                                        className={cn(
-                                            "h-8 gap-1.5 font-normal",
-                                            isDark
-                                                ? "bg-gray-700 border-gray-600 text-white"
-                                                : "bg-gray-100 border-gray-200 text-gray-800"
-                                        )}
-                                        onClick={handleRunSync}
-                                        disabled={isInitiatingSyncJob || isSyncJobRunning}
-                                    >
-                                        <Play className="h-3.5 w-3.5" />
-                                        {isInitiatingSyncJob ? 'Starting...' : isSyncJobRunning ? 'Running...' : 'Run Sync'}
-                                    </Button>
-                                </div>
-                            </div>
-
-                            {/* Entity Selection Buttons - Add min-height container to prevent layout shifts */}
-                            <div className="flex flex-wrap gap-1.5 mt-3 mb-1 min-h-[2.25rem] transition-all">
-                                {Object.keys(stableEntityDict).length > 0 ?
-                                    Object.keys(stableEntityDict)
-                                        .sort() // Sort keys alphabetically
-                                        .map((key) => {
-                                            // Determine if this button is selected
-                                            const isSelected = key === selectedEntity;
-
-                                            return (
-                                                <Button
-                                                    key={key}
-                                                    variant="outline"
-                                                    className={cn(
-                                                        "flex items-center gap-1.5 h-7 py-0 px-2 text-[13px] min-w-[90px]",
-                                                        isSelected
-                                                            ? isDark
-                                                                ? "bg-gray-700 border-gray-600 border-[1.5px] text-white"
-                                                                : "bg-gray-100 border-gray-300 border-[1.5px] text-gray-800"
-                                                            : isDark
-                                                                ? "bg-gray-800/80 border-gray-700/60 text-gray-300"
-                                                                : "bg-white border-gray-200/80 text-gray-700"
-                                                    )}
-                                                    onClick={() => setSelectedEntity(key)}
-                                                >
-                                                    {key}
-                                                    <Badge
-                                                        variant="outline"
-                                                        className={cn(
-                                                            "ml-1 pointer-events-none text-[11px] px-1.5 font-normal h-5",
-                                                            isSelected
-                                                                ? isDark
-                                                                    ? "bg-gray-600 text-gray-200 border-gray-500"
-                                                                    : "bg-gray-200 text-gray-700 border-gray-300"
-                                                                : isDark
-                                                                    ? "bg-gray-700 text-gray-300 border-gray-600"
-                                                                    : "bg-gray-100 text-gray-600 border-gray-200"
-                                                        )}
-                                                    >
-                                                        {stableEntityDict[key]}
-                                                    </Badge>
-                                                </Button>
-                                            );
-                                        })
-                                    : null
-                                }
-                            </div>
-                        </CardHeader>
-                        <CardContent className="p-0 pb-0">
-                            {/* Flow Diagram - Add fixed height to prevent resizing during transitions */}
-                            <div
-                                ref={flowContainerRef}
-                                className="h-[320px] w-full overflow-hidden"
-                                style={{ minHeight: '320px' }}
-                            >
-                                <ReactFlow
-                                    key={selectedConnection.id || 'no-connection'}
-                                    nodes={nodes}
-                                    edges={edges}
-                                    onNodesChange={onNodesChange}
-                                    onEdgesChange={onEdgesChange}
-                                    nodeTypes={nodeTypes}
-                                    fitView
-                                    fitViewOptions={{
-                                        padding: 0.3,
-                                        minZoom: 0.1,
-                                        maxZoom: 1.5,
-                                        duration: 0
-                                    }}
-                                    onInit={setReactFlowInstance}
-                                    defaultViewport={{ x: 0, y: 0, zoom: 0.8 }}
-                                    style={{
-                                        touchAction: 'none',
-                                        cursor: 'default',
-                                        background: isDark ? 'transparent' : '#fafafa'
-                                    }}
-                                    nodesDraggable={false}
-                                    nodesConnectable={false}
-                                    elementsSelectable={false}
-                                    zoomOnScroll={false}
-                                    panOnScroll={false}
-                                    panOnDrag={false}
-                                    zoomOnPinch={false}
-                                    zoomOnDoubleClick={false}
-                                    preventScrolling={true}
-                                    proOptions={{ hideAttribution: true }}
-                                />
-                            </div>
-
-                            {/* Divider between Entity Graph and Sync Progress */}
-                            <div className={cn(
-                                "border-t w-full mx-auto my-2",
-                                isDark ? "border-gray-700/50" : "border-gray-200"
-                            )} />
-
-                            {/* Sync Progress Section */}
-                            <div className="px-3 pb-3 pt-1">
-                                <h3 className={cn(
-                                    "text-base font-medium mb-4",
-                                    isDark ? "text-gray-200" : "text-gray-700"
-                                )}>
-                                    Sync Progress
-                                </h3>
-
-                                {/* Normalized multi-segment progress bar - Add min-height to prevent layout shifts */}
-                                <div className={cn(
-                                    "relative w-full h-3 rounded-md overflow-hidden mb-6",
-                                    isDark ? "bg-gray-700/50" : "bg-gray-100"
-                                )}>
-                                    <div
-                                        className="absolute left-0 top-0 h-3 bg-green-500"
-                                        style={{ width: `${total > 0 ? (entityData.inserted / total) * 100 : 0}%` }}
-                                    />
-                                    <div
-                                        className="absolute top-0 h-3 bg-cyan-500"
-                                        style={{
-                                            left: `${total > 0 ? (entityData.inserted / total) * 100 : 0}%`,
-                                            width: `${total > 0 ? (entityData.updated / total) * 100 : 0}%`
-                                        }}
-                                    />
-                                    <div
-                                        className="absolute top-0 h-3 bg-primary"
-                                        style={{
-                                            left: `${total > 0 ? ((entityData.inserted + entityData.updated) / total) * 100 : 0}%`,
-                                            width: `${total > 0 ? (entityData.kept / total) * 100 : 0}%`
-                                        }}
-                                    />
-                                    <div
-                                        className="absolute top-0 h-3 bg-red-500"
-                                        style={{
-                                            left: `${total > 0 ? ((entityData.inserted + entityData.updated + entityData.kept) / total) * 100 : 0}%`,
-                                            width: `${total > 0 ? (entityData.deleted / total) * 100 : 0}%`
-                                        }}
-                                    />
-                                    <div
-                                        className="absolute top-0 h-3 bg-yellow-500"
-                                        style={{
-                                            left: `${total > 0 ? ((entityData.inserted + entityData.updated + entityData.kept + entityData.deleted) / total) * 100 : 0}%`,
-                                            width: `${total > 0 ? (entityData.skipped / total) * 100 : 0}%`
-                                        }}
-                                    />
-                                </div>
-
-                                {/* Stats grid - Add min-height for containers */}
-                                <div className="grid grid-cols-5 gap-3 mt-5 min-h-[5rem]">
-                                    <div className={cn(
-                                        "rounded-md p-3 flex flex-col items-center",
-                                        isDark ? "bg-gray-700/30" : "bg-gray-50"
-                                    )}>
-                                        <div className="flex items-center space-x-1 mb-1">
-                                            <span className="w-3 h-3 block bg-green-500 rounded-full" />
-                                            <span className="text-xs font-medium">Inserted</span>
-                                        </div>
-                                        <span className="text-lg font-semibold">{entityData.inserted.toLocaleString()}</span>
-                                    </div>
-
-                                    <div className={cn(
-                                        "rounded-md p-3 flex flex-col items-center",
-                                        isDark ? "bg-gray-700/30" : "bg-gray-50"
-                                    )}>
-                                        <div className="flex items-center space-x-1 mb-1">
-                                            <span className="w-3 h-3 block bg-cyan-500 rounded-full" />
-                                            <span className="text-xs font-medium">Updated</span>
-                                        </div>
-                                        <span className="text-lg font-semibold">{entityData.updated.toLocaleString()}</span>
-                                    </div>
-
-                                    <div className={cn(
-                                        "rounded-md p-3 flex flex-col items-center",
-                                        isDark ? "bg-gray-700/30" : "bg-gray-50"
-                                    )}>
-                                        <div className="flex items-center space-x-1 mb-1">
-                                            <span className="w-3 h-3 block bg-primary rounded-full" />
-                                            <span className="text-xs font-medium">Kept</span>
-                                        </div>
-                                        <span className="text-lg font-semibold">{entityData.kept.toLocaleString()}</span>
-                                    </div>
-
-                                    <div className={cn(
-                                        "rounded-md p-3 flex flex-col items-center",
-                                        isDark ? "bg-gray-700/30" : "bg-gray-50"
-                                    )}>
-                                        <div className="flex items-center space-x-1 mb-1">
-                                            <span className="w-3 h-3 block bg-red-500 rounded-full" />
-                                            <span className="text-xs font-medium">Deleted</span>
-                                        </div>
-                                        <span className="text-lg font-semibold">{entityData.deleted.toLocaleString()}</span>
-                                    </div>
-
-                                    <div className={cn(
-                                        "rounded-md p-3 flex flex-col items-center",
-                                        isDark ? "bg-gray-700/30" : "bg-gray-50"
-                                    )}>
-                                        <div className="flex items-center space-x-1 mb-1">
-                                            <span className="w-3 h-3 block bg-yellow-500 rounded-full" />
-                                            <span className="text-xs font-medium">Skipped</span>
-                                        </div>
-                                        <span className="text-lg font-semibold">{entityData.skipped.toLocaleString()}</span>
-                                    </div>
-                                </div>
-                            </div>
-                        </CardContent>
-                    </Card>
                 </div>
-            )}
+
+                {/* Display appropriate card based on error status */}
+                {jobToDisplay?.error ? (
+                    <SyncErrorCard
+                        error={jobToDisplay.error}
+                        onRunSync={handleRunSync}
+                        isInitiatingSyncJob={isInitiatingSyncJob}
+                        isSyncJobRunning={isSyncJobRunning}
+                        isDark={isDark}
+                    />
+                ) : (
+                    <SyncDagCard
+                        selectedConnection={connectionToDisplay}
+                        stableEntityDict={entityDictToDisplay}
+                        selectedEntity={selectedEntity}
+                        setSelectedEntity={setSelectedEntity}
+                        nodes={nodes}
+                        edges={edges}
+                        onNodesChange={onNodesChange}
+                        onEdgesChange={onEdgesChange}
+                        reactFlowInstance={reactFlowInstance}
+                        setReactFlowInstance={setReactFlowInstance}
+                        flowContainerRef={flowContainerRef}
+                        entityData={entityData}
+                        total={total}
+                        onRunSync={handleRunSync}
+                        isInitiatingSyncJob={isInitiatingSyncJob}
+                        isSyncJobRunning={isSyncJobRunning}
+                        isDark={isDark}
+                    />
+                )}
+            </div>
 
             {/* Schedule Edit Dialog */}
             {showScheduleDialog && (
@@ -1258,7 +1246,7 @@ const SourceConnectionDetailView = ({
                         </DialogHeader>
 
                         <div className="py-4">
-                            {selectedConnection?.id && (
+                            {connectionToDisplay?.id && (
                                 <SyncSchedule
                                     value={scheduleConfig}
                                     onChange={(newConfig) => {

@@ -31,7 +31,7 @@ export const ApiKeyCard = ({ apiKey, onRequestNewKey }: ApiKeyCardProps) => {
   };
 
   return (
-    <div className="border border-border rounded-lg overflow-hidden">
+    <div className="bg-card border border-border rounded-lg overflow-hidden shadow-sm">
       <div className="p-5">
         <div className="flex items-center mb-1">
           <Key className="h-4 w-4 mr-1.5 text-muted-foreground" />
@@ -41,7 +41,7 @@ export const ApiKeyCard = ({ apiKey, onRequestNewKey }: ApiKeyCardProps) => {
         <div className="flex items-center">
           <Input
             value={apiKey?.decrypted_key ? maskApiKey(apiKey.decrypted_key) : `tc-${Array(30).fill("*").join("")}0007`}
-            className="text-xs font-mono h-9 bg-muted border-border"
+            className="text-xs font-mono h-9 bg-background border-border"
             readOnly
           />
           <Button

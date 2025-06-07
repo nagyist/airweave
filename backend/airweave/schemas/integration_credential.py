@@ -63,3 +63,13 @@ class IntegrationCredential(IntegrationCredentialInDBBase):
     """Integration credential with decrypted data."""
 
     decrypted_credentials: dict
+
+
+class IntegrationCredentialRawCreate(IntegrationCredentialBase):
+    """Create class for integration credentials with raw auth fields.
+
+    This schema is used when auth fields need to be validated and encrypted
+    before creating the credential.
+    """
+
+    auth_fields: dict

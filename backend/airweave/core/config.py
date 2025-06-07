@@ -23,6 +23,7 @@ class Settings(BaseSettings):
         FIRST_SUPERUSER_PASSWORD (str): The password of the first superuser.
         ENCRYPTION_KEY (str): The encryption key.
         CODE_SUMMARIZER_ENABLED (bool): Whether the code summarizer is enabled.
+        LOG_LEVEL (str): The logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL).
         POSTGRES_HOST (str): The PostgreSQL server hostname.
         POSTGRES_DB (str): The PostgreSQL database name.
         POSTGRES_USER (str): The PostgreSQL username.
@@ -32,11 +33,21 @@ class Settings(BaseSettings):
         RUN_ALEMBIC_MIGRATIONS (bool): Whether to run the alembic migrations.
         RUN_DB_SYNC (bool): Whether to run the system sync to process sources,
             destinations, and entity types.
+        REDIS_HOST (str): The Redis server hostname.
+        REDIS_PORT (int): The Redis server port.
+        REDIS_PASSWORD (Optional[str]): The Redis password (if authentication is enabled).
+        REDIS_DB (int): The Redis database number.
         QDRANT_HOST (str): The Qdrant host.
         QDRANT_PORT (int): The Qdrant port.
         TEXT2VEC_INFERENCE_URL (str): The URL for text2vec-transformers inference service.
         OPENAI_API_KEY (Optional[str]): The OpenAI API key.
         MISTRAL_API_KEY (Optional[str]): The Mistral AI API key.
+        FIRECRAWL_API_KEY (Optional[str]): The FireCrawl API key.
+        TEMPORAL_HOST (str): The Temporal server hostname.
+        TEMPORAL_PORT (int): The Temporal server port.
+        TEMPORAL_NAMESPACE (str): The Temporal namespace.
+        TEMPORAL_TASK_QUEUE (str): The Temporal task queue name.
+        TEMPORAL_ENABLED (bool): Whether Temporal is enabled.
 
         # Custom deployment URLs
         API_FULL_URL (Optional[str]): The full URL for the API.
@@ -62,6 +73,9 @@ class Settings(BaseSettings):
 
     CODE_SUMMARIZER_ENABLED: bool = False
 
+    # Logging configuration
+    LOG_LEVEL: str = "INFO"
+
     POSTGRES_HOST: str
     POSTGRES_DB: str = "airweave"
     POSTGRES_USER: str
@@ -73,6 +87,12 @@ class Settings(BaseSettings):
     RUN_ALEMBIC_MIGRATIONS: bool = False
     RUN_DB_SYNC: bool = True
 
+    # Redis configuration
+    REDIS_HOST: str = "localhost"
+    REDIS_PORT: int = 6379
+    REDIS_PASSWORD: Optional[str] = None
+    REDIS_DB: int = 0
+
     QDRANT_HOST: Optional[str] = None
     QDRANT_PORT: Optional[int] = None
     TEXT2VEC_INFERENCE_URL: str = "http://localhost:9878"
@@ -80,8 +100,16 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: Optional[str] = None
     ANTHROPIC_API_KEY: Optional[str] = None
     MISTRAL_API_KEY: Optional[str] = None
+    FIRECRAWL_API_KEY: Optional[str] = None
 
     AZURE_KEYVAULT_NAME: Optional[str] = None
+
+    # Temporal configuration
+    TEMPORAL_HOST: str = "localhost"
+    TEMPORAL_PORT: int = 7233
+    TEMPORAL_NAMESPACE: str = "default"
+    TEMPORAL_TASK_QUEUE: str = "airweave-sync-queue"
+    TEMPORAL_ENABLED: bool = False
 
     # Custom deployment URLs - these are used to override the default URLs to allow
     # for custom domains in custom deployments
@@ -236,6 +264,15 @@ class Settings(BaseSettings):
         if self.ENVIRONMENT == "prd":
             return "https://docs.airweave.ai"
         return f"https://docs.{self.ENVIRONMENT}-airweave.com"
+
+    @property
+    def temporal_address(self) -> str:
+        """The Temporal server address.
+
+        Returns:
+            str: The Temporal server address in host:port format.
+        """
+        return f"{self.TEMPORAL_HOST}:{self.TEMPORAL_PORT}"
 
 
 settings = Settings()

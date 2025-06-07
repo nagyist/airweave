@@ -1,8 +1,137 @@
 """The logging configuration module."""
 
+import json
 import logging
 import sys
+from datetime import datetime
 from typing import Optional
+
+
+class JSONFormatter(logging.Formatter):
+    """Custom JSON formatter for structured logging.
+
+    Formats log records as JSON with support for custom dimensions,
+    making logs compatible with Azure Log Analytics, Prometheus, and Grafana.
+    """
+
+    def __init__(self):
+        """Initialize the formatter with a module path cache."""
+        super().__init__()
+        self._module_cache = {}
+
+    def _get_module_path(self, record: logging.LogRecord) -> str:
+        """Extract the full module path from the log record.
+
+        Args:
+        ----
+            record (logging.LogRecord): The log record
+
+        Returns:
+        -------
+            str: Full module path (e.g., 'airweave.integrations.qdrant')
+
+        """
+        # Check cache first
+        pathname = record.pathname
+        if pathname in self._module_cache:
+            return self._module_cache[pathname]
+
+        try:
+            # Simple string manipulation - find "airweave" in the path
+            if "airweave" in pathname:
+                # Split by path separator and find where airweave starts
+                parts = pathname.replace("\\", "/").split("/")
+
+                # Find the last occurrence of 'airweave' (in case it appears multiple times)
+                airweave_indices = [i for i, part in enumerate(parts) if part == "airweave"]
+                if airweave_indices:
+                    # Take the last occurrence
+                    start_idx = airweave_indices[-1]
+                    module_parts = parts[start_idx:]
+
+                    # Remove .py extension from last part
+                    if module_parts and module_parts[-1].endswith(".py"):
+                        module_parts[-1] = module_parts[-1][:-3]
+
+                    module_path = ".".join(module_parts)
+                    self._module_cache[pathname] = module_path
+                    return module_path
+
+            # Fallback to simple module name
+            module_path = record.module
+            self._module_cache[pathname] = module_path
+            return module_path
+
+        except Exception:
+            # If anything goes wrong, use the simple module name
+            return record.module
+
+    def format(self, record: logging.LogRecord) -> str:
+        """Format the log record as JSON.
+
+        Args:
+        ----
+            record (logging.LogRecord): The log record to format
+
+        Returns:
+        -------
+            str: JSON-formatted log message
+
+        """
+        # Base log structure
+        log_entry = {
+            "timestamp": datetime.fromtimestamp(record.created).isoformat(),
+            "level": record.levelname,
+            "logger": record.name,
+            "message": record.getMessage(),
+            "module": self._get_module_path(record),
+            "function": record.funcName,
+            "line": record.lineno,
+        }
+
+        # Add custom dimensions if they exist
+        if hasattr(record, "custom_dimensions") and record.custom_dimensions:
+            log_entry["custom_dimensions"] = record.custom_dimensions
+
+        # Add any other extra fields (excluding custom_dimensions to avoid duplication)
+        if hasattr(record, "__dict__"):
+            for key, value in record.__dict__.items():
+                if key not in {
+                    "name",
+                    "msg",
+                    "args",
+                    "levelname",
+                    "levelno",
+                    "pathname",
+                    "filename",
+                    "module",
+                    "lineno",
+                    "funcName",
+                    "created",
+                    "msecs",
+                    "relativeCreated",
+                    "thread",
+                    "threadName",
+                    "processName",
+                    "process",
+                    "getMessage",
+                    "custom_dimensions",
+                    "exc_info",
+                    "exc_text",
+                    "stack_info",
+                }:
+                    # Only add serializable values
+                    try:
+                        json.dumps(value)
+                        log_entry[key] = value
+                    except (TypeError, ValueError):
+                        log_entry[key] = str(value)
+
+        # Add exception info if present
+        if record.exc_info:
+            log_entry["exception"] = self.formatException(record.exc_info)
+
+        return json.dumps(log_entry, default=str)
 
 
 class _ContextualLogger(logging.LoggerAdapter):
@@ -47,13 +176,12 @@ class _ContextualLogger(logging.LoggerAdapter):
         if "extra" not in kwargs:
             kwargs["extra"] = {}
 
-        # Initialize custom_dimensions if it doesn't exist
-        if "custom_dimensions" not in kwargs["extra"]:
-            kwargs["extra"]["custom_dimensions"] = {}
-
-        # Merge dimensions
+        # Add custom dimensions directly to the record
         if self.dimensions:
-            kwargs["extra"]["custom_dimensions"].update(self.dimensions)
+            kwargs["extra"]["custom_dimensions"] = {
+                **kwargs["extra"].get("custom_dimensions", {}),
+                **self.dimensions,
+            }
 
         return msg, kwargs
 
@@ -98,6 +226,12 @@ class LoggerConfigurator:
 
     This can then be augmented with additional dimensions, such as type of operation (flow
     generation, flow execution, etc), or error type (validation, parsing, etc).
+
+    Configuration:
+    -------------
+    Uses settings from airweave.core.config:
+    - Automatically uses text format when LOCAL_DEVELOPMENT=True, JSON format otherwise
+    - LOG_LEVEL: Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
 
     Examples:
     --------
@@ -152,14 +286,41 @@ class LoggerConfigurator:
 
         """
         logger = logging.getLogger(name)
-        logger.setLevel(logging.INFO)
 
-        # Add more handlers here if needed (perhaps as config options for open source users)
+        # Import settings here to avoid circular imports
+        from airweave.core.config import settings
 
-        # Add StreamHandler if not already added
-        if not any(isinstance(handler, logging.StreamHandler) for handler in logger.handlers):
-            stream_handler = logging.StreamHandler(sys.stdout)  # Explicitly use stdout
-            logger.addHandler(stream_handler)
+        # Set log level from settings
+        log_level = settings.LOG_LEVEL.upper()
+        logger.setLevel(getattr(logging, log_level, logging.INFO))
+
+        # CRITICAL FIX: Disable propagation to prevent duplicate logs
+        logger.propagate = False
+
+        # Check if this logger has already been configured
+        if hasattr(logger, "_airweave_configured"):
+            return _ContextualLogger(logger, prefix, dimensions)
+
+        # Clear any existing handlers to prevent duplicates
+        logger.handlers.clear()
+
+        # Add our custom StreamHandler
+        stream_handler = logging.StreamHandler(sys.stdout)
+
+        # Use text format only for local development, JSON everywhere else
+        if settings.LOCAL_DEVELOPMENT:
+            # Use text formatter for local development
+            formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+        else:
+            # Use JSON formatter for all non-local environments
+            # (Azure Log Analytics, Prometheus/Grafana)
+            formatter = JSONFormatter()
+
+        stream_handler.setFormatter(formatter)
+        logger.addHandler(stream_handler)
+
+        # Mark logger as configured to prevent reconfiguration
+        logger._airweave_configured = True
 
         return _ContextualLogger(logger, prefix, dimensions)
 

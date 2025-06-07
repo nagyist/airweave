@@ -42,7 +42,14 @@ MYSQL_TYPE_MAP = {
 }
 
 
-@source("MySQL", "mysql", AuthType.config_class, "MySQLAuthConfig", labels=["Database"])
+@source(
+    name="MySQL",
+    short_name="mysql",
+    auth_type=AuthType.config_class,
+    auth_config_class="MySQLAuthConfig",
+    config_class="MySQLConfig",
+    labels=["Database"],
+)
 class MySQLSource(BaseSource):
     """MySQL source implementation.
 
@@ -59,11 +66,13 @@ class MySQLSource(BaseSource):
         self.entity_classes: Dict[str, Type[PolymorphicEntity]] = {}
 
     @classmethod
-    async def create(cls, config: Dict[str, Any]) -> "MySQLSource":
+    async def create(
+        cls, credentials: Dict[str, Any], config: Optional[Dict[str, Any]] = None
+    ) -> "MySQLSource":
         """Create a new MySQL source instance.
 
         Args:
-            config: Dictionary containing connection details:
+            credentials: Dictionary containing connection details:
                 - host: Database host
                 - port: Database port
                 - database: Database name
@@ -71,9 +80,10 @@ class MySQLSource(BaseSource):
                 - password: Password
                 - schema: Schema to sync (defaults to database name)
                 - tables: Table to sync (defaults to '*')
+            config: Optional additional configuration parameters.
         """
         instance = cls()
-        instance.config = config.model_dump()
+        instance.config = credentials.model_dump()
         return instance
 
     async def _connect(self) -> None:

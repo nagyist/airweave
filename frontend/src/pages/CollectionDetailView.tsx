@@ -10,7 +10,7 @@ import { toast } from "@/hooks/use-toast";
 import { getAppIconUrl } from "@/lib/utils/icons";
 import { useTheme } from "@/lib/theme-provider";
 import { cn } from "@/lib/utils";
-import { StatusBadge } from "@/components/ui/StatusBadge";
+import { StatusBadge, statusConfig } from "@/components/ui/StatusBadge";
 import {
     AlertDialog,
     AlertDialogAction,
@@ -23,9 +23,9 @@ import {
 } from "@/components/ui/alert-dialog";
 import SourceConnectionDetailView from "@/components/collection/SourceConnectionDetailView";
 import { emitCollectionEvent, COLLECTION_DELETED } from "@/lib/events";
-import { QueryTool } from '@/components/collection/QueryTool';
-import { LiveApiDoc } from '@/components/collection/LiveApiDoc';
-import { ConnectFlow } from '@/components/shared';
+import { QueryToolAndLiveDoc } from '@/components/collection/QueryToolAndLiveDoc';
+import { DialogFlow } from '@/components/shared';
+import { protectedPaths } from "@/constants/paths";
 
 // DeleteCollectionDialog component
 interface DeleteCollectionDialogProps {
@@ -361,7 +361,7 @@ const Collections = () => {
                     description: "Collection deleted successfully"
                 });
                 // Navigate back to dashboard after successful deletion
-                navigate("/dashboard");
+                navigate(protectedPaths.dashboard);
             } else {
                 const errorText = await response.text();
                 throw new Error(`Failed to delete collection: ${errorText}`);
@@ -453,6 +453,45 @@ const Collections = () => {
         });
     }, [selectedConnection?.id]);
 
+    // Replace the existing getConnectionStatusIndicator function with this updated version
+    const getConnectionStatusIndicator = (connection: SourceConnection) => {
+        // Use the status that comes directly from the API
+        // Prioritize latest_sync_job_status, then fall back to status field
+        const statusValue = connection.latest_sync_job_status || connection.status || "";
+
+        // Get the color directly from the statusConfig - same logic as StatusBadge
+        const getStatusConfig = (statusKey: string = "") => {
+            // Try exact match first
+            if (statusKey in statusConfig) {
+                return statusConfig[statusKey as keyof typeof statusConfig];
+            }
+
+            // Try case-insensitive match
+            const lowerKey = statusKey.toLowerCase();
+            for (const key in statusConfig) {
+                if (key.toLowerCase() === lowerKey) {
+                    return statusConfig[key as keyof typeof statusConfig];
+                }
+            }
+
+            // Return default if no match
+            return statusConfig["default"];
+        };
+
+        const config = getStatusConfig(statusValue);
+        const colorClass = config.color;
+
+        // Add animate-pulse class for in-progress statuses
+        const isInProgress = statusValue.toLowerCase() === "in_progress";
+
+        return (
+            <span
+                className={`inline-flex h-2.5 w-2.5 rounded-full ${colorClass} opacity-80 ${isInProgress ? 'animate-pulse' : ''}`}
+                title={config.label}
+            />
+        );
+    };
+
     if (error) {
         return (
             <div className="container mx-auto py-6">
@@ -463,7 +502,7 @@ const Collections = () => {
                     <div>{error}</div>
                 </Alert>
                 <div className="mt-4">
-                    <Button onClick={() => navigate("/dashboard")}>
+                    <Button onClick={() => navigate(protectedPaths.dashboard)}>
                         Return to Dashboard
                     </Button>
                 </div>
@@ -494,7 +533,7 @@ const Collections = () => {
                                         key={connection.id}
                                         className={cn(
                                             "w-14 h-14 rounded-md border p-1 flex items-center justify-center overflow-hidden",
-                                            isDark ? "bg-gray-800 border-gray-700" : "bg-background border-gray-300"
+                                            isDark ? "bg-gray-800 border-gray-700" : "bg-white border-gray-200"
                                         )}
                                         style={{
                                             marginLeft: index > 0 ? `-${Math.min(index * 8, 24)}px` : "0px",
@@ -572,7 +611,7 @@ const Collections = () => {
                                 disabled={isReloading}
                                 className={cn(
                                     "h-8 w-8 rounded-full transition-all duration-200",
-                                    isDark ? "hover:bg-gray-800" : "hover:bg-gray-100",
+                                    isDark ? "hover:bg-gray-800" : "hover:bg-gray-50",
                                 )}
                                 title="Reload page"
                             >
@@ -588,7 +627,7 @@ const Collections = () => {
                                 onClick={() => setShowDeleteDialog(true)}
                                 className={cn(
                                     "h-8 w-8 rounded-full transition-all duration-200",
-                                    isDark ? "hover:bg-gray-800" : "hover:bg-gray-100"
+                                    isDark ? "hover:bg-gray-800" : "hover:bg-gray-50"
                                 )}
                                 title="Delete collection"
                             >
@@ -603,7 +642,7 @@ const Collections = () => {
                             onClick={() => setShowAddSourceDialog(true)}
                             className={cn(
                                 "gap-1 text-xs font-medium h-8 px-3",
-                                isDark ? "border-gray-700 hover:bg-gray-800" : "border-gray-300 hover:bg-gray-100"
+                                isDark ? "border-gray-700 hover:bg-gray-800" : "border-gray-200 hover:bg-gray-50"
                             )}
                         >
                             <Plus className="h-3.5 w-3.5" />
@@ -614,7 +653,7 @@ const Collections = () => {
                             onClick={handleRefreshAllSources}
                             className={cn(
                                 "gap-1 text-xs font-medium h-8 px-3",
-                                isDark ? "border-gray-700 hover:bg-gray-800" : "border-gray-300 hover:bg-gray-100"
+                                isDark ? "border-gray-700 hover:bg-gray-800" : "border-gray-200 hover:bg-gray-50"
                             )}
                         >
                             <Plug className="h-3.5 w-3.5 mr-1" />
@@ -622,17 +661,13 @@ const Collections = () => {
                         </Button>
                     </div>
 
-                    {/* Add QueryTool and LiveApiDoc when a connection with syncId is selected */}
+                    {/* Add QueryToolAndLiveDoc when a connection with syncId is selected */}
                     {selectedConnection?.sync_id && (
                         <>
                             <div className='py-3 space-y-2 mt-1'>
-                                <QueryTool
-                                    syncId={selectedConnection.sync_id}
-                                    collectionReadableId={collection?.readable_id}
+                                <QueryToolAndLiveDoc
+                                    collectionReadableId={collection?.readable_id || ''}
                                 />
-                            </div>
-                            <div className='py-1 space-y-1 mt-2'>
-                                <LiveApiDoc syncId={selectedConnection.sync_id} />
                             </div>
                         </>
                     )}
@@ -656,10 +691,12 @@ const Collections = () => {
                                             ? "border-2 border-primary"
                                             : isDark
                                                 ? "border border-gray-700 bg-gray-800/50 hover:bg-gray-700/70"
-                                                : "border border-gray-300 hover:bg-gray-100"
+                                                : "border border-gray-200 bg-white hover:bg-gray-50"
                                     )}
                                     onClick={() => handleSelectConnection(connection)}
                                 >
+                                    {getConnectionStatusIndicator(connection)}
+
                                     <div className={cn(
                                         "rounded-md flex items-center justify-center overflow-hidden flex-shrink-0",
                                     )}>
@@ -679,16 +716,16 @@ const Collections = () => {
                         {sourceConnections.length === 0 && (
                             <div className={cn(
                                 "text-center py-6 rounded-md border",
-                                isDark ? "border-gray-700 bg-gray-800/20 text-gray-400" : "border-gray-200 bg-gray-50 text-muted-foreground"
+                                isDark ? "border-gray-700 bg-gray-800/20 text-gray-400" : "border-gray-200 bg-white text-muted-foreground"
                             )}>
                                 <p className="mb-2">No source connections found.</p>
                                 <Button
                                     variant="outline"
                                     className={cn(
                                         "mt-2",
-                                        isDark ? "border-gray-700 hover:bg-gray-800" : ""
+                                        isDark ? "border-gray-700 hover:bg-gray-800" : "border-gray-200 hover:bg-gray-50"
                                     )}
-                                    onClick={() => { }}
+                                    onClick={() => setShowAddSourceDialog(true)}
                                 >
                                     <Plus className="h-4 w-4 mr-2" />
                                     Add a source connection
@@ -716,19 +753,15 @@ const Collections = () => {
                         setConfirmText={setConfirmText}
                     />
 
-                    {/* ConnectFlow for adding a source to an existing collection
-                        Setting mode="add-source" with collectionId/Name ensures it will:
-                        1. Start with SourceSelectorView (skipping CreateCollectionView)
-                        2. Use the existing collection instead of creating a new one
-                        3. Only create a source connection, not a new collection
-                    */}
+                    {/* Replace this ConnectFlow with DialogFlow */}
                     {collection && (
-                        <ConnectFlow
+                        <DialogFlow
                             isOpen={showAddSourceDialog}
                             onOpenChange={setShowAddSourceDialog}
                             mode="add-source"
                             collectionId={collection.readable_id}
                             collectionName={collection.name}
+                            dialogId="collection-detail-add-source"
                             onComplete={() => {
                                 setShowAddSourceDialog(false);
                                 reloadData();

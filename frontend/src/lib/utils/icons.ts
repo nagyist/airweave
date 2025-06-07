@@ -35,6 +35,7 @@ export function getTransformerIconUrl(shortName: string, theme?: string): string
       'chonkie': 'chonkie.png',
       'chunker': 'chunker.svg',
       'mistralai': 'mistralai.png',
+      'firecrawl': 'firecrawl.png',
       // Add other mappings as needed
     };
     if (shortName == 'openai' && theme == 'dark') {

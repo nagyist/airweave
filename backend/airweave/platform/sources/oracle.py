@@ -41,7 +41,14 @@ ORACLE_TYPE_MAP = {
 }
 
 
-@source("Oracle", "oracle", AuthType.config_class, "OracleAuthConfig", labels=["Database"])
+@source(
+    name="Oracle",
+    short_name="oracle",
+    auth_type=AuthType.config_class,
+    auth_config_class="OracleAuthConfig",
+    config_class="OracleConfig",
+    labels=["Database"],
+)
 class OracleSource(BaseSource):
     """Oracle source implementation.
 
@@ -58,11 +65,13 @@ class OracleSource(BaseSource):
         self.entity_classes: Dict[str, Type[PolymorphicEntity]] = {}
 
     @classmethod
-    async def create(cls, config: Dict[str, Any]) -> "OracleSource":
+    async def create(
+        cls, credentials: Dict[str, Any], config: Optional[Dict[str, Any]] = None
+    ) -> "OracleSource":
         """Create a new Oracle source instance.
 
         Args:
-            config: Dictionary containing connection details:
+            credentials: Dictionary containing connection details:
                 - host: Database host
                 - port: Database port
                 - service_name: Oracle service name
@@ -70,9 +79,10 @@ class OracleSource(BaseSource):
                 - password: Password
                 - schema: Schema to sync (defaults to user's schema)
                 - tables: Table to sync (defaults to '*')
+            config: Optional configuration parameters for the Oracle source.
         """
         instance = cls()
-        instance.config = config.model_dump()
+        instance.config = credentials.model_dump()
         return instance
 
     async def _connect(self) -> None:

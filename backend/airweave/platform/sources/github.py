@@ -45,10 +45,11 @@ from airweave.platform.utils.file_extensions import (
 
 
 @source(
-    "GitHub",
-    "github",
-    AuthType.config_class,
-    "GitHubAuthConfig",
+    name="GitHub",
+    short_name="github",
+    auth_type=AuthType.config_class,
+    auth_config_class="GitHubAuthConfig",
+    config_class="GitHubConfig",
     labels=["Code"],
 )
 class GitHubSource(BaseSource):
@@ -57,19 +58,25 @@ class GitHubSource(BaseSource):
     BASE_URL = "https://api.github.com"
 
     @classmethod
-    async def create(cls, config: GitHubAuthConfig) -> "GitHubSource":
+    async def create(
+        cls, credentials: GitHubAuthConfig, config: Optional[Dict[str, Any]] = None
+    ) -> "GitHubSource":
         """Create a new source instance with authentication.
 
         Args:
-            config: GitHubAuthConfig instance
+            credentials: GitHubAuthConfig instance containing authentication details
+            config: Optional source configuration parameters
 
         Returns:
             Configured GitHub source instance
         """
         instance = cls()
 
-        instance.personal_access_token = config.personal_access_token
-        instance.repo_name = config.repo_name
+        instance.personal_access_token = credentials.personal_access_token
+        instance.repo_name = credentials.repo_name
+
+        instance.branch = config.get("branch", None)
+
         return instance
 
     @tenacity.retry(
@@ -98,6 +105,54 @@ class GitHubSource(BaseSource):
         response = await client.get(url, headers=headers, params=params)
         response.raise_for_status()
         return response.json()
+
+    async def _get_paginated_results(
+        self, client: httpx.AsyncClient, url: str, params: Optional[Dict[str, Any]] = None
+    ) -> List[Dict[str, Any]]:
+        """Get all pages of results from a paginated GitHub API endpoint.
+
+        Args:
+            client: HTTP client
+            url: API endpoint URL
+            params: Optional query parameters
+
+        Returns:
+            List of all results from all pages
+        """
+        if params is None:
+            params = {}
+
+        # Set per_page to maximum to minimize requests
+        params["per_page"] = 100
+
+        all_results = []
+        page = 1
+
+        while True:
+            params["page"] = page
+            headers = {
+                "Authorization": f"token {self.personal_access_token}",
+                "Accept": "application/vnd.github.v3+json",
+                "X-GitHub-Api-Version": "2022-11-28",
+            }
+
+            response = await client.get(url, headers=headers, params=params)
+            response.raise_for_status()
+
+            results = response.json()
+            if not results:  # Empty page means we're done
+                break
+
+            all_results.extend(results)
+
+            # Check if there's a next page via Link header
+            link_header = response.headers.get("Link", "")
+            if 'rel="next"' not in link_header:
+                break
+
+            page += 1
+
+        return all_results
 
     def _detect_language_from_extension(self, file_path: str) -> str:
         """Detect programming language from file extension.
@@ -374,7 +429,29 @@ class GitHubSource(BaseSource):
         async with httpx.AsyncClient() as client:
             repo_url = f"{self.BASE_URL}/repos/{self.repo_name}"
             repo_data = await self._get_with_auth(client, repo_url)
-            default_branch = repo_data["default_branch"]
 
-            async for entity in self._traverse_repository(client, self.repo_name, default_branch):
+            # Use specified branch if available, otherwise use default branch
+            branch = (
+                self.branch
+                if hasattr(self, "branch") and self.branch
+                else repo_data["default_branch"]
+            )
+
+            # Verify that the branch exists
+            if hasattr(self, "branch") and self.branch:
+                # Get list of branches for the repository
+                branches_url = f"{self.BASE_URL}/repos/{self.repo_name}/branches"
+                branches_data = await self._get_paginated_results(client, branches_url)
+                branch_names = [b["name"] for b in branches_data]
+
+                if branch not in branch_names:
+                    available_branches = ", ".join(branch_names)
+                    raise ValueError(
+                        f"Branch '{branch}' not found in repository '{self.repo_name}'. "
+                        f"Available branches: {available_branches}"
+                    )
+
+            logger.info(f"Using branch: {branch} for repo {self.repo_name}")
+
+            async for entity in self._traverse_repository(client, self.repo_name, branch):
                 yield entity

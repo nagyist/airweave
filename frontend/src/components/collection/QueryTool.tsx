@@ -10,11 +10,11 @@ import { materialOceanic, oneLight } from 'react-syntax-highlighter/dist/esm/sty
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
 } from "@/components/ui/select";
 
 interface QueryToolProps {
@@ -173,7 +173,7 @@ export const QueryTool = ({ collectionReadableId }: QueryToolProps) => {
                         "flex-grow flex items-center px-3 py-1.5 text-xs font-mono",
                         isDark
                             ? "bg-gray-900 text-gray-300"
-                            : "bg-gray-50/80 text-gray-700"
+                            : "bg-white text-gray-700"
                     )}>
                         <span className="opacity-75">{getApiUrl()}</span>
                     </div>
@@ -202,7 +202,7 @@ export const QueryTool = ({ collectionReadableId }: QueryToolProps) => {
                             "flex items-center justify-center min-w-[70px] border-r",
                             isDark
                                 ? "bg-gray-800/80 text-gray-300 border-gray-700"
-                                : "bg-gray-50/80 text-gray-600 border-gray-200"
+                                : "bg-white text-gray-600 border-gray-200"
                         )}>
                             <span className="text-xs font-medium">query=</span>
                         </div>
@@ -215,7 +215,7 @@ export const QueryTool = ({ collectionReadableId }: QueryToolProps) => {
                                 "w-full px-3 h-full text-sm",
                                 isDark
                                     ? "bg-gray-900 text-gray-200"
-                                    : "bg-white/90"
+                                    : "bg-white"
                             )}
                             style={{ outline: 'none', border: 'none' }}
                         />
@@ -233,7 +233,7 @@ export const QueryTool = ({ collectionReadableId }: QueryToolProps) => {
                             <SelectTrigger
                                 className={cn(
                                     "h-full border-0 rounded-none min-w-[120px] text-xs font-mono focus:outline-none focus:ring-0 focus:ring-offset-0",
-                                    isDark ? "bg-gray-800" : "bg-gray-50"
+                                    isDark ? "bg-gray-800" : "bg-white"
                                 )}
                             >
                                 <span>{responseType}</span>
@@ -278,12 +278,12 @@ export const QueryTool = ({ collectionReadableId }: QueryToolProps) => {
                             "absolute inset-0 h-1.5 bg-gradient-to-r from-transparent via-white to-transparent",
                             "animate-shimmer"
                         )}
-                        style={{
-                            backgroundSize: '200% 100%',
-                            animationDuration: '1.5s',
-                            animationIterationCount: 'infinite',
-                            animationTimingFunction: 'linear'
-                        }}
+                            style={{
+                                backgroundSize: '200% 100%',
+                                animationDuration: '1.5s',
+                                animationIterationCount: 'infinite',
+                                animationTimingFunction: 'linear'
+                            }}
                         ></div>
                     </div>
                 ) : (
@@ -300,7 +300,7 @@ export const QueryTool = ({ collectionReadableId }: QueryToolProps) => {
                 {/* Simplified Metadata Bar */}
                 <div className={cn(
                     "w-full py-2 px-3",
-                    isDark ? "bg-gray-900/60" : "bg-gray-50/80",
+                    isDark ? "bg-gray-900/60" : "bg-white",
                     "flex items-center justify-between"
                 )}>
                     <div className="flex items-center gap-3">
@@ -351,7 +351,7 @@ export const QueryTool = ({ collectionReadableId }: QueryToolProps) => {
                                 "flex items-center justify-between p-3 border-b bg-gradient-to-r",
                                 isDark
                                     ? "from-indigo-950/30 to-indigo-900/20 border-indigo-900/30 text-indigo-300"
-                                    : "from-indigo-50 to-indigo-100/50 border-indigo-100/80 text-indigo-700"
+                                    : "from-white to-indigo-50/30 border-indigo-100/80 text-indigo-700"
                             )}>
                                 <div className="flex items-center">
                                     <SearchCode className="h-3.5 w-3.5 mr-2" />
@@ -377,28 +377,28 @@ export const QueryTool = ({ collectionReadableId }: QueryToolProps) => {
                                 "p-4 prose max-w-none overflow-auto max-h-[400px]",
                                 isDark
                                     ? "prose-invert bg-gradient-to-b from-gray-900/70 to-gray-900/50 text-gray-200"
-                                    : "bg-gradient-to-b from-white to-gray-50/80 prose-gray text-gray-800"
+                                    : "bg-white prose-gray text-gray-800"
                             )}
-                            style={{ fontSize: '0.875rem' }}>
+                                style={{ fontSize: '0.875rem' }}>
                                 {isLoading ? (
                                     <div className="animate-pulse h-32 w-full">
-                                        <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-3/4 mb-2.5"></div>
-                                        <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-full mb-2.5"></div>
-                                        <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-5/6 mb-2.5"></div>
-                                        <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-2/3 mb-2.5"></div>
-                                        <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-3/4"></div>
+                                        <div className="h-4 bg-gray-100 dark:bg-gray-700 rounded w-3/4 mb-2.5"></div>
+                                        <div className="h-4 bg-gray-100 dark:bg-gray-700 rounded w-full mb-2.5"></div>
+                                        <div className="h-4 bg-gray-100 dark:bg-gray-700 rounded w-5/6 mb-2.5"></div>
+                                        <div className="h-4 bg-gray-100 dark:bg-gray-700 rounded w-2/3 mb-2.5"></div>
+                                        <div className="h-4 bg-gray-100 dark:bg-gray-700 rounded w-3/4"></div>
                                     </div>
                                 ) : (
                                     <ReactMarkdown
                                         remarkPlugins={[remarkGfm]}
                                         components={{
-                                            h1: ({node, ...props}) => <h1 style={{fontSize: '2em', fontWeight: 'bold', margin: '0.67em 0'}} {...props}/>,
-                                            h2: ({node, ...props}) => <h2 style={{fontSize: '1.5em', fontWeight: 'bold', margin: '0.83em 0'}} {...props}/>,
-                                            h3: ({node, ...props}) => <h3 style={{fontSize: '1.17em', fontWeight: 'bold', margin: '1em 0'}} {...props}/>,
-                                            ul: ({node, ...props}) => <ul style={{listStyle: 'disc', paddingLeft: '2em', margin: '1em 0'}} {...props}/>,
-                                            li: ({node, ...props}) => <li style={{display: 'list-item', margin: '0.5em 0'}} {...props}/>,
+                                            h1: ({ node, ...props }) => <h1 style={{ fontSize: '2em', fontWeight: 'bold', margin: '0.67em 0' }} {...props} />,
+                                            h2: ({ node, ...props }) => <h2 style={{ fontSize: '1.5em', fontWeight: 'bold', margin: '0.83em 0' }} {...props} />,
+                                            h3: ({ node, ...props }) => <h3 style={{ fontSize: '1.17em', fontWeight: 'bold', margin: '1em 0' }} {...props} />,
+                                            ul: ({ node, ...props }) => <ul style={{ listStyle: 'disc', paddingLeft: '2em', margin: '1em 0' }} {...props} />,
+                                            li: ({ node, ...props }) => <li style={{ display: 'list-item', margin: '0.5em 0' }} {...props} />,
                                             code(props) {
-                                                const {children, className, node, ...rest} = props;
+                                                const { children, className, node, ...rest } = props;
                                                 const match = /language-(\w+)/.exec(className || '');
                                                 return match ? (
                                                     <SyntaxHighlighter
@@ -407,7 +407,7 @@ export const QueryTool = ({ collectionReadableId }: QueryToolProps) => {
                                                         customStyle={{
                                                             margin: 0,
                                                             borderRadius: '0.75rem',
-                                                            background: isDark ? 'rgba(17, 24, 39, 0.8)' : 'rgba(249, 250, 251, 0.8)'
+                                                            background: isDark ? 'rgba(17, 24, 39, 0.8)' : 'rgba(243, 244, 246, 0.5)'
                                                         }}
                                                     >
                                                         {String(children).replace(/\n$/, '')}
@@ -437,7 +437,7 @@ export const QueryTool = ({ collectionReadableId }: QueryToolProps) => {
                                 "flex items-center justify-between p-3 border-b bg-gradient-to-r",
                                 isDark
                                     ? "from-gray-800/90 to-gray-900/70 border-gray-700/50 text-gray-300"
-                                    : "from-gray-50 to-gray-100/70 border-gray-200/70 text-gray-700"
+                                    : "from-white to-gray-50/30 border-gray-200/70 text-gray-700"
                             )}>
                                 <div className="flex items-center">
                                     <Braces className="h-3.5 w-3.5 mr-2 opacity-80" />
@@ -457,27 +457,27 @@ export const QueryTool = ({ collectionReadableId }: QueryToolProps) => {
                             </div>
                             <div className={cn(
                                 "overflow-auto max-h-[400px] bg-gradient-to-b",
-                                isDark ? "from-gray-900/80 to-gray-900/60" : "from-white to-gray-50/80"
+                                isDark ? "from-gray-900/80 to-gray-900/60" : "from-white to-gray-50/20"
                             )}>
                                 {isLoading ? (
                                     <div className="p-4 animate-pulse space-y-2">
                                         <div className="flex gap-2">
-                                            <div className="h-4 w-4 bg-gray-200 dark:bg-gray-700 rounded"></div>
-                                            <div className="h-4 w-24 bg-gray-200 dark:bg-gray-700 rounded"></div>
+                                            <div className="h-4 w-4 bg-gray-100 dark:bg-gray-700 rounded"></div>
+                                            <div className="h-4 w-24 bg-gray-100 dark:bg-gray-700 rounded"></div>
                                         </div>
                                         <div className="flex gap-2 ml-4">
-                                            <div className="h-4 w-16 bg-gray-200 dark:bg-gray-700 rounded"></div>
-                                            <div className="h-4 w-32 bg-gray-200 dark:bg-gray-700 rounded"></div>
+                                            <div className="h-4 w-16 bg-gray-100 dark:bg-gray-700 rounded"></div>
+                                            <div className="h-4 w-32 bg-gray-100 dark:bg-gray-700 rounded"></div>
                                         </div>
                                         <div className="flex gap-2 ml-4">
-                                            <div className="h-4 w-20 bg-gray-200 dark:bg-gray-700 rounded"></div>
-                                            <div className="h-4 w-24 bg-gray-200 dark:bg-gray-700 rounded"></div>
+                                            <div className="h-4 w-20 bg-gray-100 dark:bg-gray-700 rounded"></div>
+                                            <div className="h-4 w-24 bg-gray-100 dark:bg-gray-700 rounded"></div>
                                         </div>
                                         <div className="flex gap-2 ml-4">
-                                            <div className="h-4 w-12 bg-gray-200 dark:bg-gray-700 rounded"></div>
-                                            <div className="h-4 w-36 bg-gray-200 dark:bg-gray-700 rounded"></div>
+                                            <div className="h-4 w-12 bg-gray-100 dark:bg-gray-700 rounded"></div>
+                                            <div className="h-4 w-36 bg-gray-100 dark:bg-gray-700 rounded"></div>
                                         </div>
-                                        <div className="h-4 w-8 bg-gray-200 dark:bg-gray-700 rounded"></div>
+                                        <div className="h-4 w-8 bg-gray-100 dark:bg-gray-700 rounded"></div>
                                     </div>
                                 ) : (
                                     <SyntaxHighlighter

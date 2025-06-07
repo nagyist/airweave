@@ -67,7 +67,7 @@ export const ButtonEdge = memo(({
         style={{
           ...style,
           strokeWidth: 2,
-          stroke: '#94a3b8',
+          stroke: '#1692E5',
           strokeDasharray: '6 6',
           animation: 'flowMove 0.7s linear infinite',
         }}

@@ -24,7 +24,7 @@ from airweave.core.config import settings
 # Use our custom router that handles trailing slashes
 api_router = TrailingSlashRouter()
 api_router.include_router(health.router, prefix="/health", tags=["health"])
-api_router.include_router(api_keys.router, prefix="/api-keys", tags=["api_keys"])
+api_router.include_router(api_keys.router, prefix="/api-keys", tags=["api-keys"])
 api_router.include_router(users.router, prefix="/users", tags=["users"])
 api_router.include_router(sources.router, prefix="/sources", tags=["sources"])
 api_router.include_router(destinations.router, prefix="/destinations", tags=["destinations"])
@@ -34,10 +34,10 @@ api_router.include_router(
 api_router.include_router(collections.router, prefix="/collections", tags=["collections"])
 api_router.include_router(connections.router, prefix="/connections", tags=["connections"])
 api_router.include_router(
-    source_connections.router, prefix="/source-connections", tags=["source_connections"]
+    source_connections.router, prefix="/source-connections", tags=["source-connections"]
 )
 api_router.include_router(sync.router, prefix="/sync", tags=["sync"])
-api_router.include_router(white_label.router, prefix="/white_labels", tags=["white_labels"])
+api_router.include_router(white_label.router, prefix="/white-labels", tags=["white-labels"])
 api_router.include_router(chat.router, prefix="/chat", tags=["chat"])
 api_router.include_router(dag.router, prefix="/dag", tags=["dag"])
 api_router.include_router(entities.router, prefix="/entities", tags=["entities"])

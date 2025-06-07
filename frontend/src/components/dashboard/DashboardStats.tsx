@@ -89,7 +89,7 @@ export function DashboardStats() {
                   <XAxis dataKey="name" />
                   <YAxis />
                   <Tooltip />
-                  <Bar dataKey="syncs" fill="#0066FF" />
+                  <Bar dataKey="syncs" fill="hsl(207, 83%, 49%)" />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -110,7 +110,7 @@ export function DashboardStats() {
                   <Line
                     type="monotone"
                     dataKey="time"
-                    stroke="#00B7C3"
+                    stroke="hsl(207, 83%, 49%)"
                     strokeWidth={2}
                   />
                 </LineChart>

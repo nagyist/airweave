@@ -18,13 +18,13 @@ export const ExampleProjectCard = ({
 }: ExampleProjectCardProps) => {
   return (
     <div
-      className="border border-border rounded-lg hover:border-border/60 hover:shadow-sm transition-all overflow-hidden group cursor-pointer"
+      className="bg-card border border-border rounded-lg hover:border-border/60 hover:shadow-md transition-all overflow-hidden group cursor-pointer"
       onClick={onClick}
     >
       <div className="p-5">
         <div className="flex items-start gap-3">
           <div className="flex-shrink-0 mt-0.5">
-            <div className="p-2 rounded-md bg-primary/10 group-hover:bg-primary/20 transition-all">
+            <div className="p-2 rounded-md bg-primary/5 group-hover:bg-primary/10 transition-all">
               {icon}
             </div>
           </div>

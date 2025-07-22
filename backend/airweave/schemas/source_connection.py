@@ -63,6 +63,20 @@ class SourceConnectionBase(BaseModel):
             "authentication."
         ),
     )
+    auth_provider: Optional[str] = Field(
+        None,
+        description=(
+            "Readable ID of the auth provider used to create this connection. "
+            "Present only if the connection was created through an auth provider."
+        ),
+    )
+    auth_provider_config: Optional[Dict[str, Any]] = Field(
+        None,
+        description=(
+            "Configuration used with the auth provider to create this connection. "
+            "Present only if the connection was created through an auth provider."
+        ),
+    )
 
     class Config:
         """Pydantic configuration."""
@@ -130,6 +144,13 @@ class SourceConnectionCreateBase(BaseModel):
         """
         data = self.model_dump(exclude_unset=True)
 
+        # Handle auth provider config conversion (but keep auth_provider as-is for service logic)
+        if "auth_provider_config" in data:
+            # Convert ConfigValues to dict if needed
+            config = data["auth_provider_config"]
+            if hasattr(config, "model_dump"):
+                data["auth_provider_config"] = config.model_dump()
+
         # Auxiliary attributes used in the creation process but not directly in the model
         auxiliary_attrs = {
             "auth_fields": data.pop("auth_fields", None),
@@ -168,6 +189,26 @@ class SourceConnectionCreate(SourceConnectionCreateBase):
             "Authentication credentials required to access the data source. The required fields "
             "vary by source type. Check the documentation of a specific source (for example "
             "[Github](https://docs.airweave.ai/docs/connectors/github)) to see what is required."
+        ),
+    )
+    auth_provider: Optional[str] = Field(
+        None,
+        description=(
+            "Unique readable ID of a connected auth provider to use for authentication instead of "
+            "providing auth_fields directly. When specified, credentials for the source will be "
+            "obtained and refreshed automatically by Airweave interaction with the auth provider. "
+            "To see which auth providers are supported and learn more about how to use them, "
+            "check [this page](https://docs.airweave.ai/docs/auth-providers)."
+        ),
+        examples=["composio"],
+    )
+    auth_provider_config: Optional[ConfigValues] = Field(
+        None,
+        description=(
+            "Configuration for the auth provider when using auth_provider field. "
+            "Required fields vary by auth provider. For Composio, use integration_id and "
+            " account_id to specify which integration and account from Composio you want "
+            "to use to connect to the source."
         ),
     )
     sync_immediately: bool = Field(
@@ -431,6 +472,20 @@ class SourceConnectionUpdate(BaseModel):
             "with your own branding."
         ),
     )
+    auth_provider: Optional[str] = Field(
+        None,
+        description=(
+            "Updated auth provider readable ID. "
+            "Only relevant if the connection uses an auth provider."
+        ),
+    )
+    auth_provider_config: Optional[Dict[str, Any]] = Field(
+        None,
+        description=(
+            "Updated configuration for the auth provider. "
+            "Only relevant if the connection uses an auth provider."
+        ),
+    )
 
     model_config = ConfigDict(
         json_schema_extra={
@@ -635,6 +690,10 @@ class SourceConnection(SourceConnectionInDBBase):
         # Map the readable_collection_id to collection if needed
         if hasattr(obj, "readable_collection_id"):
             obj_dict["collection"] = obj.readable_collection_id
+
+        # Map the readable_auth_provider_id to auth_provider if needed
+        if hasattr(obj, "readable_auth_provider_id"):
+            obj_dict["auth_provider"] = obj.readable_auth_provider_id
 
         return cls.model_validate(obj_dict)
 

@@ -114,6 +114,31 @@ async def create_source_connection(
     [Github](https://docs.airweave.ai/docs/connectors/github)) to see what kind
     of authentication is used.
     """
+    # Temporary: Block certain sources from being created with auth providers
+    SOURCES_BLOCKED_FROM_AUTH_PROVIDERS = [
+        "confluence",
+        "jira",
+        "bitbucket",
+        "github",
+        "ctti",
+        "monday",
+        "postgresql",
+    ]
+
+    if (
+        source_connection_in.auth_provider
+        and source_connection_in.short_name in SOURCES_BLOCKED_FROM_AUTH_PROVIDERS
+    ):
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"The {source_connection_in.short_name.title()} source cannot currently be created "
+                f"using auth providers. Please provide credentials directly using the 'auth_fields'"
+                f" parameter instead. Support for {source_connection_in.short_name.title()} through"
+                f" auth providers is coming soon."
+            ),
+        )
+
     source_connection, sync_job = await source_connection_service.create_source_connection(
         db=db, source_connection_in=source_connection_in, auth_context=auth_context
     )

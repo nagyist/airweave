@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { apiClient } from "@/lib/api";
+
 import { Copy, Eye, Key, Plus, ExternalLink, FileText, Github } from "lucide-react";
 import { useNavigate, Link, useLocation, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
@@ -40,10 +40,7 @@ interface SourceConnection {
   status?: string;
 }
 
-// API Key type
-interface APIKey {
-  decrypted_key: string;
-}
+
 
 const Dashboard = () => {
   const navigate = useNavigate();
@@ -62,9 +59,6 @@ const Dashboard = () => {
 
   // Use sources store
   const { sources, isLoading: isLoadingSources, fetchSources } = useSourcesStore();
-
-  const [apiKey, setApiKey] = useState<APIKey | null>(null);
-  const [isLoadingApiKey, setIsLoadingApiKey] = useState(true);
 
   // Dialog state
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -96,30 +90,7 @@ const Dashboard = () => {
     };
   }, [fetchCollections, fetchSources]);
 
-  // Fetch API key
-  useEffect(() => {
-    const fetchApiKey = async () => {
-      setIsLoadingApiKey(true);
-      try {
-        const response = await apiClient.get("/api-keys");
-        if (response.ok) {
-          const data = await response.json();
-          // Get the first API key if available
-          if (Array.isArray(data) && data.length > 0) {
-            setApiKey(data[0]);
-          }
-        } else {
-          console.error("Failed to load API key:", await response.text());
-        }
-      } catch (err) {
-        console.error("Error fetching API key:", err);
-      } finally {
-        setIsLoadingApiKey(false);
-      }
-    };
 
-    fetchApiKey();
-  }, []);
 
   const handleRequestNewKey = () => {
     // Placeholder for requesting a new API key
@@ -130,6 +101,8 @@ const Dashboard = () => {
     setSelectedSource(source);
     setDialogOpen(true);
   };
+
+
 
   // Handle dialog close
   const handleDialogClose = () => {
@@ -143,35 +116,6 @@ const Dashboard = () => {
 
   // Top 3 collections
   const topCollections = collections.slice(0, 3);
-
-  // Example projects data
-  const exampleProjects = [
-    {
-      id: 1,
-      title: "Integrate Google Drive",
-      description: "This is an example project",
-    },
-    {
-      id: 2,
-      title: "Informed Langraph Agent",
-      description: "This is an example project",
-    },
-    {
-      id: 3,
-      title: "White label react app",
-      description: "This is an example project",
-    },
-    {
-      id: 4,
-      title: "Custom SQL Integration",
-      description: "This is an example project",
-    },
-    {
-      id: 5,
-      title: "Notion Knowledge Base",
-      description: "This is an example project",
-    },
-  ];
 
   // Log when dialog open state changes
   useEffect(() => {
@@ -280,27 +224,10 @@ const Dashboard = () => {
         <div className="md:col-span-1 space-y-6">
           {/* API Key Card */}
           <ApiKeyCard
-            apiKey={apiKey}
             onRequestNewKey={handleRequestNewKey}
           />
 
-          {/* Example Projects */}
-          <section>
-            <h2 className="text-xl sm:text-2xl font-semibold mb-1 sm:mb-2">Example projects</h2>
-            <p className="text-xs sm:text-sm text-muted-foreground mb-3 sm:mb-5">Use a template to get started</p>
 
-            <div className="space-y-3 sm:space-y-4">
-              {exampleProjects.map((project) => (
-                <ExampleProjectCard
-                  key={project.id}
-                  id={project.id}
-                  title={project.title}
-                  description={project.description}
-                  onClick={() => toast.info(`Opening ${project.title} template`)}
-                />
-              ))}
-            </div>
-          </section>
         </div>
       </div>
     </div>

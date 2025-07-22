@@ -14,7 +14,8 @@ import {
   Box,
   ExternalLink,
   LayoutGrid,
-  Home
+  Home,
+  Shield
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
@@ -225,6 +226,10 @@ const DashboardLayout = () => {
     location.pathname === '/api-keys',
     [location.pathname]);
 
+  const isAuthProvidersActive = useMemo(() =>
+    location.pathname.startsWith('/auth-providers'),
+    [location.pathname]);
+
   // Fully memoized SidebarContent component
   const SidebarContent = useMemo(() => (
     <div className="flex flex-col h-full">
@@ -272,6 +277,17 @@ const DashboardLayout = () => {
             </NavItem>
           </div>
 
+          {/* Auth Providers Section */}
+          <div>
+            <NavItem
+              to="/auth-providers"
+              isActive={isAuthProvidersActive}
+              icon={<Shield className="mr-2 h-4 w-4 opacity-70 group-hover:opacity-100 transition-opacity" />}
+            >
+              Auth Providers
+            </NavItem>
+          </div>
+
           {/* White Label moved outside Configure section */}
           <div>
             <NavItem
@@ -290,7 +306,7 @@ const DashboardLayout = () => {
         <UserProfileDropdown />
       </div>
     </div>
-  ), [resolvedTheme, handleCreateCollection, isDashboardActive, isApiKeysActive, isWhiteLabelActive, currentOrganization?.id]);
+  ), [resolvedTheme, handleCreateCollection, isDashboardActive, isApiKeysActive, isAuthProvidersActive, isWhiteLabelActive, currentOrganization?.id]);
 
   // Main component render
   return (

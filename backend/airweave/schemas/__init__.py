@@ -10,6 +10,15 @@ from .api_key import (
     APIKeyUpdate,
 )
 from .auth import AuthContext
+from .auth_provider import (
+    AuthProvider,
+    AuthProviderConnection,
+    AuthProviderConnectionCreate,
+    AuthProviderConnectionUpdate,
+    AuthProviderCreate,
+    AuthProviderInDBBase,
+    AuthProviderUpdate,
+)
 from .collection import (
     Collection,
     CollectionCreate,

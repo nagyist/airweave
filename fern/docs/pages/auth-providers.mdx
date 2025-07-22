@@ -1,0 +1,83 @@
+---
+title: "Authentication Providers"
+edit-this-page-url: https://github.com/airweave-ai/airweave/blob/main/fern/docs/pages/auth-providers.mdx
+subtitle: "When your users connect data sources through third-party applications like Composio, Airweave can reuse those existing connections instead of requiring separate authentication.
+Connect Airweave to your auth provider, and it automatically pulls credentials from your users' already-authenticated sources, eliminating the need for users to sign in twice."
+slug: auth-providers
+---
+
+### 1. Connect to your Auth Provider
+
+To connect an auth provider, visit the [Auth Providers page](https://app.airweave.ai/auth-providers) and select the service you want to integrate with Airweave.
+Once you provide your auth provider's API key, Airweave establishes a secure connection that allows it to access your users' existing data source credentials.
+Successfully connected auth providers display a green checkmark, confirming that Airweave can now leverage those connections for your users.
+We currently support [Composio](https://composio.dev/) with [Klavis](https://www.klavis.ai/) and [Pipedream](https://pipedream.com/) coming soon.
+
+### 2. Locate the necessary configuration
+
+When creating source connections through an auth provider, Airweave needs specific identifiers to retrieve the correct credentials from the third-party service.
+Each auth provider has its own way of organizing connections, for instance, Composio uses a combination of `integration_id` and `account_id` since multiple accounts can connect to one integration and vice versa.
+
+You can find these identifiers in your auth provider's dashboard. For Composio, visit your [integrations page](https://app.composio.dev/integrations) and select an integration to view its connected accounts and their IDs.
+Different auth providers require different configuration fields, refer to [our configuration definitions](https://github.com/airweave-ai/airweave/blob/main/backend/airweave/platform/configs/config.py) to see what's needed for each provider.
+
+### 3. Create source connections using your auth provider
+
+Once your auth provider is connected and you located the necessary configuration, you can create source connections (without authenticating) that automatically retrieve credentials from the auth provider.
+Simply specify the readable ID of the connection to your auth provider created in step one (click on a connected auth provider in [Auth Providers page](https://app.airweave.ai/auth-providers) to find this) and configuration located in step 2 when creating a source connection.
+
+Here's an example API request creating an Asana connection through Composio:
+
+<CodeBlocks>
+```Python title="Python"
+from airweave import AirweaveSDK
+
+client = AirweaveSDK(api_key="YOUR_API_KEY")
+
+source_connection = airweave.source_connections.create_source_connection(
+    name="My Asana connection",
+    short_name="asana",
+    auth_provider="my-composio-connection-abc123",
+    auth_provider_config={
+        "integration_id": INTEGRATION_ID,
+        "account_id": ACCOUNT_ID
+    },
+)
+
+print(f"Status: {source_connection.status}")
+```
+
+```javascript title="Node.js"
+import { AirweaveSDKClient } from "@airweave/sdk";
+
+const client = new AirweaveSDKClient({
+  apiKey: "YOUR_API_KEY"
+});
+
+const sourceConnection = await airweave.sourceConnections.createSourceConnection({
+  name: "My Asana connection",
+  shortName: "asana",
+  auth_provider: "my-composio-connection-abc123",
+  auth_provider_config: {
+    integrationId: INTEGRATION_ID,
+    accountId: ACCOUNT_ID
+  },
+});
+```
+
+```bash title="cURL"
+curl -X 'POST' 'https://app.airweave.ai/auth-providers' \
+  -H 'accept: application/json' \
+  -H 'X-API-Key: API_KEY' \
+  -H 'Content-Type: application/json' \
+  -d '{
+  "name": "My Asana connection",
+  "short_name": "asana",
+  "auth_provider": "my-composio-connection-abc123",
+  "auth_provider_config": {
+    "integration_id": "INTEGRATION_ID",
+    "account_id": "ACCOUNT_ID"
+  }
+}'
+```
+</CodeBlocks>

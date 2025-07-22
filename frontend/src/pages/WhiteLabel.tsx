@@ -41,7 +41,7 @@ const WhiteLabel = () => {
         <div className="flex space-x-2">
           <Button
             variant="outline"
-            onClick={() => window.open("https://docs.airweave.ai/white-labeling", "_blank")}
+            onClick={() => window.open("https://docs.airweave.ai/white-label", "_blank")}
           >
             <Lightbulb className="h-4 w-4" />
             Learn More

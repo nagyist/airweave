@@ -54,3 +54,22 @@ export function getTransformerIconUrl(shortName: string, theme?: string): string
     return new URL('/src/components/icons/transformers/default-transformer.svg', import.meta.url).href;
   }
 }
+
+export function getAuthProviderIconUrl(shortName: string, theme?: string): string {
+  try {
+    // Use -light version for dark theme, -dark version for light theme
+    if (theme === "dark") {
+      return new URL(`/src/components/icons/auth_providers/${shortName}-light.svg`, import.meta.url).href;
+    } else {
+      return new URL(`/src/components/icons/auth_providers/${shortName}-dark.svg`, import.meta.url).href;
+    }
+  } catch (e) {
+    console.log(`Error loading auth provider icon: ${e}`);
+    // Fallback to regular icon without theme suffix
+    try {
+      return new URL(`/src/components/icons/auth_providers/${shortName}.svg`, import.meta.url).href;
+    } catch {
+      return new URL('/src/components/icons/apps/default-icon.svg', import.meta.url).href;
+    }
+  }
+}

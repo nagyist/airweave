@@ -168,36 +168,84 @@ class CRUDConnection(CRUDBaseOrganization[Connection, ConnectionCreate, Connecti
         # Combine the results
         return org_connections + native_connections
 
-    async def get_all_by_short_name(self, db: AsyncSession, short_name: str) -> list[Connection]:
-        """Get all connections for a specific source by short_name.
+    async def get_all_by_short_name(
+        self, db: AsyncSession, short_name: str, auth_context: AuthContext
+    ) -> list[Connection]:
+        """Get all connections for a specific short name, with proper organization filtering.
 
-        This method is only available when LOCAL_CURSOR_DEVELOPMENT is enabled.
+        This combines organization-specific connections with system-level native connections.
+        Native connections are included if they match the short name.
 
         Args:
-        -----
             db: The database session
-            short_name: The short name of the source/destination/etc.
+            short_name: The short name to filter by
+            auth_context: The current authentication context
 
         Returns:
-        --------
-            list[Connection]: List of connections with the given short name
+            A list of Connection objects including both organization connections and native ones
         """
-        from airweave.core.config import settings
-
-        if not settings.LOCAL_CURSOR_DEVELOPMENT:
-            raise ValueError(
-                "This method is only available when LOCAL_CURSOR_DEVELOPMENT is enabled"
-            )
-
-        stmt = (
+        # Query for org-specific connections
+        org_query = (
             select(Connection)
             .options(selectinload(Connection.integration_credential))
             .where(
                 Connection.short_name == short_name,
+                Connection.organization_id == auth_context.organization_id,
             )
         )
-        result = await db.execute(stmt)
-        return list(result.scalars().all())
+        org_result = await db.execute(org_query)
+        org_connections = list(org_result.scalars().all())
+
+        # Query for native connections with the same short name
+        native_query = (
+            select(Connection)
+            .options(selectinload(Connection.integration_credential))
+            .where(
+                Connection.short_name == short_name,
+                Connection.organization_id.is_(None),
+                or_(
+                    *[
+                        Connection.short_name == native_short_name
+                        for native_short_name in self.NATIVE_CONNECTION_SHORT_NAMES
+                    ]
+                ),
+            )
+        )
+        native_result = await db.execute(native_query)
+        native_connections = list(native_result.scalars().all())
+
+        # Combine the results
+        return org_connections + native_connections
+
+    async def get_by_readable_id(
+        self, db: AsyncSession, readable_id: str, auth_context: AuthContext
+    ) -> Optional[Connection]:
+        """Get a connection by its readable_id, with special handling for native connections.
+
+        Args:
+            db: The database session
+            readable_id: The readable_id of the connection to get
+            auth_context: The current authentication context
+
+        Returns:
+            The connection with the given readable_id
+
+        Raises:
+            NotFoundException: If the connection is not found
+            PermissionException: If the user doesn't have access to the connection
+        """
+        query = select(self.model).where(self.model.readable_id == readable_id)
+        result = await db.execute(query)
+        db_obj = result.unique().scalar_one_or_none()
+
+        if not db_obj:
+            return None
+
+        # If it's not a native connection, validate user permissions
+        if not self._is_native_connection(db_obj):
+            await self._validate_organization_access(auth_context, db_obj.organization_id)
+
+        return db_obj
 
     async def remove(
         self,

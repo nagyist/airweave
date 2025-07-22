@@ -2,7 +2,7 @@
 
 import importlib
 import time
-from typing import Optional
+from typing import Any, Dict, Optional
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -231,26 +231,78 @@ class SyncFactory:
         logger=None,
     ) -> BaseSource:
         """Create and configure the source instance using pre-fetched connection data."""
-        # Handle credentials (either direct token or from database)
-        final_access_token, source_credentials = await cls._handle_source_credentials(
-            db, source_connection_data, auth_context, white_label, access_token
+        # Step 1: Create auth provider instance if this connection uses one
+        auth_provider_instance = None
+        readable_auth_provider_id = source_connection_data.get("readable_auth_provider_id")
+        auth_provider_config = source_connection_data.get("auth_provider_config")
+
+        if readable_auth_provider_id and auth_provider_config:
+            logger.info("Creating auth provider instance for source connection...")
+            auth_provider_instance = await cls._create_auth_provider_instance(
+                db=db,
+                readable_auth_provider_id=readable_auth_provider_id,
+                auth_provider_config=auth_provider_config,
+                auth_context=auth_context,
+                logger=logger,
+            )
+
+        # Step 2: Get credentials from appropriate source
+        source_credentials = await cls._get_source_credentials(
+            db=db,
+            source_connection_data=source_connection_data,
+            auth_context=auth_context,
+            white_label=white_label,
+            access_token=access_token,
+            auth_provider_instance=auth_provider_instance,
         )
 
-        # Create the source instance
+        # Step 2.5: Convert credentials to auth config object if needed
+        # When using auth providers, credentials come as a dict, but some sources
+        # expect an auth config object (e.g., Stripe expects StripeAuthConfig)
+        auth_config_class_name = source_connection_data.get("auth_config_class")
+        if auth_config_class_name and isinstance(source_credentials, dict):
+            # Source has an auth config class and credentials are a dict
+            # This happens with auth providers - convert dict to config object
+            try:
+                auth_config_class = resource_locator.get_auth_config(auth_config_class_name)
+                source_credentials = auth_config_class.model_validate(source_credentials)
+                logger.info(
+                    f"Converted auth provider credentials to {auth_config_class_name} object"
+                )
+            except Exception as e:
+                logger.error(f"Failed to convert credentials to auth config object: {e}")
+                raise
+
+        # Step 3: Create the source instance with actual credentials
         source = await source_connection_data["source_class"].create(
             source_credentials, config=source_connection_data["config_fields"]
         )
 
-        # Configure source with logger and token manager
-        await cls._configure_source_instance(
-            db,
-            source,
-            source_connection_data,
-            auth_context,
-            white_label,
-            final_access_token,
-            logger,
-        )
+        # Step 4: Configure source with logger
+        if logger and hasattr(source, "set_logger"):
+            source.set_logger(logger)
+
+        # Step 5: Setup token manager if needed
+        # The _setup_token_manager method will check if this source needs a token manager
+        # based on whether its auth config inherits from OAuth2AuthConfig
+        try:
+            await cls._setup_token_manager(
+                db=db,
+                source=source,
+                source_connection_data=source_connection_data,
+                source_credentials=source_credentials,
+                auth_context=auth_context,
+                white_label=white_label,
+                logger=logger,
+                auth_provider_instance=auth_provider_instance,
+            )
+        except Exception as e:
+            logger.error(
+                f"Failed to setup token manager for source "
+                f"'{source_connection_data['short_name']}': {e}"
+            )
+            # Don't fail source creation if token manager setup fails
+            # The source can still work, just without automatic token refresh
 
         return source
 
@@ -282,7 +334,6 @@ class SyncFactory:
         config_fields = source_connection_obj.config_fields or {}  # From SourceConnection
 
         # Pre-fetch to avoid lazy loading - convert to pure Python types
-        auth_type = source_model.auth_type
         auth_config_class = source_model.auth_config_class
         # Convert SQLAlchemy values to clean Python types to avoid lazy loading
         short_name = str(source_connection_obj.short_name)  # From SourceConnection
@@ -292,10 +343,22 @@ class SyncFactory:
             else None
         )
         connection_id = UUID(str(connection.id))
-        # integration_credential_id must be set for sync to work
-        if not connection.integration_credential_id:
+
+        # Check if this connection uses an auth provider
+        readable_auth_provider_id = getattr(
+            source_connection_obj, "readable_auth_provider_id", None
+        )
+
+        # For auth provider connections, integration_credential_id will be None
+        # For regular connections, integration_credential_id must be set
+        if not readable_auth_provider_id and not connection.integration_credential_id:
             raise NotFoundException(f"Connection {connection_id} has no integration credential")
-        integration_credential_id = UUID(str(connection.integration_credential_id))
+
+        integration_credential_id = (
+            UUID(str(connection.integration_credential_id))
+            if connection.integration_credential_id
+            else None
+        )
 
         source_class = resource_locator.get_source(source_model)
 
@@ -307,27 +370,137 @@ class SyncFactory:
             "config_fields": config_fields,  # From SourceConnection
             "white_label_id": white_label_id,  # From SourceConnection
             "short_name": short_name,  # From SourceConnection
-            "auth_type": auth_type,
             "auth_config_class": auth_config_class,
             "connection_id": connection_id,
             "integration_credential_id": integration_credential_id,  # From Connection
+            "readable_auth_provider_id": getattr(
+                source_connection_obj, "readable_auth_provider_id", None
+            ),
+            "auth_provider_config": getattr(source_connection_obj, "auth_provider_config", None),
         }
 
     @classmethod
-    async def _handle_source_credentials(
+    async def _create_auth_provider_instance(
+        cls,
+        db: AsyncSession,
+        readable_auth_provider_id: str,
+        auth_provider_config: Dict[str, Any],
+        auth_context: AuthContext,
+        logger=None,
+    ) -> Any:
+        """Create an auth provider instance from readable_id.
+
+        Args:
+            db: Database session
+            readable_auth_provider_id: The readable ID of the auth provider connection
+            auth_provider_config: Configuration for the auth provider
+            auth_context: Authentication context
+            logger: Optional logger to set on the auth provider
+
+        Returns:
+            An instance of the auth provider
+
+        Raises:
+            NotFoundException: If auth provider connection not found
+        """
+        # 1. Get the auth provider connection by readable_id
+        auth_provider_connection = await crud.connection.get_by_readable_id(
+            db, readable_id=readable_auth_provider_id, auth_context=auth_context
+        )
+        if not auth_provider_connection:
+            raise NotFoundException(
+                f"Auth provider connection with readable_id '{readable_auth_provider_id}' not found"
+            )
+
+        # 2. Get the integration credential
+        if not auth_provider_connection.integration_credential_id:
+            raise NotFoundException(
+                f"Auth provider connection '{readable_auth_provider_id}' "
+                f"has no integration credential"
+            )
+
+        credential = await crud.integration_credential.get(
+            db, auth_provider_connection.integration_credential_id, auth_context
+        )
+        if not credential:
+            raise NotFoundException("Auth provider integration credential not found")
+
+        # 3. Decrypt the credentials
+        decrypted_credentials = credentials.decrypt(credential.encrypted_credentials)
+
+        # 4. Get the auth provider model
+        auth_provider_model = await crud.auth_provider.get_by_short_name(
+            db, short_name=auth_provider_connection.short_name
+        )
+        if not auth_provider_model:
+            raise NotFoundException(
+                f"Auth provider model not found for '{auth_provider_connection.short_name}'"
+            )
+
+        # 5. Create the auth provider instance
+        auth_provider_class = resource_locator.get_auth_provider(auth_provider_model)
+        auth_provider_instance = await auth_provider_class.create(
+            credentials=decrypted_credentials,
+            config=auth_provider_config,
+        )
+
+        # 6. Set logger if provided
+        if logger and hasattr(auth_provider_instance, "set_logger"):
+            auth_provider_instance.set_logger(logger)
+
+        if logger:
+            logger.info(
+                f"Created auth provider instance: {auth_provider_instance.__class__.__name__} "
+                f"for readable_id: {readable_auth_provider_id}"
+            )
+        else:
+            # Use the global logger if no contextual logger is provided
+            from airweave.core.logging import logger as global_logger
+
+            global_logger.info(
+                f"Created auth provider instance: {auth_provider_instance.__class__.__name__} "
+                f"for readable_id: {readable_auth_provider_id}"
+            )
+
+        return auth_provider_instance
+
+    @classmethod
+    async def _get_source_credentials(
         cls,
         db: AsyncSession,
         source_connection_data: dict,
         auth_context: AuthContext,
         white_label: Optional[schemas.WhiteLabel],
         access_token: Optional[str],
-    ) -> tuple[Optional[str], any]:
-        """Handle source credentials, either from direct token or database."""
-        # If access token is provided, use it directly
-        if access_token:
-            return access_token, access_token
+        auth_provider_instance: Optional[Any] = None,
+    ) -> any:
+        """Get source credentials from the appropriate source.
 
-        # Otherwise get credentials from database
+        Priority order:
+        1. Direct token injection (if access_token provided)
+        2. Auth provider instance (if available)
+        3. Database credentials (with OAuth refresh if applicable)
+
+        Returns:
+            Tuple of (access_token, credentials) where credentials can be:
+            - A string token for simple auth
+            - A dict with auth fields
+            - An auth config object
+        """
+        # Case 1: Direct token injection - highest priority
+        if access_token:
+            logger.info("Using directly injected access token")
+            return access_token
+
+        # Case 2: Auth provider credentials
+        if auth_provider_instance:
+            logger.info("Getting credentials from auth provider instance")
+            return await cls._get_credentials_from_auth_provider(
+                auth_provider_instance=auth_provider_instance,
+                source_connection_data=source_connection_data,
+            )
+
+        # Case 3: Database credentials (regular flow)
         integration_credential_id = source_connection_data["integration_credential_id"]
         if not integration_credential_id:
             raise NotFoundException("Source connection has no integration credential")
@@ -337,25 +510,55 @@ class SyncFactory:
         )
         decrypted_credential = credentials.decrypt(credential.encrypted_credentials)
 
-        # Handle auth configuration if required
-        # Use pre-fetched auth_config_class to avoid SQLAlchemy lazy loading issues
+        # Check if we need to handle auth config (e.g., OAuth refresh)
         auth_config_class = source_connection_data["auth_config_class"]
         if auth_config_class:
             return await cls._handle_auth_config_credentials(
-                db,
-                source_connection_data,
-                decrypted_credential,
-                auth_context,
-                source_connection_data["connection_id"],
-                white_label,
+                db=db,
+                source_connection_data=source_connection_data,
+                decrypted_credential=decrypted_credential,
+                auth_context=auth_context,
+                connection_id=source_connection_data["connection_id"],
+                white_label=white_label,
             )
 
-        # Handle direct credentials
-        final_access_token = None
-        if isinstance(decrypted_credential, dict) and "access_token" in decrypted_credential:
-            final_access_token = decrypted_credential["access_token"]
+        # Simple credentials - no token extraction needed
+        return decrypted_credential
 
-        return final_access_token, decrypted_credential
+    @classmethod
+    async def _get_credentials_from_auth_provider(
+        cls,
+        auth_provider_instance: Any,
+        source_connection_data: dict,
+    ) -> any:
+        """Get credentials from an auth provider instance."""
+        source_short_name = source_connection_data["short_name"]
+
+        # Get the runtime auth fields required by the source (excluding BYOC fields)
+        # Import here to avoid circular imports
+        from airweave.core.auth_provider_service import auth_provider_service
+
+        # Create a temporary db session for this query
+        from airweave.db.session import get_db_context
+
+        async with get_db_context() as db:
+            source_auth_config_fields = (
+                await auth_provider_service.get_runtime_auth_fields_for_source(
+                    db, source_short_name
+                )
+            )
+
+        # Get fresh credentials from auth provider
+        fresh_credentials = await auth_provider_instance.get_creds_for_source(
+            source_short_name=source_short_name,
+            source_auth_config_fields=source_auth_config_fields,
+        )
+
+        logger.info(
+            f"Successfully obtained credentials from auth provider for source '{source_short_name}'"
+        )
+
+        return fresh_credentials
 
     @classmethod
     async def _handle_auth_config_credentials(
@@ -366,7 +569,7 @@ class SyncFactory:
         auth_context: AuthContext,
         connection_id: UUID,
         white_label: Optional[schemas.WhiteLabel],
-    ) -> tuple[Optional[str], any]:
+    ) -> any:
         """Handle credentials that require auth configuration."""
         # Use pre-fetched auth_config_class to avoid SQLAlchemy lazy loading issues
         auth_config_class = source_connection_data["auth_config_class"]
@@ -375,6 +578,7 @@ class SyncFactory:
         auth_config = resource_locator.get_auth_config(auth_config_class)
         source_credentials = auth_config.model_validate(decrypted_credential)
 
+        # Original OAuth refresh logic for non-auth-provider sources
         # If the source_credential has a refresh token, exchange it for an access token
         if hasattr(source_credentials, "refresh_token") and source_credentials.refresh_token:
             oauth2_response = await oauth2_service.refresh_access_token(
@@ -386,9 +590,9 @@ class SyncFactory:
                 white_label,
             )
             # Just use the access token
-            return oauth2_response.access_token, oauth2_response.access_token
+            return oauth2_response.access_token
 
-        return None, source_credentials
+        return source_credentials
 
     @classmethod
     async def _configure_source_instance(
@@ -423,25 +627,34 @@ class SyncFactory:
         db: AsyncSession,
         source: BaseSource,
         source_connection_data: dict,
+        source_credentials: any,
         auth_context: AuthContext,
         white_label: Optional[schemas.WhiteLabel],
-        final_access_token: str,
         logger,
+        auth_provider_instance: Optional[Any] = None,
     ) -> None:
         """Set up token manager for OAuth sources."""
-        auth_type = source_connection_data["auth_type"]
         short_name = source_connection_data["short_name"]
+        auth_config_class_name = source_connection_data.get("auth_config_class")
 
-        # Only create token manager for OAuth sources
-        from airweave.platform.auth.schemas import AuthType
+        # Only create token manager for sources that use OAuth2AuthConfig or its subclasses
+        should_create_token_manager = False
 
-        oauth_types = {
-            AuthType.oauth2,
-            AuthType.oauth2_with_refresh,
-            AuthType.oauth2_with_refresh_rotating,
-        }
+        if auth_config_class_name:
+            try:
+                # Get the auth config class
+                auth_config_class = resource_locator.get_auth_config(auth_config_class_name)
 
-        if auth_type in oauth_types:
+                # Check if it's a subclass of OAuth2AuthConfig
+                from airweave.platform.configs.auth import OAuth2AuthConfig
+
+                if issubclass(auth_config_class, OAuth2AuthConfig):
+                    should_create_token_manager = True
+            except Exception as e:
+                if logger:
+                    logger.warning(f"Could not check auth config class for {short_name}: {str(e)}")
+
+        if should_create_token_manager:
             # Create a minimal connection object with only the fields needed by TokenManager
             # Use pre-fetched IDs to avoid SQLAlchemy lazy loading issues
             minimal_source_connection = type(
@@ -460,20 +673,24 @@ class SyncFactory:
                 source_short_name=short_name,
                 source_connection=minimal_source_connection,
                 auth_context=auth_context,
-                auth_type=auth_type,
-                initial_token=final_access_token,
+                initial_credentials=source_credentials,
                 white_label=white_label,
-                is_direct_injection=final_access_token is not None,
+                is_direct_injection=False,  # TokenManager will determine this internally
                 logger_instance=logger,
+                auth_provider_instance=auth_provider_instance,
             )
             source.set_token_manager(token_manager)
 
             if logger:
                 logger.info(
-                    f"Token manager initialized for {short_name} "
-                    f"(auth_type: {auth_type}, "
-                    f"is_direct_injection: {final_access_token is not None})"
+                    f"Token manager initialized for OAuth source {short_name} "
+                    f"(auth_provider: {'Yes' if auth_provider_instance else 'None'})"
                 )
+        elif logger:
+            logger.debug(
+                f"Skipping token manager for {short_name} - "
+                f"not an OAuth source or no access_token in credentials"
+            )
 
     @classmethod
     async def _get_integration_credential(

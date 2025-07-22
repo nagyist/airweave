@@ -3,7 +3,7 @@
 from typing import TYPE_CHECKING, List, Optional
 from uuid import UUID
 
-from sqlalchemy import CheckConstraint, ForeignKey, String, event
+from sqlalchemy import CheckConstraint, ForeignKey, String, Text, event
 from sqlalchemy import Enum as SQLAlchemyEnum
 from sqlalchemy.orm import Mapped, Session, mapped_column, relationship
 
@@ -11,6 +11,7 @@ from airweave.core.shared_models import ConnectionStatus, IntegrationType
 from airweave.models._base import Base
 
 if TYPE_CHECKING:
+    from airweave.models.auth_provider import AuthProvider
     from airweave.models.dag import DagNode
     from airweave.models.destination import Destination
     from airweave.models.embedding_model import EmbeddingModel
@@ -31,6 +32,8 @@ class Connection(Base):
     __tablename__ = "connection"
 
     name: Mapped[str] = mapped_column(String, nullable=False)
+    readable_id: Mapped[str] = mapped_column(String, nullable=False, unique=True)
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     integration_type: Mapped[IntegrationType] = mapped_column(
         SQLAlchemyEnum(IntegrationType), nullable=False
     )
@@ -75,9 +78,18 @@ class Connection(Base):
         viewonly=True,
         lazy="noload",
     )
+    auth_provider: Mapped[Optional["AuthProvider"]] = relationship(
+        "AuthProvider",
+        primaryjoin="and_(foreign(Connection.short_name)==remote(AuthProvider.short_name), "
+        "Connection.integration_type=='AUTH_PROVIDER')",
+        foreign_keys=[short_name],
+        viewonly=True,
+        lazy="noload",
+    )
 
     source_connection: Mapped[Optional["SourceConnection"]] = relationship(
         "SourceConnection",
+        foreign_keys="[SourceConnection.connection_id]",
         back_populates="connection",
         lazy="noload",
     )
@@ -86,6 +98,19 @@ class Connection(Base):
         "SyncConnection",
         back_populates="connection",
         lazy="noload",
+    )
+
+    # Source connections that use this connection as an auth provider
+    # This enables cascade deletion when an auth provider connection is deleted
+    source_connections_using_auth_provider: Mapped[List["SourceConnection"]] = relationship(
+        "SourceConnection",
+        foreign_keys="[SourceConnection.readable_auth_provider_id]",
+        primaryjoin="and_(SourceConnection.readable_auth_provider_id==Connection.readable_id, "
+        "Connection.integration_type=='AUTH_PROVIDER')",
+        cascade="all, delete-orphan",
+        viewonly=False,
+        lazy="noload",
+        passive_deletes=False,  # Force Python-side cascade
     )
 
     # Add a relationship to dag nodes with cascade delete

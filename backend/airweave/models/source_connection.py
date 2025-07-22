@@ -33,6 +33,12 @@ class SourceConnection(OrganizationBase, UserMixin):
     # Configuration fields for the source connection
     config_fields: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
 
+    # Auth provider tracking fields
+    readable_auth_provider_id: Mapped[Optional[str]] = mapped_column(
+        ForeignKey("connection.readable_id", ondelete="CASCADE"), nullable=True
+    )
+    auth_provider_config: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+
     # Related objects
     sync_id: Mapped[Optional[UUID]] = mapped_column(
         ForeignKey("sync.id", ondelete="CASCADE"), nullable=True
@@ -61,6 +67,7 @@ class SourceConnection(OrganizationBase, UserMixin):
     )
     connection: Mapped[Optional["Connection"]] = relationship(
         "Connection",
+        foreign_keys=[connection_id],
         back_populates="source_connection",
         lazy="noload",
         cascade="all, delete-orphan",
@@ -69,6 +76,15 @@ class SourceConnection(OrganizationBase, UserMixin):
     white_label: Mapped[Optional["WhiteLabel"]] = relationship(
         "WhiteLabel",
         back_populates="source_connections",
+        lazy="noload",
+    )
+
+    # Relationship to the auth provider connection
+    auth_provider_connection: Mapped[Optional["Connection"]] = relationship(
+        "Connection",
+        foreign_keys=[readable_auth_provider_id],
+        primaryjoin="SourceConnection.readable_auth_provider_id==Connection.readable_id",
+        viewonly=True,
         lazy="noload",
     )
 

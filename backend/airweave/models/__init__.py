@@ -1,6 +1,7 @@
 """Models for the application."""
 
 from .api_key import APIKey
+from .auth_provider import AuthProvider
 from .collection import Collection
 from .connection import Connection
 from .dag import DagEdge, DagNode, SyncDag
@@ -23,6 +24,7 @@ from .white_label import WhiteLabel
 
 __all__ = [
     "APIKey",
+    "AuthProvider",
     "Collection",
     "Entity",
     "Connection",

@@ -8,6 +8,10 @@ import { redirectWithError } from "@/lib/error-utils";
 import { apiClient } from "@/lib/api";
 import { authenticateSource } from "@/lib/authenticate";
 import { getAppIconUrl } from "@/lib/utils/icons";
+import { Switch } from "@/components/ui/switch";
+import { useAuthProvidersStore } from "@/lib/stores/authProviders";
+import { getAuthProviderIconUrl } from "@/lib/utils/icons";
+import { ExternalLink } from "lucide-react";
 
 export interface ConfigureSourceViewProps {
     onNext?: (data?: any) => void;
@@ -42,6 +46,30 @@ export const ConfigureSourceView: React.FC<ConfigureSourceViewProps> = ({
     const [connectionName, setConnectionName] = useState<string>(
         viewData.connectionName || `${viewData.sourceName || ""} Connection`
     );
+    const [useExternalAuthProvider, setUseExternalAuthProvider] = useState(false);
+    const [selectedAuthProviderConnection, setSelectedAuthProviderConnection] = useState<any>(null);
+    const [authProviderDetails, setAuthProviderDetails] = useState<any>(null);
+    const [authProviderConfigValues, setAuthProviderConfigValues] = useState<Record<string, any>>({});
+    const [loadingAuthProviderDetails, setLoadingAuthProviderDetails] = useState(false);
+
+    // Sources that are temporarily blocked from using auth providers
+    // This should match the backend list in source_connections.py
+    const SOURCES_BLOCKED_FROM_AUTH_PROVIDERS = [
+        "confluence",
+        "jira",
+        "bitbucket",
+        "github",
+        "ctti",
+        "monday",
+        "postgresql"
+    ];
+
+    // Use auth providers store
+    const {
+        authProviderConnections,
+        isLoadingConnections,
+        fetchAuthProviderConnections
+    } = useAuthProvidersStore();
 
     // Extract data passed from previous views
     const {
@@ -114,6 +142,71 @@ export const ConfigureSourceView: React.FC<ConfigureSourceViewProps> = ({
         fetchSourceDetails();
     }, [sourceShortName, viewData.authValues]);
 
+    // Fetch auth provider connections on mount
+    useEffect(() => {
+        fetchAuthProviderConnections();
+    }, [fetchAuthProviderConnections]);
+
+    // Ensure external auth provider is disabled for blocked sources
+    useEffect(() => {
+        if (sourceShortName && SOURCES_BLOCKED_FROM_AUTH_PROVIDERS.includes(sourceShortName)) {
+            setUseExternalAuthProvider(false);
+            setSelectedAuthProviderConnection(null);
+            setAuthProviderDetails(null);
+            setAuthProviderConfigValues({});
+        }
+    }, [sourceShortName]);
+
+    // Fetch auth provider details when a connection is selected
+    const fetchAuthProviderDetails = async (connection: any) => {
+        setLoadingAuthProviderDetails(true);
+        try {
+            const response = await apiClient.get(`/auth-providers/detail/${connection.short_name}`);
+            if (response.ok) {
+                const data = await response.json();
+                setAuthProviderDetails(data);
+                console.log("Auth provider details loaded:", data);
+                console.log("🔍 Config fields structure:", {
+                    hasConfigFields: !!data.config_fields,
+                    fieldsArray: data.config_fields?.fields,
+                    fieldsCount: data.config_fields?.fields?.length,
+                    fields: data.config_fields?.fields?.map((f: any) => ({
+                        name: f.name,
+                        required: f.required,
+                        title: f.title
+                    }))
+                });
+
+                // Initialize config values with empty strings
+                if (data.config_fields && data.config_fields.fields) {
+                    const initialConfigValues: Record<string, any> = {};
+                    data.config_fields.fields.forEach((field: any) => {
+                        if (field.name) {
+                            initialConfigValues[field.name] = '';
+                        }
+                    });
+                    setAuthProviderConfigValues(initialConfigValues);
+                }
+            } else {
+                const errorText = await response.text();
+                console.error(`Failed to load auth provider details: ${errorText}`);
+                handleError(new Error(`Failed to load auth provider details: ${errorText}`), "Auth provider details fetch error");
+            }
+        } catch (error) {
+            console.error("Error fetching auth provider details:", error);
+            handleError(error instanceof Error ? error : new Error(String(error)), "Auth provider details fetch error");
+        } finally {
+            setLoadingAuthProviderDetails(false);
+        }
+    };
+
+    // Handle auth provider connection selection
+    const handleAuthProviderConnectionSelect = async (connection: any) => {
+        console.log(`Selected auth provider connection: ${connection.name}`);
+        setSelectedAuthProviderConnection(connection);
+        await fetchAuthProviderDetails(connection);
+    };
+
     // Create a consistent error handler
     const handleError = (error: Error | string, errorSource?: string) => {
         console.error(`❌ [ConfigureSourceView] Error:`, error);
@@ -165,6 +258,33 @@ export const ConfigureSourceView: React.FC<ConfigureSourceViewProps> = ({
         return sourceDetails.auth_fields.fields
             .filter(field => field.name && !isTokenField(field.name))
             .some(field => !authValues[field.name] || authValues[field.name].trim() === '');
+    };
+
+    // Check if required auth provider config fields are empty
+    const hasEmptyRequiredAuthProviderConfigFields = (): boolean => {
+        console.log('🔍 [hasEmptyRequiredAuthProviderConfigFields] Checking config fields...');
+        console.log('  - authProviderDetails:', authProviderDetails);
+        console.log('  - config_fields:', authProviderDetails?.config_fields);
+        console.log('  - fields array:', authProviderDetails?.config_fields?.fields);
+
+        if (!authProviderDetails?.config_fields?.fields) {
+            console.log('  ❌ No config fields found, returning false');
+            return false;
+        }
+
+        const requiredFields = authProviderDetails.config_fields.fields.filter((field: any) => field.required);
+        console.log('  - Required fields:', requiredFields);
+        // console.log('  - Current authProviderConfigValues:', authProviderConfigValues);
+
+        const result = requiredFields.some((field: any) => {
+            const value = authProviderConfigValues[field.name];
+            const isEmpty = !value || value.trim() === '';
+            console.log(`  - Field "${field.name}": value="${value}", isEmpty=${isEmpty}`);
+            return isEmpty;
+        });
+
+        console.log(`  📊 Final result: ${result} (true = has empty required fields)`);
+        return result;
     };
 
     // Simplify the logging function - all fields are required
@@ -251,7 +371,39 @@ export const ConfigureSourceView: React.FC<ConfigureSourceViewProps> = ({
     const handleNextStep = () => {
         console.log('🔄 Attempting to proceed to next step...');
         setValidationAttempted(true);
-        const isValid = validateAuthFields();
+
+        let isValid = false;
+
+        if (useExternalAuthProvider) {
+            // Validate external auth provider selection and config
+            if (!selectedAuthProviderConnection) {
+                console.log('❌ No auth provider connection selected');
+                setErrors({ _authProvider: 'Please select an auth provider connection' });
+                isValid = false;
+            } else {
+                // Validate auth provider config fields if any
+                const newErrors: Record<string, string> = {};
+                if (authProviderDetails?.config_fields?.fields) {
+                    authProviderDetails.config_fields.fields
+                        .filter((field: any) => field.required)
+                        .forEach((field: any) => {
+                            if (!authProviderConfigValues[field.name] || authProviderConfigValues[field.name].trim() === '') {
+                                newErrors[field.name] = `${field.title || field.name} is required`;
+                                isValid = false;
+                            }
+                        });
+                }
+
+                if (Object.keys(newErrors).length === 0) {
+                    isValid = true;
+                }
+                setErrors(newErrors);
+            }
+        } else {
+            // Validate regular auth fields
+            isValid = validateAuthFields();
+        }
+
         console.log(`Validation result: ${isValid ? '✅ VALID' : '❌ INVALID'}`);
 
         if (isValid) {
@@ -297,28 +449,57 @@ export const ConfigureSourceView: React.FC<ConfigureSourceViewProps> = ({
                 collectionId = collection.readable_id;
             }
 
-            // Ensure we have a valid credential ID from the OAuth process
-            if (!viewData.credentialId) {
-                throw new Error("Missing credential ID. Authentication may not have completed properly.");
+            // Branch based on authentication method
+            let sourceConnectionResponse;
+
+            if (useExternalAuthProvider) {
+                // External Auth Provider Path
+                if (!selectedAuthProviderConnection) {
+                    throw new Error("No auth provider connection selected");
+                }
+
+                console.log(`🔌 Creating source connection with auth provider: ${selectedAuthProviderConnection.readable_id}`);
+
+                const sourceConnectionData = {
+                    name: viewData.connectionName || connectionName || `${sourceName} Connection`,
+                    short_name: sourceShortName,
+                    collection: collectionId,
+                    auth_provider: selectedAuthProviderConnection.readable_id,
+                    auth_provider_config: authProviderConfigValues,
+                    config_fields: configValues,
+                    sync_immediately: true
+                };
+
+                // console.log('Source connection data (auth provider):', sourceConnectionData);
+
+                // Use public endpoint for auth provider connections
+                sourceConnectionResponse = await apiClient.post('/source-connections', sourceConnectionData);
+
+            } else {
+                // Regular Authentication Path (existing logic)
+                // Ensure we have a valid credential ID from the OAuth process
+                if (!viewData.credentialId) {
+                    throw new Error("Missing credential ID. Authentication may not have completed properly.");
+                }
+
+                console.log(`🔌 Creating source connection with credential: ${viewData.credentialId}`);
+
+                const sourceConnectionData = {
+                    name: viewData.connectionName || connectionName || `${sourceName} Connection`,
+                    short_name: sourceShortName,
+                    collection: collectionId,
+                    credential_id: viewData.credentialId,
+                    config_fields: configValues,
+                    sync_immediately: true
+                };
+
+                console.log(`📝 Source connection data (credential):`, sourceConnectionData);
+
+                // Use internal endpoint since we're using a credential_id
+                sourceConnectionResponse = await apiClient.post('/source-connections/internal/', sourceConnectionData);
             }
 
-            // Now create the source connection with the credential using internal endpoint
-            console.log(`🔌 Creating source connection in collection: ${collectionId}`);
-
-            const sourceConnectionData = {
-                name: viewData.connectionName || connectionName || `${sourceName} Connection`,
-                short_name: sourceShortName,
-                collection: collectionId,
-                credential_id: viewData.credentialId,
-                config_fields: configValues,
-                sync_immediately: true
-            };
-
-            console.log(`📝 Source connection data:`, sourceConnectionData);
-
-            // Use internal endpoint since we're using a credential_id
-            const sourceConnectionResponse = await apiClient.post('/source-connections/internal/', sourceConnectionData);
-
+            // Handle response (common for both paths)
             if (!sourceConnectionResponse.ok) {
                 const errorText = await sourceConnectionResponse.text();
                 console.error("Source connection error response:", errorText);
@@ -610,7 +791,7 @@ export const ConfigureSourceView: React.FC<ConfigureSourceViewProps> = ({
                     {/* Connection Name field */}
                     <div className="space-y-2 mb-4">
                         <label className="text-base font-medium">
-                            Connection Name
+                            Name
                         </label>
 
                         <p className="text-xs text-muted-foreground mb-2">
@@ -628,38 +809,250 @@ export const ConfigureSourceView: React.FC<ConfigureSourceViewProps> = ({
                             onChange={(e) => setConnectionName(e.target.value)}
                         />
                     </div>
-
-                    {/* Render auth fields (excluding token fields) */}
-                    {hasVisibleAuthFields && sourceDetails.auth_fields.fields
-                        .filter((field: any) => field.name && !isTokenField(field.name))
-                        .map((field: any) => (
-                            <div key={field.name} className="space-y-2 mb-4">
-                                <label className="text-base font-medium">
-                                    {field.title || field.name}
-                                </label>
-
-                                {field.description && (
-                                    <p className="text-xs text-muted-foreground mb-2">{field.description}</p>
-                                )}
-
-                                <input
-                                    type={field.type === 'password' ? 'password' : 'text'}
-                                    className={cn(
-                                        "w-full p-2 rounded border",
-                                        isDark ? "bg-gray-800 border-gray-700" : "bg-white border-gray-300",
-                                        validationAttempted && errors[field.name] ? "border-red-500" : ""
-                                    )}
-                                    placeholder={''}
-                                    value={authValues[field.name] || ''}
-                                    onChange={(e) => handleAuthFieldChange(field.name, e.target.value)}
-                                />
-
-                                {validationAttempted && errors[field.name] && (
-                                    <p className="text-xs text-red-500">{errors[field.name]}</p>
-                                )}
-                            </div>
-                        ))}
                 </div>
+
+                {/* External Auth Provider Toggle - Separate Section */}
+                {!SOURCES_BLOCKED_FROM_AUTH_PROVIDERS.includes(sourceShortName) && (
+                    <div className="bg-muted p-6 rounded-lg mb-4">
+                        <div className="space-y-4">
+                            <div className="flex items-center justify-between">
+                                <div className="space-y-0.5">
+                                    <label htmlFor="use-external-auth" className="text-base font-medium">
+                                        Use external auth provider to get credentials
+                                    </label>
+                                    <p className="text-xs text-muted-foreground">
+                                        Skip authentication and get credentials for this source from a third-party authentication service.
+                                    </p>
+                                </div>
+                                <Switch
+                                    id="use-external-auth"
+                                    checked={useExternalAuthProvider}
+                                    onCheckedChange={(checked) => {
+                                        setUseExternalAuthProvider(checked);
+                                        // Reset auth provider state when toggled off
+                                        if (!checked) {
+                                            setSelectedAuthProviderConnection(null);
+                                            setAuthProviderDetails(null);
+                                            setAuthProviderConfigValues({});
+                                        }
+                                    }}
+                                    className={cn(
+                                        "border-2",
+                                        isDark ? "border-gray-600" : "border-gray-300"
+                                    )}
+                                />
+                            </div>
+
+                            {/* Show auth provider connections when toggle is on */}
+                            {useExternalAuthProvider && (
+                                <div className="space-y-3 mt-4">
+                                    {isLoadingConnections ? (
+                                        <div className="flex justify-center py-4">
+                                            <div className="animate-spin w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full"></div>
+                                        </div>
+                                    ) : authProviderConnections.length > 0 ? (
+                                        <>
+                                            <p className="text-sm text-muted-foreground mb-2">
+                                                Select a connected auth provider
+                                            </p>
+
+                                            {/* Show error if validation attempted and no provider selected */}
+                                            {validationAttempted && !selectedAuthProviderConnection && (
+                                                <div className="mb-2 p-2 bg-red-500/10 rounded border border-red-500/20">
+                                                    <p className="text-xs text-red-600">
+                                                        Please select a connected auth provider
+                                                    </p>
+                                                </div>
+                                            )}
+
+                                            <div className="space-y-2">
+                                                {authProviderConnections.map((connection) => (
+                                                    <div
+                                                        key={connection.id}
+                                                        className={cn(
+                                                            "h-10 flex items-center gap-2 overflow-hidden px-3 py-2 rounded-md cursor-pointer transition-colors",
+                                                            selectedAuthProviderConnection?.id === connection.id
+                                                                ? "border-2 border-primary"
+                                                                : isDark
+                                                                    ? "border border-gray-700 bg-gray-800/50 hover:bg-gray-700/70"
+                                                                    : "border border-gray-200 bg-white hover:bg-gray-50"
+                                                        )}
+                                                        onClick={() => handleAuthProviderConnectionSelect(connection)}
+                                                    >
+                                                        <div className="rounded-md flex items-center justify-center overflow-hidden flex-shrink-0">
+                                                            <img
+                                                                src={getAuthProviderIconUrl(connection.short_name, resolvedTheme)}
+                                                                alt={connection.name}
+                                                                className="h-6 w-6 object-contain"
+                                                                onError={(e) => {
+                                                                    // Fallback to initials if icon fails
+                                                                    e.currentTarget.style.display = 'none';
+                                                                    const colorClass = connection.short_name.charCodeAt(0) % 8;
+                                                                    const colors = [
+                                                                        "bg-blue-500", "bg-green-500", "bg-purple-500", "bg-orange-500",
+                                                                        "bg-pink-500", "bg-indigo-500", "bg-red-500", "bg-yellow-500"
+                                                                    ];
+                                                                    e.currentTarget.parentElement!.classList.add(colors[colorClass]);
+                                                                    e.currentTarget.parentElement!.innerHTML = `<span class="text-white font-semibold text-xs">${connection.short_name.substring(0, 2).toUpperCase()}</span>`;
+                                                                }}
+                                                            />
+                                                        </div>
+                                                        <div className="flex-1 min-w-0">
+                                                            <span className="text-sm font-medium truncate block">
+                                                                {connection.name}
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+
+                                            {/* Show config fields when an auth provider is selected */}
+                                            {selectedAuthProviderConnection && (
+                                                <div className="mt-4 p-4 rounded-md bg-background border border-border">
+                                                    {loadingAuthProviderDetails ? (
+                                                        <div className="flex items-center justify-center py-4">
+                                                            <div className="animate-spin w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full mr-2"></div>
+                                                            <span className="text-sm text-muted-foreground">Loading configuration...</span>
+                                                        </div>
+                                                    ) : authProviderDetails ? (
+                                                        <>
+                                                            <p className="text-sm font-medium mb-3">
+                                                                Auth Provider Configuration
+                                                            </p>
+
+                                                            {/* Show the pre-filled readable_id */}
+                                                            <div className="space-y-2 mb-3">
+                                                                <label className="text-xs font-medium text-muted-foreground">
+                                                                    Auth Provider Connection ID
+                                                                </label>
+                                                                <input
+                                                                    type="text"
+                                                                    className={cn(
+                                                                        "w-full p-2 rounded border text-sm",
+                                                                        isDark ? "bg-gray-800 border-gray-700" : "bg-gray-50 border-gray-300"
+                                                                    )}
+                                                                    value={selectedAuthProviderConnection.readable_id}
+                                                                    disabled
+                                                                />
+                                                            </div>
+
+                                                            {/* Show config fields if any */}
+                                                            {authProviderDetails?.config_fields?.fields && authProviderDetails.config_fields.fields.length > 0 ? (
+                                                                <div className="space-y-3">
+                                                                    {authProviderDetails.config_fields.fields.map((field: any) => (
+                                                                        <div key={field.name} className="space-y-1">
+                                                                            <label className="text-xs font-medium">
+                                                                                {field.title || field.name}
+                                                                                {field.required && <span className="text-red-500 ml-1">*</span>}
+                                                                            </label>
+                                                                            {field.description && (
+                                                                                <p className="text-xs text-muted-foreground">{field.description}</p>
+                                                                            )}
+                                                                            <input
+                                                                                type="text"
+                                                                                className={cn(
+                                                                                    "w-full p-2 rounded border text-sm",
+                                                                                    isDark ? "bg-gray-800 border-gray-700" : "bg-white border-gray-300",
+                                                                                    validationAttempted && errors[field.name] ? "border-red-500" : ""
+                                                                                )}
+                                                                                placeholder={field.placeholder || ''}
+                                                                                value={authProviderConfigValues[field.name] || ''}
+                                                                                onChange={(e) => {
+                                                                                    setAuthProviderConfigValues(prev => ({
+                                                                                        ...prev,
+                                                                                        [field.name]: e.target.value
+                                                                                    }));
+
+                                                                                    // Clear error for this field if any
+                                                                                    if (errors[field.name]) {
+                                                                                        setErrors(prev => {
+                                                                                            const updated = { ...prev };
+                                                                                            delete updated[field.name];
+                                                                                            return updated;
+                                                                                        });
+                                                                                    }
+                                                                                }}
+                                                                            />
+                                                                            {validationAttempted && errors[field.name] && (
+                                                                                <p className="text-xs text-red-500 mt-1">{errors[field.name]}</p>
+                                                                            )}
+                                                                        </div>
+                                                                    ))}
+                                                                </div>
+                                                            ) : (
+                                                                <p className="text-xs text-muted-foreground italic">
+                                                                    No additional configuration required for this auth provider.
+                                                                </p>
+                                                            )}
+                                                        </>
+                                                    ) : (
+                                                        <div className="text-center py-4 text-sm text-red-500">
+                                                            Failed to load configuration
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )}
+                                        </>
+                                    ) : (
+                                        <p className="text-sm text-muted-foreground py-2">
+                                            No connected auth providers found, click on the button below to set-up a new connection.
+                                        </p>
+                                    )}
+
+                                    {/* Button to go to auth providers page */}
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        className="w-full mt-3"
+                                        onClick={() => {
+                                            // Navigate to auth providers page
+                                            navigate('/auth-providers');
+                                        }}
+                                    >
+                                        <ExternalLink className="h-4 w-4 mr-2" />
+                                        Manage Auth Provider Connections
+                                    </Button>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                )}
+
+                {/* Auth fields section - if any */}
+                {hasVisibleAuthFields && !useExternalAuthProvider && (
+                    <div className="bg-muted p-6 rounded-lg mb-4">
+                        {/* Render auth fields (excluding token fields) */}
+                        {sourceDetails.auth_fields.fields
+                            .filter((field: any) => field.name && !isTokenField(field.name))
+                            .map((field: any) => (
+                                <div key={field.name} className="space-y-2 mb-4">
+                                    <label className="text-base font-medium">
+                                        {field.title || field.name}
+                                    </label>
+
+                                    {field.description && (
+                                        <p className="text-xs text-muted-foreground mb-2">{field.description}</p>
+                                    )}
+
+                                    <input
+                                        type={field.type === 'password' ? 'password' : 'text'}
+                                        className={cn(
+                                            "w-full p-2 rounded border",
+                                            isDark ? "bg-gray-800 border-gray-700" : "bg-white border-gray-300",
+                                            validationAttempted && errors[field.name] ? "border-red-500" : ""
+                                        )}
+                                        placeholder={''}
+                                        value={authValues[field.name] || ''}
+                                        onChange={(e) => handleAuthFieldChange(field.name, e.target.value)}
+                                    />
+
+                                    {validationAttempted && errors[field.name] && (
+                                        <p className="text-xs text-red-500">{errors[field.name]}</p>
+                                    )}
+                                </div>
+                            ))}
+                    </div>
+                )}
             </div>
         );
     };
@@ -772,7 +1165,7 @@ export const ConfigureSourceView: React.FC<ConfigureSourceViewProps> = ({
             </div>
 
             {/* Authentication button section - fixed above footer */}
-            {step === 'auth' && sourceDetails && (
+            {step === 'auth' && sourceDetails && !useExternalAuthProvider && (
                 <div className="flex-shrink-0 px-6 py-4 border-t">
                     {!isAuthenticated && (
                         <p className="text-sm text-center text-muted-foreground mb-3">
@@ -830,14 +1223,32 @@ export const ConfigureSourceView: React.FC<ConfigureSourceViewProps> = ({
                     </Button>
 
                     {step === 'auth' ? (
-                        <Button
-                            type="button"
-                            onClick={handleNextStep}
-                            className="px-6 bg-blue-600 hover:bg-blue-700 text-white"
-                            disabled={loading || !isAuthenticated}
-                        >
-                            {hasConfigFields() ? 'Next' : 'Connect'}
-                        </Button>
+                        (() => {
+                            const isDisabled = loading ||
+                                (!useExternalAuthProvider && !isAuthenticated) ||
+                                (useExternalAuthProvider && (!selectedAuthProviderConnection || loadingAuthProviderDetails || hasEmptyRequiredAuthProviderConfigFields()));
+
+                            console.log('🔘 [Connect Button] Disabled state evaluation:', {
+                                loading,
+                                useExternalAuthProvider,
+                                isAuthenticated,
+                                selectedAuthProviderConnection: !!selectedAuthProviderConnection,
+                                loadingAuthProviderDetails,
+                                hasEmptyRequiredFields: hasEmptyRequiredAuthProviderConfigFields(),
+                                finalDisabled: isDisabled
+                            });
+
+                            return (
+                                <Button
+                                    type="button"
+                                    onClick={handleNextStep}
+                                    className="px-6 bg-blue-600 hover:bg-blue-700 text-white"
+                                    disabled={isDisabled}
+                                >
+                                    {hasConfigFields() ? 'Next' : 'Connect'}
+                                </Button>
+                            );
+                        })()
                     ) : (
                         <Button
                             type="button"

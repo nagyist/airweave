@@ -1,6 +1,7 @@
 """CRUD operations for the application."""
 
 from .crud_api_key import api_key
+from .crud_auth_provider import auth_provider
 from .crud_collection import collection
 from .crud_connection import connection
 from .crud_dag import sync_dag
@@ -21,6 +22,7 @@ from .crud_white_label import white_label
 __all__ = [
     # Existing CRUD instances
     "api_key",
+    "auth_provider",
     "collection",
     "connection",
     "destination",

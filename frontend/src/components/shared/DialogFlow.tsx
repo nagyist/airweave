@@ -1,32 +1,37 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import { Dialog, DialogContent, DialogPortal, DialogOverlay } from "@/components/ui/dialog";
 import { useTheme } from "@/lib/theme-provider";
 import { cn } from "@/lib/utils";
 import { CreateCollectionView } from "./views/CreateCollectionView";
 import { SourceSelectorView } from "./views/SourceSelectorView";
 import { ConfigureSourceView } from "./views/ConfigureSourceView";
+import { ConfigureAuthProviderView } from "./views/ConfigureAuthProviderView";
+import { AuthProviderDetailView } from "./views/AuthProviderDetailView";
+import { EditAuthProviderView } from "./views/EditAuthProviderView";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { redirectWithError, getStoredErrorDetails, clearStoredErrorDetails, CONNECTION_ERROR_STORAGE_KEY } from "@/lib/error-utils";
 import { ConnectionErrorView } from "./views/ConnectionErrorView";
 
 // Flow types
-export type DialogFlowMode =
-    | "source-button"     // Dashboard SourceButton flow
-    | "add-source"        // CollectionDetailView "+ add source" flow
-    | "create-collection"; // DashboardLayout "+ create collection" flow
+export type DialogMode = 'source-button' | 'add-source' | 'create-collection' | 'auth-provider' | 'auth-provider-detail' | 'auth-provider-edit';
 
 interface DialogFlowProps {
     isOpen: boolean;
     onOpenChange: (open: boolean) => void;
-    mode: DialogFlowMode;
+    mode: DialogMode;
     sourceId?: string;
     sourceName?: string;
     sourceShortName?: string;
     collectionId?: string;
     collectionName?: string;
-    onComplete?: (result: any) => void;
-    dialogId?: string; // Add unique dialog ID prop
-    errorData?: any; // Add explicit error data prop for direct error passing
+    authProviderId?: string;
+    authProviderName?: string;
+    authProviderShortName?: string;
+    authProviderAuthType?: string;
+    authProviderConnectionId?: string;
+    onComplete?: (result?: any) => void;
+    dialogId?: string;
+    errorData?: any;
 }
 
 // Add this interface after DialogFlowProps
@@ -48,14 +53,53 @@ export const DialogFlow: React.FC<DialogFlowProps> = ({
     sourceShortName,
     collectionId,
     collectionName,
+    authProviderId,
+    authProviderName,
+    authProviderShortName,
+    authProviderAuthType,
+    authProviderConnectionId,
     onComplete,
     dialogId = "default", // Default ID if none provided
     errorData,
 }) => {
+    // Track render count
+    const renderCountRef = useRef(0);
+    renderCountRef.current += 1;
+
+    // Immediate logging of isOpen prop
+    console.log('🎬 [DialogFlow] Render with isOpen:', isOpen, 'dialogId:', dialogId, 'renderCount:', renderCountRef.current);
+
+    // Log component lifecycle
+    useEffect(() => {
+        console.log('🌟 [DialogFlow] Component mounted:', {
+            dialogId,
+            mode,
+            renderCount: renderCountRef.current
+        });
+
+        return () => {
+            console.log('💥 [DialogFlow] Component unmounting:', dialogId);
+        };
+    }, []);
+
+    console.log('🖼️ [DialogFlow] Rendering:', {
+        dialogId,
+        mode,
+        renderCount: renderCountRef.current,
+        currentStep: 'will be set below'
+    });
+
     const { resolvedTheme } = useTheme();
     const isDark = resolvedTheme === "dark";
     const [currentStep, setCurrentStep] = useState(0);
     const [viewData, setViewData] = useState<Record<string, any>>({});
+
+    console.log('🎯 [DialogFlow] State values:', {
+        dialogId,
+        currentStep,
+        hasAuthProviderConnectionId: !!viewData.authProviderConnectionId,
+        renderCount: renderCountRef.current
+    });
     const navigate = useNavigate();
     const [searchParams] = useSearchParams();
     const [showErrorView, setShowErrorView] = useState(false);
@@ -66,11 +110,75 @@ export const DialogFlow: React.FC<DialogFlowProps> = ({
     const hasProcessedRestoreRef = useRef(false);
     // Add a new ref to track if dialog is being restored without reset
     const isRestoringRef = useRef(false);
+    // Track if dialog was previously open
+    const wasOpenRef = useRef(false);
+
+    // Monitor dialog open/close state
+    useEffect(() => {
+        console.log('🚪 [DialogFlow] Dialog open state changed:', {
+            dialogId,
+            isOpen,
+            mode,
+            currentStep,
+            hasAuthProviderConnectionId: !!viewData.authProviderConnectionId
+        });
+    }, [isOpen]);
+
+    // Track dependency changes for reset useEffect
+    const prevDepsRef = useRef<any>({});
+
+    useEffect(() => {
+        const deps = {
+            isOpen,
+            mode,
+            sourceId,
+            sourceName,
+            sourceShortName,
+            collectionId,
+            collectionName,
+            authProviderId,
+            authProviderName,
+            authProviderShortName,
+            authProviderAuthType,
+            authProviderConnectionId,
+            dialogId
+        };
+
+        const changes: string[] = [];
+        Object.keys(deps).forEach(key => {
+            if (prevDepsRef.current[key] !== deps[key]) {
+                changes.push(`${key}: ${prevDepsRef.current[key]} → ${deps[key]}`);
+            }
+        });
+
+        if (changes.length > 0) {
+            console.log('🔄 [DialogFlow] Reset useEffect dependencies changed:', changes);
+        }
+
+        prevDepsRef.current = deps;
+    }, [isOpen, mode, sourceId, sourceName, sourceShortName, collectionId, collectionName, authProviderId, authProviderName, authProviderShortName, authProviderAuthType, authProviderConnectionId, dialogId]);
 
     // Reset state when dialog opens or mode changes
     useEffect(() => {
-        // DON'T reset viewData or currentStep if we're restoring dialog or in restoration process
-        if (isOpen && !hasProcessedRestoreRef.current && !isRestoringRef.current) {
+        console.log('🔍 [DialogFlow] Reset useEffect triggered:', {
+            dialogId,
+            isOpen,
+            wasOpen: wasOpenRef.current,
+            hasProcessedRestore: hasProcessedRestoreRef.current,
+            isRestoring: isRestoringRef.current,
+            willReset: isOpen && !wasOpenRef.current && !hasProcessedRestoreRef.current && !isRestoringRef.current
+        });
+
+        // Only reset when transitioning from closed to open
+        if (isOpen && !wasOpenRef.current && !hasProcessedRestoreRef.current && !isRestoringRef.current) {
+            console.log('🔄 [DialogFlow] Initializing dialog state on open:', {
+                dialogId,
+                mode,
+                currentStep,
+                isOpen,
+                hasProcessedRestore: hasProcessedRestoreRef.current,
+                isRestoring: isRestoringRef.current
+            });
             setCurrentStep(0);
             setViewData({
                 sourceId,
@@ -78,10 +186,19 @@ export const DialogFlow: React.FC<DialogFlowProps> = ({
                 sourceShortName,
                 collectionId,
                 collectionName,
+                authProviderId,
+                authProviderName,
+                authProviderShortName,
+                authProviderAuthType,
+                authProviderConnectionId,
                 dialogId
             });
         }
-    }, [isOpen, mode, sourceId, sourceName, sourceShortName, collectionId, collectionName, dialogId]);
+
+        // Update ref for next render
+        console.log('📍 [DialogFlow] Updating wasOpenRef from', wasOpenRef.current, 'to', isOpen);
+        wasOpenRef.current = isOpen;
+    }, [isOpen, mode, sourceId, sourceName, sourceShortName, collectionId, collectionName, authProviderId, authProviderName, authProviderShortName, authProviderAuthType, authProviderConnectionId, dialogId]);
 
     // Handle direct error data passed via props
     useEffect(() => {
@@ -248,12 +365,39 @@ export const DialogFlow: React.FC<DialogFlowProps> = ({
     const flowSequences = {
         "source-button": ["createCollection", "connectSource"],
         "add-source": ["sourceSelector", "connectSource"],
-        "create-collection": ["sourceSelector", "createCollection", "connectSource"]
+        "create-collection": ["sourceSelector", "createCollection", "connectSource"],
+        "auth-provider": ["configureAuthProvider", "authProviderDetail"],
+        "auth-provider-detail": ["authProviderDetail"],
+        "auth-provider-edit": ["editAuthProvider", "authProviderDetail"]
     };
 
     // Get current flow sequence
     const currentFlow = flowSequences[mode as keyof typeof flowSequences];
-    const currentView = showErrorView ? "error" : (currentFlow ? currentFlow[currentStep] : null);
+
+    // Get current view based on flow and step
+    const currentView = useMemo(() => {
+        if (showErrorView) {
+            console.log('⚠️ [DialogFlow] Showing error view');
+            return "error";
+        }
+        if (!currentFlow || currentStep >= currentFlow.length) {
+            console.log('⚠️ [DialogFlow] No valid view: currentFlow =', currentFlow, ', currentStep =', currentStep);
+            return null;
+        }
+        const view = currentFlow[currentStep];
+        console.log('👁️ [DialogFlow] Current view calculated:', view, 'at step', currentStep, 'of', currentFlow);
+        return view;
+    }, [currentFlow, currentStep, showErrorView]);
+
+    // Log flow calculation
+    console.log('🎯 [DialogFlow] Flow calculation:', {
+        dialogId,
+        mode,
+        currentStep,
+        currentFlow,
+        currentView,
+        flowSequences: flowSequences[mode as keyof typeof flowSequences]
+    });
 
     // Effect for opening dialog with populated credential info
     useEffect(() => {
@@ -287,8 +431,43 @@ export const DialogFlow: React.FC<DialogFlowProps> = ({
         }
     }, [isOpen, showErrorView]);
 
+    // Log currentStep changes
+    useEffect(() => {
+        console.log('📊 [DialogFlow] currentStep changed:', {
+            dialogId,
+            currentStep,
+            mode,
+            currentFlow: flowSequences[mode as keyof typeof flowSequences],
+            currentView: currentFlow ? currentFlow[currentStep] : null
+        });
+    }, [currentStep]);
+
+    // Log viewData changes
+    useEffect(() => {
+        console.log('📦 [DialogFlow] viewData changed:', {
+            dialogId,
+            hasAuthProviderConnectionId: !!viewData.authProviderConnectionId,
+            authProviderConnectionId: viewData.authProviderConnectionId,
+            keys: Object.keys(viewData)
+        });
+    }, [viewData]);
+
     // Render view function
     const renderView = () => {
+        console.log('🎨 [DialogFlow] renderView called:', {
+            currentView,
+            currentStep,
+            mode,
+            dialogId,
+            showErrorView,
+            currentFlow,
+            viewData: {
+                authProviderConnectionId: viewData.authProviderConnectionId,
+                authProviderName: viewData.authProviderName,
+                authProviderShortName: viewData.authProviderShortName
+            }
+        });
+
         if (showErrorView || currentView === "error") {
             return (
                 <ConnectionErrorView
@@ -317,13 +496,33 @@ export const DialogFlow: React.FC<DialogFlowProps> = ({
             onCancel: handleCancel,
             onComplete: handleComplete,
             viewData: {
-                ...viewData,
+                sourceId,
+                sourceName,
+                sourceShortName,
+                collectionId,
+                collectionName,
                 dialogId,
                 dialogFlowStep: currentStep,
                 dialogMode: mode,
+                // Add auth provider specific data
+                authProviderId,
+                authProviderName,
+                authProviderShortName,
+                authProviderAuthType,
+                authProviderConnectionId,
+                // Spread viewData last so it can override any of the above
+                ...viewData,
             } as any,
             onError: handleError,
         };
+
+        console.log('🔧 [DialogFlow] Building commonProps for view:', {
+            view: currentView,
+            step: currentStep,
+            viewDataKeys: Object.keys(commonProps.viewData),
+            hasAuthProviderConnectionId: !!commonProps.viewData.authProviderConnectionId,
+            authProviderConnectionIdValue: commonProps.viewData.authProviderConnectionId
+        });
 
         if (currentStep > 0) {
             (commonProps as any).onBack = handleBack;
@@ -336,6 +535,12 @@ export const DialogFlow: React.FC<DialogFlowProps> = ({
                 return <CreateCollectionView {...commonProps} />;
             case "connectSource":
                 return <ConfigureSourceView {...commonProps} />;
+            case "configureAuthProvider":
+                return <ConfigureAuthProviderView {...commonProps} />;
+            case 'authProviderDetail':
+                return <AuthProviderDetailView {...commonProps} />;
+            case 'editAuthProvider':
+                return <EditAuthProviderView {...commonProps} />;
             default:
                 return (
                     <ConnectionErrorView
@@ -344,29 +549,48 @@ export const DialogFlow: React.FC<DialogFlowProps> = ({
                             serviceName: "Dialog Flow",
                             sourceShortName: "dialog",
                             errorMessage: `Unknown view: ${currentView}`,
-                            errorDetails: `Available views: sourceSelector, createCollection, connectSource`
+                            errorDetails: `Available views: sourceSelector, createCollection, connectSource, configureAuthProvider, authProviderDetail, editAuthProvider`
                         }}
                     />
                 );
         }
     };
 
-    // Handle next step
+    // Navigation handlers
     const handleNext = (data?: any) => {
-        if (data) {
-            setViewData(prevData => {
-                const newData = {
-                    ...prevData,
-                    ...data,
-                    dialogId,
-                    dialogMode: mode
-                };
+        console.log('➡️ [DialogFlow] handleNext called:', {
+            currentStep,
+            totalSteps: currentFlow?.length,
+            data,
+            dialogId,
+            mode
+        });
+
+        if (currentFlow && currentStep < currentFlow.length - 1) {
+            const nextStep = currentStep + 1;
+            console.log('🔢 [DialogFlow] About to setCurrentStep to:', nextStep);
+
+            // Use callback form to ensure we see the actual update
+            setCurrentStep(prev => {
+                console.log('🔄 [DialogFlow] setCurrentStep callback: prev =', prev, ', setting to =', nextStep);
+                return nextStep;
+            });
+
+            console.log('📝 [DialogFlow] About to update viewData with:', data);
+            setViewData(prev => {
+                const newData = { ...prev, ...data };
+                console.log('📝 [DialogFlow] setViewData callback: merging', data, 'into', prev);
+                console.log('📝 [DialogFlow] viewData will be:', newData);
+                console.log('📝 [DialogFlow] authProviderConnectionId will be:', newData.authProviderConnectionId);
                 return newData;
             });
-        }
 
-        if (currentStep < currentFlow.length - 1) {
-            setCurrentStep(prevStep => prevStep + 1);
+            console.log('✅ [DialogFlow] handleNext completed');
+        } else if (onComplete && data?.isCompleted) {
+            console.log('🏁 [DialogFlow] Flow completed, calling onComplete');
+            onComplete(data);
+        } else {
+            console.log('⚠️ [DialogFlow] handleNext called but no next step available');
         }
     };
 
@@ -398,6 +622,11 @@ export const DialogFlow: React.FC<DialogFlowProps> = ({
             sourceShortName,
             collectionId,
             collectionName,
+            authProviderId,
+            authProviderName,
+            authProviderShortName,
+            authProviderAuthType,
+            authProviderConnectionId,
             dialogId,
             credentialId: undefined,
             isAuthenticated: false
@@ -417,6 +646,11 @@ export const DialogFlow: React.FC<DialogFlowProps> = ({
 
     // Handle completion
     const handleComplete = (result: any) => {
+        console.log('🏁 [DialogFlow] handleComplete called:', {
+            result,
+            dialogId,
+            mode
+        });
         if (result && result.isCompleted) {
             setViewData(prevData => ({
                 ...prevData,
@@ -486,7 +720,10 @@ export const DialogFlow: React.FC<DialogFlowProps> = ({
                     }}
                 >
                     <div className="h-full w-full overflow-hidden">
-                        {renderView()}
+                        {(() => {
+                            console.log('🏗️ [DialogFlow] About to renderView, isOpen:', isOpen, 'currentView:', currentView);
+                            return renderView();
+                        })()}
                     </div>
                 </DialogContent>
             </DialogPortal>

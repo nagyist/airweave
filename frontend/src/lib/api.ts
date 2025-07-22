@@ -2,6 +2,7 @@ import { env } from '../config/env';
 import { useOrganizationStore } from '@/lib/stores/organizations';
 import { useCollectionsStore } from '@/lib/stores/collections';
 import { useAPIKeysStore } from '@/lib/stores/apiKeys';
+import { useAuthProvidersStore } from '@/lib/stores/authProviders';
 import { toast } from 'sonner';
 
 // Define a token provider interface
@@ -131,6 +132,9 @@ const clearOrganizationSpecificState = () => {
 
   // Clear API keys store
   useAPIKeysStore.getState().clearAPIKeys();
+
+  // Clear auth provider connections store
+  useAuthProvidersStore.getState().clearAuthProviderConnections();
 
   // Add any other organization-specific stores here in the future
 };

@@ -1,4 +1,4 @@
-"""Module for syncing embedding models, sources, and destinations with the database."""
+"""Module for syncing embedding models, sources, destinations, and auth providers."""
 
 import importlib
 import inspect
@@ -12,6 +12,7 @@ from typing_extensions import get_type_hints
 from airweave import crud, schemas
 from airweave.core.logging import logger
 from airweave.models.entity_definition import EntityType
+from airweave.platform.auth_providers._base import BaseAuthProvider
 from airweave.platform.destinations._base import BaseDestination
 from airweave.platform.embedding_models._base import BaseEmbeddingModel
 from airweave.platform.sources._base import BaseSource
@@ -34,6 +35,8 @@ def _process_module_classes(module, components: Dict[str, list[Type | Callable]]
             components["destinations"].append(cls)
         elif getattr(cls, "_is_embedding_model", False):
             components["embedding_models"].append(cls)
+        elif getattr(cls, "_is_auth_provider", False):
+            components["auth_providers"].append(cls)
 
 
 def _process_module_functions(module, components: Dict[str, list[Type | Callable]]) -> None:
@@ -66,6 +69,7 @@ def _get_decorated_classes(directory: str) -> Dict[str, list[Type | Callable]]:
         "sources": [],
         "destinations": [],
         "embedding_models": [],
+        "auth_providers": [],
         "transformers": [],
     }
 
@@ -93,8 +97,8 @@ def _get_decorated_classes(directory: str) -> Dict[str, list[Type | Callable]]:
                 error_msg = (
                     f"Failed to import {full_module_name}: {e}\n"
                     f"This is likely due to missing dependencies required by this module.\n"
-                    f"If this module contains transformers, sources, or destinations, they will not"
-                    f" be registered."
+                    f"If this module contains transformers, sources, destinations, "
+                    f"or auth providers, they will not be registered."
                 )
                 sync_logger.error(error_msg)
                 # Re-raise the exception to fail the sync process
@@ -334,6 +338,34 @@ async def _sync_destinations(db: AsyncSession, destinations: list[Type[BaseDesti
     sync_logger.info(f"Synced {len(destination_definitions)} destinations to database.")
 
 
+async def _sync_auth_providers(
+    db: AsyncSession, auth_providers: list[Type[BaseAuthProvider]]
+) -> None:
+    """Sync auth providers with the database.
+
+    Args:
+        db (AsyncSession): Database session
+        auth_providers (list[Type[BaseAuthProvider]]): List of auth provider classes
+    """
+    sync_logger.info("Syncing auth providers to database.")
+
+    auth_provider_definitions = []
+    for auth_provider_class in auth_providers:
+        auth_provider_def = schemas.AuthProviderCreate(
+            name=auth_provider_class._name,
+            short_name=auth_provider_class._short_name,
+            class_name=auth_provider_class.__name__,
+            description=auth_provider_class.__doc__,
+            auth_type=auth_provider_class._auth_type,
+            auth_config_class=auth_provider_class._auth_config_class,
+            config_class=auth_provider_class._config_class,
+        )
+        auth_provider_definitions.append(auth_provider_def)
+
+    await crud.auth_provider.sync(db, auth_provider_definitions)
+    sync_logger.info(f"Synced {len(auth_provider_definitions)} auth providers to database.")
+
+
 def _get_type_names(type_hint) -> list[str]:
     """Extract type names from a type hint, handling Union types correctly.
 
@@ -520,7 +552,8 @@ async def sync_platform_components(platform_dir: str, db: AsyncSession) -> None:
         # Log component counts to help diagnose issues
         sync_logger.info(
             f"Found {len(c['sources'])} sources, {len(c['destinations'])} destinations, "
-            f"{len(c['embedding_models'])} embedding models, {len(c['transformers'])} transformers."
+            f"{len(c['embedding_models'])} embedding models, {len(c['auth_providers'])} "
+            f"auth providers, {len(c['transformers'])} transformers."
         )
 
         # First sync entities to get their IDs
@@ -529,6 +562,7 @@ async def sync_platform_components(platform_dir: str, db: AsyncSession) -> None:
         await _sync_embedding_models(db, components["embedding_models"])
         await _sync_sources(db, components["sources"], module_entity_map)
         await _sync_destinations(db, components["destinations"])
+        await _sync_auth_providers(db, components["auth_providers"])
         await _sync_transformers(db, components["transformers"], module_entity_map)
 
         sync_logger.info("Platform components sync completed successfully.")

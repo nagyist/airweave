@@ -28,6 +28,7 @@ class IntegrationType(str, Enum):
     SOURCE = "source"
     DESTINATION = "destination"
     EMBEDDING_MODEL = "embedding_model"
+    AUTH_PROVIDER = "auth_provider"
 
 
 class SyncStatus(str, Enum):

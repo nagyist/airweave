@@ -4,6 +4,7 @@ import importlib
 from typing import Callable, Type
 
 from airweave import schemas
+from airweave.platform.auth_providers._base import BaseAuthProvider
 from airweave.platform.configs._base import BaseConfig
 from airweave.platform.destinations._base import BaseDestination
 from airweave.platform.embedding_models._base import BaseEmbeddingModel
@@ -20,6 +21,7 @@ class ResourceLocator:
     - embedding models
     - destinations
     - sources
+    - auth providers
     - configs
     - transformers
     """
@@ -62,6 +64,21 @@ class ResourceLocator:
         """
         module = importlib.import_module(f"{PLATFORM_PATH}.destinations.{destination.short_name}")
         return getattr(module, destination.class_name)
+
+    @staticmethod
+    def get_auth_provider(auth_provider: schemas.AuthProvider) -> Type[BaseAuthProvider]:
+        """Get the auth provider class.
+
+        Args:
+            auth_provider (schemas.AuthProvider): Auth provider schema
+
+        Returns:
+            Type[BaseAuthProvider]: Auth provider class
+        """
+        module = importlib.import_module(
+            f"{PLATFORM_PATH}.auth_providers.{auth_provider.short_name}"
+        )
+        return getattr(module, auth_provider.class_name)
 
     @staticmethod
     def get_auth_config(auth_config_class: str) -> Type[BaseConfig]:

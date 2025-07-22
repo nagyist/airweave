@@ -121,6 +121,41 @@ def embedding_model(
     return decorator
 
 
+def auth_provider(
+    name: str,
+    short_name: str,
+    auth_type: AuthType,
+    auth_config_class: str,
+    config_class: str,
+) -> Callable[[type], type]:
+    """Class decorator to mark a class as representing an Airweave auth provider.
+
+    Args:
+    ----
+        name (str): The name of the auth provider.
+        short_name (str): The short name of the auth provider.
+        auth_type (AuthType): The authentication type of the auth provider.
+        auth_config_class (str): The authentication config class of the auth provider.
+        config_class (str): The configuration class for the auth provider.
+
+    Returns:
+    -------
+        Callable[[type], type]: The decorated class.
+
+    """
+
+    def decorator(cls: type) -> type:
+        cls._is_auth_provider = True
+        cls._name = name
+        cls._short_name = short_name
+        cls._auth_type = auth_type
+        cls._auth_config_class = auth_config_class
+        cls._config_class = config_class
+        return cls
+
+    return decorator
+
+
 T = TypeVar("T", bound=ChunkEntity)
 U = TypeVar("U", bound=ChunkEntity)
 

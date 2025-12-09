@@ -20,9 +20,9 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6.2.0
         with:
-          node-version: '20.x'
-          cache: 'npm'
-          cache-dependency-path: 'mcp/package-lock.json'
+          node-version: "20.x"
+          cache: "npm"
+          cache-dependency-path: "mcp/package-lock.json"
 
       - name: Install MCP dependencies
         run: npm ci
@@ -38,7 +38,7 @@ jobs:
 
       - name: Upload coverage artifact
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         with:
           name: mcp-coverage
           path: mcp/coverage/

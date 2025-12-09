@@ -53,6 +53,7 @@ from .trello import TrelloSource
 from .word import WordSource
 from .zendesk import ZendeskSource
 from .zoho_crm import ZohoCRMSource
+from .zoom import ZoomSource
 
 ALL_SOURCES: list[type] = [
     AirtableSource,
@@ -107,5 +108,6 @@ ALL_SOURCES: list[type] = [
     TrelloSource,
     WordSource,
     ZendeskSource,
+    ZoomSource,
     ZohoCRMSource,
 ]

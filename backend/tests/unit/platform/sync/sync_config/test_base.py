@@ -107,11 +107,11 @@ class TestSyncConfig:
     def test_with_nested_configs(self):
         """Test SyncConfig with nested sub-configs."""
         config = SyncConfig(
-            destinations=DestinationConfig(skip_vespa=True, skip_qdrant=False),
             handlers=HandlerConfig(enable_postgres_handler=False),
+            behavior=BehaviorConfig(skip_hash_comparison=True),
         )
-        assert config.destinations.skip_vespa is True
         assert config.handlers.enable_postgres_handler is False
+        assert config.behavior.skip_hash_comparison is True
 
     def test_env_var_loading(self):
         """Test that SyncConfig loads from env vars."""

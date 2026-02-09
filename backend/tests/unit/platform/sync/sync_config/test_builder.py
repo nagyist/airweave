@@ -60,13 +60,13 @@ class TestSyncConfigBuilderLayerPrecedence:
         """Test that collection overrides beat env."""
         with patch.dict(
             os.environ,
-            {"SYNC_CONFIG__DESTINATIONS__SKIP_QDRANT": "true"},
+            {"SYNC_CONFIG__BEHAVIOR__SKIP_GUARDRAILS": "true"},
             clear=False,
         ):
             config = SyncConfigBuilder.build(
-                collection_overrides=SyncConfig(destinations=DestinationConfig(skip_qdrant=False))
+                collection_overrides=SyncConfig(behavior=BehaviorConfig(skip_guardrails=False))
             )
-            assert config.destinations.skip_qdrant is False
+            assert config.behavior.skip_guardrails is False
 
     def test_env_overrides_beat_schema(self):
         """Test that env overrides beat schema defaults."""
@@ -111,10 +111,10 @@ class TestSyncConfigBuilderPartialOverrides:
         with _clean_env():
             config = SyncConfigBuilder.build(
                 job_overrides=SyncConfig(
-                    destinations=DestinationConfig(skip_vespa=True, skip_qdrant=False)
+                    behavior=BehaviorConfig(skip_hash_comparison=True)
                 )
             )
-            assert config.destinations.skip_vespa is True
+            assert config.behavior.skip_hash_comparison is True
             assert config.handlers.enable_vector_handlers is True  # Other section default
             assert config.cursor.skip_load is False  # Other section default
 
@@ -123,11 +123,11 @@ class TestSyncConfigBuilderPartialOverrides:
         with _clean_env():
             config = SyncConfigBuilder.build(
                 job_overrides=SyncConfig(
-                    destinations=DestinationConfig(skip_vespa=True, skip_qdrant=False),
+                    behavior=BehaviorConfig(skip_hash_comparison=True),
                     handlers=HandlerConfig(enable_postgres_handler=False),
                 )
             )
-            assert config.destinations.skip_vespa is True
+            assert config.behavior.skip_hash_comparison is True
             assert config.handlers.enable_postgres_handler is False
             assert config.cursor.skip_load is False  # Untouched
 

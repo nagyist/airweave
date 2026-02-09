@@ -760,37 +760,16 @@ class SearchFactory:
     ) -> BaseDestination:
         """Get the default destination instance for a collection.
 
-        Uses sync config to determine which vector DB to use:
-        - If skip_qdrant=True, uses Vespa
-        - Otherwise, uses Qdrant (default)
+        Uses Vespa as the sole vector database destination.
         """
-        from airweave.platform.sync.config.base import SyncConfig
+        from airweave.platform.destinations.vespa import VespaDestination
 
-        sync_config = SyncConfig()
-
-        if sync_config.destinations.skip_qdrant and not sync_config.destinations.skip_vespa:
-            from airweave.platform.destinations.vespa import VespaDestination
-
-            ctx.logger.info(
-                f"[SearchFactory] Collection {collection.readable_id} uses Vespa (skip_qdrant=True)"
-            )
-            return await VespaDestination.create(
-                collection_id=collection.id,
-                organization_id=collection.organization_id,
-                logger=ctx.logger,
-            )
-        else:
-            from airweave.platform.destinations.qdrant import QdrantDestination
-
-            ctx.logger.info(
-                f"[SearchFactory] Collection {collection.readable_id} uses Qdrant (default)"
-            )
-            return await QdrantDestination.create(
-                collection_id=collection.id,
-                organization_id=collection.organization_id,
-                vector_size=collection.vector_size,
-                logger=ctx.logger,
-            )
+        ctx.logger.info(f"[SearchFactory] Collection {collection.readable_id} uses Vespa")
+        return await VespaDestination.create(
+            collection_id=collection.id,
+            organization_id=collection.organization_id,
+            logger=ctx.logger,
+        )
 
     async def _get_temporal_supporting_sources(
         self, db: AsyncSession, collection, ctx: ApiContext, emitter: EventEmitter

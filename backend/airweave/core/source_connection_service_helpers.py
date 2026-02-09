@@ -17,7 +17,6 @@ from airweave.api.context import ApiContext
 from airweave.core import credentials
 from airweave.core.config import settings as core_settings
 from airweave.core.constants.reserved_ids import (
-    NATIVE_QDRANT_UUID,
     NATIVE_VESPA_UUID,
 )
 from airweave.core.shared_models import (
@@ -107,7 +106,7 @@ class SourceConnectionHelpers:
     ) -> None:
         """Validate that new source uses same destination as existing sources.
 
-        Prevents mixing Qdrant and Vespa destinations within the same collection.
+        Ensures all sources in a collection write to the same vector database.
 
         Args:
             db: Database session
@@ -142,24 +141,14 @@ class SourceConnectionHelpers:
             if not existing_dest_ids:
                 continue
 
-            # Check if using Qdrant or Vespa
+            # Check Vespa consistency
             existing_uses_vespa = NATIVE_VESPA_UUID in existing_dest_ids
-            existing_uses_qdrant = NATIVE_QDRANT_UUID in existing_dest_ids
-
             new_uses_vespa = NATIVE_VESPA_UUID in new_destination_ids
-            new_uses_qdrant = NATIVE_QDRANT_UUID in new_destination_ids
 
             if existing_uses_vespa and not new_uses_vespa:
                 raise HTTPException(
                     status_code=400,
                     detail=f"Collection '{collection_readable_id}' uses Vespa destination. "
-                    "Cannot add source with a different destination.",
-                )
-
-            if existing_uses_qdrant and not new_uses_qdrant:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Collection '{collection_readable_id}' uses Qdrant destination. "
                     "Cannot add source with a different destination.",
                 )
 

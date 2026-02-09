@@ -58,24 +58,21 @@ class SourceConnectionHelpers:
     ) -> list[UUID]:
         """Get destination connection IDs based on feature flags.
 
-        By default, writes to BOTH Qdrant and Vespa:
-        - Qdrant: Primary search destination (default for search queries)
-        - Vespa: Secondary destination (for future advanced search features)
+        Writes to Vespa as the primary (and only) vector database destination.
 
         Args:
             db: Database session
             ctx: API context with organization and feature flags
 
         Returns:
-            List of destination connection IDs (always includes Qdrant + Vespa, adds S3 if enabled)
+            List of destination connection IDs (Vespa + S3 if enabled)
         """
         from sqlalchemy import and_, select
 
         from airweave.models.connection import Connection
 
-        # Write to both Qdrant and Vespa by default
-        # TODO: Remove Qdrant once we Vespa is fully supported
-        destination_ids = [NATIVE_QDRANT_UUID, NATIVE_VESPA_UUID]
+        # Vespa is the sole vector database destination (Qdrant deprecated)
+        destination_ids = [NATIVE_VESPA_UUID]
 
         # Add S3 if feature flag enabled
         if ctx.has_feature(FeatureFlag.S3_DESTINATION):

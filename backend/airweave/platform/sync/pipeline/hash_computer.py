@@ -222,7 +222,7 @@ class HashComputer:
             content_hash = hashlib.sha256()
             async with aiofiles.open(local_path, "rb") as f:
                 while True:
-                    chunk = await f.read(8192)  # 8KB chunks
+                    chunk = await f.read(65536)  # 64KB chunks
                     if not chunk:
                         break
                     content_hash.update(chunk)

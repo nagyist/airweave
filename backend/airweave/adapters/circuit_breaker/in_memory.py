@@ -93,8 +93,7 @@ class InMemoryCircuitBreaker:
             if provider_key in self._failures:
                 del self._failures[provider_key]
                 logger.info(
-                    f"[CircuitBreaker] Provider '{provider_key}' recovered, "
-                    f"clearing failure state"
+                    f"[CircuitBreaker] Provider '{provider_key}' recovered, clearing failure state"
                 )
 
     @property
@@ -108,8 +107,4 @@ class InMemoryCircuitBreaker:
             Dict of provider_key → seconds since failure.
         """
         now = time.monotonic()
-        return {
-            key: now - ts
-            for key, ts in self._failures.items()
-            if now - ts < self._cooldown
-        }
+        return {key: now - ts for key, ts in self._failures.items() if now - ts < self._cooldown}

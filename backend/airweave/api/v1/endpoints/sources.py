@@ -14,11 +14,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from airweave import crud, schemas
 from airweave.api import deps
 from airweave.api.context import ApiContext
+from airweave.api.deps import Inject
 from airweave.api.examples import create_single_source_response, create_source_list_response
 from airweave.api.router import TrailingSlashRouter
 from airweave.core.auth_provider_service import auth_provider_service
 from airweave.core.config import settings
 from airweave.core.exceptions import NotFoundException
+from airweave.core.protocols import (
+    SourceServiceProtocol,
+)
 from airweave.platform.configs._base import Fields
 from airweave.platform.locator import resource_locator
 from airweave.schemas.errors import NotFoundErrorResponse, RateLimitErrorResponse
@@ -46,12 +50,14 @@ Each source includes:
         429: {"model": RateLimitErrorResponse, "description": "Rate Limit Exceeded"},
     },
 )
-async def list(  # noqa: C901 - complexity from feature flag filtering logic
+async def list(
     *,
-    db: AsyncSession = Depends(deps.get_db),
     ctx: ApiContext = Depends(deps.get_context),
+    source_service: SourceServiceProtocol = Inject(SourceServiceProtocol),
 ) -> List[schemas.Source]:
     """List all available data source connectors."""
+    sources = await source_service.list(ctx)
+
     ctx.logger.info("Starting read_sources endpoint")
     try:
         sources = await crud.source.get_all(db)
@@ -84,7 +90,6 @@ async def list(  # noqa: C901 - complexity from feature flag filtering logic
                         f"Source {source.short_name} has invalid flag {source.feature_flag}"
                     )
                     # Continue processing if flag is invalid (fail open)
-
             # Config class is always required
             if not source.config_class:
                 invalid_sources.append(f"{source.short_name} (missing config_class)")
@@ -161,8 +166,9 @@ async def list(  # noqa: C901 - complexity from feature flag filtering logic
         ctx.logger.warning(
             f"Skipped {len(invalid_sources)} invalid sources: {', '.join(invalid_sources)}"
         )
+        pass
 
-    ctx.logger.info(f"Returning {len(result_sources)} valid sources")
+    # ctx.logger.info(f"Returning {len(result_sources)} valid sources")
     return result_sources
 
 

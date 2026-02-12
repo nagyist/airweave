@@ -15,9 +15,14 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from airweave.adapters.ocr.docling import DoclingOcrAdapter
+from airweave.adapters.repositories.source import SourceRepository
 from airweave.adapters.webhooks.svix import SvixAdapter
 from airweave.core.container.container import Container
 from airweave.core.logging import logger
+from airweave.db.session_factory import DBSessionFactory
+from airweave.domains.sources.service import SourceService
+from airweave.platform.locator import ResourceLocator
+from airweave.schemas import schemas
 
 if TYPE_CHECKING:
     from airweave.core.config import Settings
@@ -64,12 +69,17 @@ def create_container(settings: Settings) -> Container:
     circuit_breaker = _create_circuit_breaker()
     ocr_provider = _create_ocr_provider(circuit_breaker, settings)
 
+    # Source Service
+    # -----------------------------------------------------------------
+    source_service = _create_source_service()
+
     return Container(
         event_bus=event_bus,
         webhook_publisher=svix_adapter,
         webhook_admin=svix_adapter,
         circuit_breaker=circuit_breaker,
         ocr_provider=ocr_provider,
+        source_service=source_service,
     )
 
 
@@ -149,3 +159,15 @@ def _create_ocr_provider(circuit_breaker: "CircuitBreaker", settings: "Settings"
     logger.info(f"Creating FallbackOcrProvider with {len(providers)} providers: {providers}")
 
     return FallbackOcrProvider(providers=providers, circuit_breaker=circuit_breaker)
+
+
+def _create_source_service():
+    """Create source service."""
+    source_repository = SourceRepository(model=schemas.Source)
+    resource_locator = ResourceLocator()
+    db_session_factory = DBSessionFactory()
+    return SourceService(
+        source_repository=source_repository,
+        resource_locator=resource_locator,
+        db_session_factory=db_session_factory,
+    )

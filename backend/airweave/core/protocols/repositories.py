@@ -1,12 +1,13 @@
 """Protocols for repositories."""
 
-from typing import Protocol, TypeVar
+from typing import Optional, Protocol, TypeVar
 from uuid import UUID
 
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import schemas
+from airweave.db.unit_of_work import UnitOfWork
 from airweave.models._base import Base
 
 ModelType = TypeVar("ModelType", bound=Base)
@@ -21,38 +22,41 @@ class BasePublicRepositoryProtocol(Protocol):
         """Get a base by ID."""
         ...
 
-    async def get_multi(self, db_session: AsyncSession) -> list[ModelType]:
+    async def get_multi(
+        self, db_session: AsyncSession, *, skip: int = 0, limit: int | None = None
+    ) -> list[ModelType]:
         """List all bases."""
         ...
 
-    async def create(self, db_session: AsyncSession, obj_in: CreateSchemaType) -> ModelType:
+    async def create(
+        self,
+        db_session: AsyncSession,
+        *,
+        obj_in: CreateSchemaType,
+        uow: Optional[UnitOfWork] = None,
+    ) -> ModelType:
         """Create a base."""
         ...
 
     async def update(
-        self, db_session: AsyncSession, db_obj: ModelType, obj_in: UpdateSchemaType
+        self,
+        db_session: AsyncSession,
+        *,
+        db_obj: ModelType,
+        obj_in: UpdateSchemaType,
+        uow: Optional[UnitOfWork] = None,
     ) -> ModelType:
         """Update a base."""
         ...
 
-    async def remove(self, db_session: AsyncSession, id: UUID) -> None:
+    async def remove(
+        self, db_session: AsyncSession, *, id: UUID, uow: Optional[UnitOfWork] = None
+    ) -> ModelType:
         """Delete a base."""
-        ...
-
-    async def get_all(self, db_session: AsyncSession) -> list[ModelType]:
-        """Get all bases."""
         ...
 
 
 class SourceRepositoryProtocol(BasePublicRepositoryProtocol, Protocol):
-    """Protocol for source repositories."""
-
-    async def get_by_short_name(self, db_session: AsyncSession, short_name: str) -> schemas.Source:
-        """Get a source by short name."""
-        ...
-
-
-class CollectionRepositoryProtocol(BaseRepositoryProtocol, Protocol):
     """Protocol for source repositories."""
 
     async def get_by_short_name(self, db_session: AsyncSession, short_name: str) -> schemas.Source:

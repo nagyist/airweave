@@ -17,6 +17,7 @@ from airweave.core.protocols import (
     CircuitBreaker,
     EventBus,
     OcrProvider,
+    SourceServiceProtocol,
     WebhookAdmin,
     WebhookPublisher,
 )
@@ -61,6 +62,8 @@ class Container:
 
     # OCR provider (with fallback chain + circuit breaking)
     ocr_provider: OcrProvider
+
+    source_service: SourceServiceProtocol
 
     # -----------------------------------------------------------------
     # Convenience methods

@@ -89,7 +89,7 @@ class SourceService(SourceServiceProtocol):
                 "rate_limit_level": entry.rate_limit_level,
                 "feature_flag": entry.feature_flag,
                 "labels": entry.labels,
-                "output_entity_definition_ids": entry.output_entity_definition_ids,
+                "output_entity_definitions": entry.output_entity_definitions,
             }
         )
 
@@ -109,8 +109,6 @@ class SourceService(SourceServiceProtocol):
                 )
                 return True
         except ValueError:
-            ctx.logger.warning(
-                f"Source {entry.short_name} has invalid flag {entry.feature_flag}"
-            )
+            ctx.logger.warning(f"Source {entry.short_name} has invalid flag {entry.feature_flag}")
 
         return False

@@ -4,6 +4,7 @@ from typing import Protocol, TypeVar
 
 from airweave.adapters.registries.auth_provider import AuthProviderRegistryEntry
 from airweave.adapters.registries.base import BaseRegistryEntry
+from airweave.adapters.registries.entity_definition import EntityDefinitionEntry
 from airweave.adapters.registries.source import SourceRegistryEntry
 
 EntryT = TypeVar("EntryT", bound=BaseRegistryEntry, covariant=True)
@@ -34,3 +35,11 @@ class AuthProviderRegistryProtocol(RegistryProtocol[AuthProviderRegistryEntry], 
     """Auth provider registry protocol."""
 
     pass
+
+
+class EntityDefinitionRegistryProtocol(RegistryProtocol[EntityDefinitionEntry], Protocol):
+    """Entity definition registry protocol."""
+
+    def list_for_source(self, source_short_name: str) -> list[EntityDefinitionEntry]:
+        """List all entity definitions for a given source."""
+        ...

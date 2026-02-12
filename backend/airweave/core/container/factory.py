@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING
 
 from airweave.adapters.ocr.docling import DoclingOcrAdapter
 from airweave.adapters.registries.auth_provider import AuthProviderRegistry
+from airweave.adapters.registries.entity_definition import EntityDefinitionRegistry
 from airweave.adapters.registries.source import SourceRegistry
 from airweave.adapters.webhooks.svix import SvixAdapter
 from airweave.core.container.container import Container
@@ -164,13 +165,18 @@ def _create_ocr_provider(circuit_breaker: "CircuitBreaker", settings: "Settings"
 def _create_source_service(settings: Settings) -> SourceService:
     """Create source service with its registry dependencies.
 
-    Build order matters: auth provider registry first (no dependencies),
-    then source registry (depends on auth provider registry).
+    Build order matters:
+    1. Auth provider registry (no dependencies)
+    2. Entity definition registry (no dependencies)
+    3. Source registry (depends on both)
     """
     auth_provider_registry = AuthProviderRegistry()
     auth_provider_registry.build()
 
-    source_registry = SourceRegistry(auth_provider_registry)
+    entity_definition_registry = EntityDefinitionRegistry()
+    entity_definition_registry.build()
+
+    source_registry = SourceRegistry(auth_provider_registry, entity_definition_registry)
     source_registry.build()
 
     return SourceService(

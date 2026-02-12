@@ -2,14 +2,17 @@
 
 from dataclasses import dataclass
 from typing import Union, get_origin
-from uuid import UUID
 
 from pydantic_core import PydanticUndefined
 
 from airweave.adapters.registries.base import BaseRegistryEntry
 from airweave.core.config import settings
 from airweave.core.logging import logger
-from airweave.core.protocols.registry import AuthProviderRegistryProtocol, SourceRegistryProtocol
+from airweave.core.protocols.registry import (
+    AuthProviderRegistryProtocol,
+    EntityDefinitionRegistryProtocol,
+    SourceRegistryProtocol,
+)
 from airweave.platform.configs._base import Fields
 from airweave.platform.sources import ALL_SOURCES
 
@@ -56,20 +59,29 @@ class SourceRegistryEntry(BaseRegistryEntry):
 
     # Metadata
     labels: list[str] | None
-    output_entity_definition_ids: list[UUID] | None
+
+    # Output entity definitions (short_names — use entity_definition_registry.get() for full entry)
+    output_entity_definitions: list[str]
 
 
 class SourceRegistry(SourceRegistryProtocol):
     """In-memory source registry, built once at startup from ALL_SOURCES."""
 
-    def __init__(self, auth_provider_registry: AuthProviderRegistryProtocol) -> None:
+    def __init__(
+        self,
+        auth_provider_registry: AuthProviderRegistryProtocol,
+        entity_definition_registry: EntityDefinitionRegistryProtocol,
+    ) -> None:
         """Initialize the source registry.
 
         Args:
             auth_provider_registry: Used to compute which auth providers
                 support each source (via blocked_sources).
+            entity_definition_registry: Used to resolve which entity
+                classes each source produces.
         """
         self._auth_provider_registry = auth_provider_registry
+        self._entity_definition_registry = entity_definition_registry
         self._entries: dict[str, SourceRegistryEntry] = {}
 
     def get(self, short_name: str) -> SourceRegistryEntry:
@@ -99,7 +111,7 @@ class SourceRegistry(SourceRegistryProtocol):
 
         Reads class references directly from @source decorator attributes —
         no ResourceLocator or database needed. Precomputes all derived fields
-        (Fields, supported auth providers, runtime auth field names).
+        (Fields, supported auth providers, runtime auth field names, output entities).
 
         Called once at startup. After this, all lookups are dict reads.
         """
@@ -135,6 +147,10 @@ class SourceRegistry(SourceRegistryProtocol):
             source_cls.auth_config_class
         )
 
+        # Resolve output entity definition short_names from the entity definition registry
+        entity_entries = self._entity_definition_registry.list_for_source(source_cls.short_name)
+        output_entity_definitions = [entry.short_name for entry in entity_entries]
+
         return SourceRegistryEntry(
             short_name=source_cls.short_name,
             name=source_cls.source_name,
@@ -160,7 +176,7 @@ class SourceRegistry(SourceRegistryProtocol):
             rate_limit_level=_enum_to_str(source_cls.rate_limit_level),
             feature_flag=source_cls.feature_flag,
             labels=source_cls.labels,
-            output_entity_definition_ids=None,  # TODO: resolve from entity registry
+            output_entity_definitions=output_entity_definitions,
         )
 
     @staticmethod

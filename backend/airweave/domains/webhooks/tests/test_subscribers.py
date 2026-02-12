@@ -1,4 +1,4 @@
-"""Unit tests for WebhookEventSubscriber.
+"""Unit tests for WebhookEventHandler.
 
 Tests that the subscriber correctly forwards domain events to the
 webhook publisher using the fake from the adapter layer.
@@ -15,6 +15,7 @@ import pytest
 from airweave.core.events.collection import CollectionLifecycleEvent
 from airweave.core.events.source_connection import SourceConnectionLifecycleEvent
 from airweave.core.events.sync import SyncLifecycleEvent
+from airweave.domains.webhooks.subscribers import WebhookEventHandler
 
 ORG_ID = uuid4()
 SYNC_ID = uuid4()
@@ -23,8 +24,16 @@ COLLECTION_ID = uuid4()
 SOURCE_CONNECTION_ID = uuid4()
 
 
-class TestWebhookEventSubscriber:
-    """Tests for WebhookEventSubscriber."""
+class TestWebhookEventHandler:
+    """Tests for WebhookEventHandler."""
+
+    @pytest.fixture
+    def publisher(self):
+        return FakeWebhookPublisher()
+
+    @pytest.fixture
+    def subscriber(self, publisher):
+        return WebhookEventHandler(publisher=publisher)
 
     @pytest.mark.asyncio
     async def test_forwards_sync_event(self, fake_webhook_publisher, subscriber):

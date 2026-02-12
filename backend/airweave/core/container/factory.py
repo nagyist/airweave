@@ -82,22 +82,22 @@ def _create_event_bus(webhook_publisher):
     """Create event bus with subscribers wired up.
 
     The event bus fans out domain events to:
-    - WebhookEventSubscriber: External webhooks via Svix (all events)
+    - WebhookEventHandler: External webhooks via Svix (all events)
 
     Future subscribers:
     - PubSubSubscriber: Redis PubSub for real-time UI updates
     - AnalyticsSubscriber: PostHog tracking
     """
     from airweave.adapters.event_bus import InMemoryEventBus
-    from airweave.domains.webhooks import WebhookEventSubscriber
+    from airweave.domains.webhooks import WebhookEventHandler
 
     bus = InMemoryEventBus()
 
-    # WebhookEventSubscriber subscribes to * — all domain events
+    # WebhookEventHandler subscribes to * — all domain events
     # Svix channel filtering handles per-endpoint event type matching
-    webhook_subscriber = WebhookEventSubscriber(webhook_publisher)
-    for pattern in webhook_subscriber.EVENT_PATTERNS:
-        bus.subscribe(pattern, webhook_subscriber.handle)
+    webhook_handler = WebhookEventHandler(webhook_publisher)
+    for pattern in webhook_handler.EVENT_PATTERNS:
+        bus.subscribe(pattern, webhook_handler)
 
     return bus
 

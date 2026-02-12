@@ -1,6 +1,6 @@
 """Webhooks domain - event publishing to external subscribers."""
 
-from airweave.domains.webhooks.subscribers import WebhookEventSubscriber
+from airweave.domains.webhooks.subscribers import WebhookEventHandler
 from airweave.domains.webhooks.types import (
     EventType,
     WebhooksError,
@@ -8,6 +8,6 @@ from airweave.domains.webhooks.types import (
 
 __all__ = [
     "EventType",
-    "WebhookEventSubscriber",
+    "WebhookEventHandler",
     "WebhooksError",
 ]

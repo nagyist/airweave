@@ -8,6 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave.core.exceptions import NotFoundException
+from airweave.core.protocols.repositories import BasePublicRepositoryProtocol
 from airweave.db.unit_of_work import UnitOfWork
 from airweave.models._base import Base
 
@@ -16,7 +17,9 @@ CreateSchemaType = TypeVar("CreateSchemaType", bound=BaseModel)
 UpdateSchemaType = TypeVar("UpdateSchemaType", bound=BaseModel)
 
 
-class CRUDPublic(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
+class CRUDPublic(
+    Generic[ModelType, CreateSchemaType, UpdateSchemaType], BasePublicRepositoryProtocol
+):
     """CRUD for system-wide public resources."""
 
     def __init__(self, model: Type[ModelType]):

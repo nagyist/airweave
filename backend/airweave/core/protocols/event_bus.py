@@ -13,12 +13,21 @@ Usage:
     event_bus.subscribe("sync.*", analytics_handler)
 """
 
-from typing import Awaitable, Callable, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
 from airweave.core.events.base import DomainEvent
 
-# Type alias for event handlers (async callables that receive a DomainEvent)
-EventHandler = Callable[[DomainEvent], Awaitable[None]]
+
+@runtime_checkable
+class EventHandler(Protocol):
+    """Protocol for event handlers.
+
+    An event handler is an async callable that receives a DomainEvent and returns None.
+    """
+
+    async def handle(self, event: DomainEvent) -> None:
+        """Handle an event."""
+        ...
 
 
 @runtime_checkable

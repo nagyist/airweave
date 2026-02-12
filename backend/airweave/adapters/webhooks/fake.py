@@ -25,7 +25,7 @@ class FakeWebhookPublisher:
 
     Usage:
         fake = FakeWebhookPublisher()
-        subscriber = WebhookEventSubscriber(publisher=fake)
+        subscriber = WebhookEventHandler(publisher=fake)
         await subscriber.handle(some_event)
 
         assert fake.has_event("sync.completed")

@@ -63,6 +63,7 @@ class Container:
     # OCR provider (with fallback chain + circuit breaking)
     ocr_provider: OcrProvider
 
+    # Source service — API-facing source operations
     source_service: SourceServiceProtocol
 
     # -----------------------------------------------------------------

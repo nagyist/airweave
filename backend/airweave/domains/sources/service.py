@@ -1,159 +1,116 @@
 """Source service."""
 
-from fastapi import HTTPException
-
 from airweave import schemas
+from airweave.adapters.registries.source import SourceRegistryEntry
 from airweave.api.context import ApiContext
-from airweave.core.protocols.repositories import SourceRepositoryProtocol
+from airweave.core.config.settings import Settings
+from airweave.core.protocols.registry import SourceRegistryProtocol
 from airweave.core.protocols.sources import SourceServiceProtocol
-from airweave.db.session_factory import DBSessionFactory
-from airweave.platform.locator import ResourceLocator
+from airweave.core.shared_models import FeatureFlag as FeatureFlagEnum
 
 
 class SourceService(SourceServiceProtocol):
-    """Service for managing sources."""
+    """Service for managing sources.
+
+    Uses the SourceRegistry for all metadata lookups — no database
+    or ResourceLocator needed at request time.
+    """
 
     def __init__(
         self,
-        source_repository: SourceRepositoryProtocol,
-        resource_locator: ResourceLocator,
-        db_session_factory: DBSessionFactory,
+        source_registry: SourceRegistryProtocol,
+        settings: Settings,
     ):
         """Initialize the source service."""
-        self.source_repository = source_repository
-        self.resource_locator = resource_locator
-        self.db_session_factory = db_session_factory
+        self.source_registry = source_registry
+        self.settings = settings
 
-    async def get(self, short_name: str) -> schemas.Source:
+    async def get(self, short_name: str, ctx: ApiContext) -> schemas.Source:
         """Get a source by short name."""
-        async with self.db_session_factory.get_db_session() as db:
-            pass
+        entry = self.source_registry.get(short_name)
 
-        raise NotImplementedError
+        enabled_features = ctx.organization.enabled_features or []
+
+        if self._is_hidden_by_feature_flag(entry, enabled_features, ctx):
+            raise KeyError(short_name)
+
+        return self._entry_to_schema(entry, enabled_features)
 
     async def list(self, ctx: ApiContext) -> list[schemas.Source]:
         """List all sources."""
-        ctx.logger.info("Starting read_sources endpoint")
-        try:
-            async with self.db_session_factory.get_db_session() as db_session:
-                sources = await self.source_repository.get_multi(
-                    db_session=db_session,
-                )
-            ctx.logger.info(f"Retrieved {len(sources)} sources from database")
-        except Exception as e:
-            ctx.logger.error(f"Failed to retrieve sources: {str(e)}")
-            raise HTTPException(status_code=500, detail="Failed to retrieve sources") from e
-
-        # Initialize auth_fields for each source
-        result_sources = []
-        invalid_sources = []
+        entries = self.source_registry.list_all()
         enabled_features = ctx.organization.enabled_features or []
 
-        for source in sources:
-            try:
-                # Filter sources by feature flag at source level
-                if source.feature_flag:
-                    from airweave.core.shared_models import FeatureFlag as FeatureFlagEnum
+        result_sources = []
+        for entry in entries:
+            if self._is_hidden_by_feature_flag(entry, enabled_features, ctx):
+                continue
+            result_sources.append(self._entry_to_schema(entry, enabled_features))
 
-                    try:
-                        required_flag = FeatureFlagEnum(source.feature_flag)
-                        if required_flag not in enabled_features:
-                            ctx.logger.debug(
-                                f"🚫 Hidden source {source.short_name} "
-                                f"(requires feature flag: {source.feature_flag})"
-                            )
-                            continue  # Skip this source
-                    except ValueError:
-                        ctx.logger.warning(
-                            f"Source {source.short_name} has invalid flag {source.feature_flag}"
-                        )
-                        # Continue processing if flag is invalid (fail open)
-                # Config class is always required
-                if not source.config_class:
-                    invalid_sources.append(f"{source.short_name} (missing config_class)")
-                    continue
-
-                # Auth config class is only required for sources with DIRECT auth
-                # OAuth sources don't have auth_config_class
-                auth_fields = None
-                if source.auth_config_class:
-                    # Get authentication configuration class if it exists
-                    try:
-                        auth_config_class = self.resource_locator.get_auth_config(
-                            source.auth_config_class
-                        )
-                        auth_fields = Fields.from_config_class(auth_config_class)
-                    except AttributeError as e:
-                        invalid_sources.append(
-                            f"{source.short_name} (invalid auth_config_class: {str(e)})"
-                        )
-                        continue
-                else:
-                    # For OAuth sources, auth_fields is None (handled by OAuth flow)
-                    auth_fields = Fields(fields=[])
-
-                # Get configuration class
-                try:
-                    config_class = self.resource_locator.get_config(source.config_class)
-                    config_fields_unfiltered = Fields.from_config_class(config_class)
-
-                    # Filter config fields based on organization's enabled features
-                    config_fields = config_fields_unfiltered.filter_by_features(enabled_features)
-
-                    # Log any fields that were filtered out due to missing feature flags
-                    filtered_out = [
-                        f.name
-                        for f in config_fields_unfiltered.fields
-                        if f.feature_flag and f.feature_flag not in enabled_features
-                    ]
-                    if filtered_out:
-                        ctx.logger.debug(
-                            f"🚫 Hidden config fields for {source.short_name} "
-                            f"(feature flags not enabled): {filtered_out}"
-                        )
-                except AttributeError as e:
-                    invalid_sources.append(f"{source.short_name} (invalid config_class: {str(e)})")
-                    continue
-
-                # Get supported auth providers
-                supported_auth_providers = auth_provider_service.get_supported_providers_for_source(
-                    source.short_name
-                )
-
-                # Create source model with all fields including auth_fields and config_fields
-                source_dict = {
-                    **{
-                        key: getattr(source, key)
-                        for key in source.__dict__
-                        if not key.startswith("_")
-                    },
-                    "auth_fields": auth_fields,
-                    "config_fields": config_fields,
-                    "supported_auth_providers": supported_auth_providers,
-                }
-
-                # In self-hosted mode, force requires_byoc for OAuth sources
-                if settings.ENVIRONMENT == "self-hosted" and source.auth_methods:
-                    if (
-                        "oauth_browser" in source.auth_methods
-                        or "oauth_token" in source.auth_methods
-                    ):
-                        source_dict["requires_byoc"] = True
-
-                source_model = schemas.Source.model_validate(source_dict)
-                result_sources.append(source_model)
-
-            except Exception as e:
-                # Log the error but continue processing other sources
-                ctx.logger.exception(f"Error processing source {source.short_name}: {str(e)}")
-                invalid_sources.append(f"{source.short_name} (error: {str(e)})")
-
-        # Log any invalid sources
-        if invalid_sources:
-            ctx.logger.warning(
-                f"Skipped {len(invalid_sources)} invalid sources: {', '.join(invalid_sources)}"
-            )
-            pass
-
-        # ctx.logger.info(f"Returning {len(result_sources)} valid sources")
+        ctx.logger.info(f"Returning {len(result_sources)} sources")
         return result_sources
+
+    # ------------------------------------------------------------------
+    # Private helpers
+    # ------------------------------------------------------------------
+
+    def _entry_to_schema(
+        self, entry: SourceRegistryEntry, enabled_features: list
+    ) -> schemas.Source:
+        """Convert a registry entry to an API schema.
+
+        Applies per-request concerns: feature-flag filtering of config fields,
+        and self-hosted requires_byoc override.
+        """
+        # Filter config fields by the organization's enabled features
+        config_fields = entry.config_fields.filter_by_features(enabled_features)
+
+        requires_byoc = entry.requires_byoc
+        if self.settings.ENVIRONMENT == "self-hosted" and entry.auth_methods:
+            if "oauth_browser" in entry.auth_methods or "oauth_token" in entry.auth_methods:
+                requires_byoc = True
+
+        return schemas.Source.model_validate(
+            {
+                "name": entry.name,
+                "short_name": entry.short_name,
+                "description": entry.description,
+                "class_name": entry.class_name,
+                "auth_methods": entry.auth_methods,
+                "oauth_type": entry.oauth_type,
+                "requires_byoc": requires_byoc,
+                "auth_fields": entry.auth_fields,
+                "config_fields": config_fields,
+                "supported_auth_providers": entry.supported_auth_providers,
+                "supports_continuous": entry.supports_continuous,
+                "federated_search": entry.federated_search,
+                "supports_temporal_relevance": entry.supports_temporal_relevance,
+                "supports_access_control": entry.supports_access_control,
+                "rate_limit_level": entry.rate_limit_level,
+                "feature_flag": entry.feature_flag,
+                "labels": entry.labels,
+                "output_entity_definition_ids": entry.output_entity_definition_ids,
+            }
+        )
+
+    def _is_hidden_by_feature_flag(
+        self, entry: SourceRegistryEntry, enabled_features: list, ctx: ApiContext
+    ) -> bool:
+        """Check if a source should be hidden due to feature flag requirements."""
+        if not entry.feature_flag:
+            return False
+
+        try:
+            required_flag = FeatureFlagEnum(entry.feature_flag)
+            if required_flag not in enabled_features:
+                ctx.logger.debug(
+                    f"Hidden source {entry.short_name} "
+                    f"(requires feature flag: {entry.feature_flag})"
+                )
+                return True
+        except ValueError:
+            ctx.logger.warning(
+                f"Source {entry.short_name} has invalid flag {entry.feature_flag}"
+            )
+
+        return False

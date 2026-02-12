@@ -192,7 +192,7 @@ class SyncOrchestrator:
     async def _process_entities(self) -> None:  # noqa: C901
         """Process entities using micro-batching with bounded inner concurrency."""
         self.sync_context.logger.info(
-            f"Starting pull-based processing from source {self.sync_context.source_instance._name} "
+            f"Starting pull-based processing from source {self.sync_context.source_instance.source_name} "
             f"(max workers: {self.worker_pool.max_workers}, "
             f"batch_size: {self.batch_size}, max_batch_latency_ms: {self.max_batch_latency_ms})"
         )

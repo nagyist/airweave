@@ -7,6 +7,7 @@ from airweave.core.protocols.repositories import (
     BasePublicRepositoryProtocol,
     SourceRepositoryProtocol,
 )
+from airweave.core.protocols.sources import SourceServiceProtocol
 from airweave.core.protocols.webhooks import WebhookAdmin, WebhookPublisher
 
 __all__ = [
@@ -17,6 +18,7 @@ __all__ = [
     "OcrProvider",
     "BasePublicRepositoryProtocol",
     "SourceRepositoryProtocol",
+    "SourceServiceProtocol",
     "WebhookAdmin",
     "WebhookPublisher",
 ]

@@ -25,6 +25,8 @@ TABLES_TO_INDEX = [
     'collection',                   # Collection
     'connection_init_session',      # ConnectionInitSession
     'integration_credential',       # IntegrationCredential
+    'pg_field_catalog_table',       # PgFieldCatalogTable
+    'pg_field_catalog_column',      # PgFieldCatalogColumn
     'redirect_session',             # RedirectSession
     'search_queries',               # SearchQuery (note: plural tablename)
     'source_connection',            # SourceConnection

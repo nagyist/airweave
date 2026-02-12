@@ -91,6 +91,8 @@ navigation:
       path: docs/pages/connectors/ctti/main.mdx
     - page: Dropbox
       path: docs/pages/connectors/dropbox/main.mdx
+    - page: Excel
+      path: docs/pages/connectors/excel/main.mdx
     - page: Github
       path: docs/pages/connectors/github/main.mdx
     - page: Gitlab
@@ -125,8 +127,6 @@ navigation:
       path: docs/pages/connectors/outlook_mail/main.mdx
     - page: Pipedrive
       path: docs/pages/connectors/pipedrive/main.mdx
-    - page: Postgresql
-      path: docs/pages/connectors/postgresql/main.mdx
     - page: Salesforce
       path: docs/pages/connectors/salesforce/main.mdx
     - page: Sharepoint

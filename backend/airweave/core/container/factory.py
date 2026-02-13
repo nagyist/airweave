@@ -15,12 +15,12 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from airweave.adapters.ocr.docling import DoclingOcrAdapter
-from airweave.adapters.registries.auth_provider import AuthProviderRegistry
-from airweave.adapters.registries.entity_definition import EntityDefinitionRegistry
-from airweave.adapters.registries.source import SourceRegistry
 from airweave.adapters.webhooks.svix import SvixAdapter
 from airweave.core.container.container import Container
 from airweave.core.logging import logger
+from airweave.domains.auth_provider.registry import AuthProviderRegistry
+from airweave.domains.entities.registry import EntityDefinitionRegistry
+from airweave.domains.sources.registry import SourceRegistry
 from airweave.domains.sources.service import SourceService
 
 if TYPE_CHECKING:

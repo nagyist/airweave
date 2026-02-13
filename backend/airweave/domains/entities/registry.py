@@ -1,10 +1,9 @@
 """Entity definition registry — in-memory registry built once at startup."""
 
 import re
-from dataclasses import dataclass
 
-from airweave.adapters.registries.base import BaseRegistryEntry
 from airweave.core.logging import logger
+from airweave.domains.entities.types import EntityDefinitionEntry
 from airweave.platform.entities import ENTITIES_BY_SOURCE
 
 registry_logger = logger.with_prefix("EntityDefinitionRegistry: ").with_context(
@@ -15,14 +14,6 @@ registry_logger = logger.with_prefix("EntityDefinitionRegistry: ").with_context(
 def _to_snake_case(name: str) -> str:
     """Convert PascalCase class name to snake_case (e.g. AsanaTaskEntity -> asana_task_entity)."""
     return re.sub(r"(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])", "_", name).lower()
-
-
-@dataclass(frozen=True)
-class EntityDefinitionEntry(BaseRegistryEntry):
-    """Precomputed entity definition metadata."""
-
-    entity_class_ref: type
-    module_name: str  # source short_name this entity belongs to (e.g. "asana")
 
 
 class EntityDefinitionRegistry:

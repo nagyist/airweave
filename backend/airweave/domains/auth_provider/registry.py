@@ -1,37 +1,14 @@
 """Auth provider registry — in-memory registry built once at startup."""
 
-from dataclasses import dataclass
-
-from airweave.adapters.registries.base import BaseRegistryEntry
 from airweave.core.logging import logger
 from airweave.core.protocols.registry import AuthProviderRegistryProtocol
+from airweave.domains.auth_provider.types import AuthProviderRegistryEntry
 from airweave.platform.auth_providers import ALL_AUTH_PROVIDERS
 from airweave.platform.configs._base import Fields
 
 registry_logger = logger.with_prefix("AuthProviderRegistry: ").with_context(
     component="auth_provider_registry"
 )
-
-
-@dataclass(frozen=True)
-class AuthProviderRegistryEntry(BaseRegistryEntry):
-    """Precomputed auth provider metadata. Built once at startup from @auth_provider decorators."""
-
-    # Resolved classes (read directly from decorator)
-    provider_class_ref: type
-    config_ref: type
-    auth_config_ref: type
-
-    # Precomputed fields
-    config_fields: Fields
-    auth_config_fields: Fields
-
-    # Source compatibility
-    blocked_sources: list[str]
-
-    # Mappings (Airweave names → provider-specific names)
-    field_name_mapping: dict[str, str]
-    slug_name_mapping: dict[str, str]
 
 
 class AuthProviderRegistry(AuthProviderRegistryProtocol):

@@ -1,49 +1,44 @@
 """Protocols for registries."""
 
-from __future__ import annotations
+from typing import Protocol, TypeVar
 
-from typing import TYPE_CHECKING, Protocol
+from airweave.adapters.registries.base import BaseRegistryEntry
+from airweave.domains.auth_provider.types import AuthProviderRegistryEntry
+from airweave.domains.entities.types import EntityDefinitionEntry
+from airweave.domains.sources.types import SourceRegistryEntry
 
-if TYPE_CHECKING:
-    from airweave.adapters.registries.auth_provider import AuthProviderRegistryEntry
-    from airweave.adapters.registries.entity_definition import EntityDefinitionEntry
-    from airweave.adapters.registries.source import SourceRegistryEntry
+EntryT = TypeVar("EntryT", bound=BaseRegistryEntry, covariant=True)
 
 
-class SourceRegistryProtocol(Protocol):
+class RegistryProtocol(Protocol[EntryT]):
+    """Base protocol for in-memory registries.
+
+    Built once at startup. All lookups are synchronous dict reads.
+    """
+
+    def get(self, short_name: str) -> EntryT:
+        """Get an entry by short name. Raises KeyError if not found."""
+        ...
+
+    def list_all(self) -> list[EntryT]:
+        """List all registered entries."""
+        ...
+
+
+class SourceRegistryProtocol(RegistryProtocol[SourceRegistryEntry], Protocol):
     """Source registry protocol."""
 
-    def get(self, short_name: str) -> SourceRegistryEntry:
-        """Get an entry by short name. Raises KeyError if not found."""
-        ...
-
-    def list_all(self) -> list[SourceRegistryEntry]:
-        """List all registered entries."""
-        ...
+    pass
 
 
-class AuthProviderRegistryProtocol(Protocol):
+class AuthProviderRegistryProtocol(RegistryProtocol[AuthProviderRegistryEntry], Protocol):
     """Auth provider registry protocol."""
 
-    def get(self, short_name: str) -> AuthProviderRegistryEntry:
-        """Get an entry by short name. Raises KeyError if not found."""
-        ...
-
-    def list_all(self) -> list[AuthProviderRegistryEntry]:
-        """List all registered entries."""
-        ...
+    pass
 
 
-class EntityDefinitionRegistryProtocol(Protocol):
+class EntityDefinitionRegistryProtocol(RegistryProtocol[EntityDefinitionEntry], Protocol):
     """Entity definition registry protocol."""
-
-    def get(self, short_name: str) -> EntityDefinitionEntry:
-        """Get an entry by short name. Raises KeyError if not found."""
-        ...
-
-    def list_all(self) -> list[EntityDefinitionEntry]:
-        """List all registered entries."""
-        ...
 
     def list_for_source(self, source_short_name: str) -> list[EntityDefinitionEntry]:
         """List all entity definitions for a given source."""

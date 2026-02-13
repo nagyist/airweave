@@ -1,12 +1,12 @@
 """Source service."""
 
 from airweave import schemas
-from airweave.adapters.registries.source import SourceRegistryEntry
 from airweave.api.context import ApiContext
 from airweave.core.config.settings import Settings
 from airweave.core.protocols.registry import SourceRegistryProtocol
 from airweave.core.protocols.sources import SourceServiceProtocol
 from airweave.core.shared_models import FeatureFlag as FeatureFlagEnum
+from airweave.domains.sources.types import SourceRegistryEntry
 
 
 class SourceService(SourceServiceProtocol):

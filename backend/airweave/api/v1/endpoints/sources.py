@@ -16,7 +16,7 @@ from airweave.api.context import ApiContext
 from airweave.api.deps import Inject
 from airweave.api.examples import create_single_source_response, create_source_list_response
 from airweave.api.router import TrailingSlashRouter
-from airweave.core.protocols import SourceServiceProtocol
+from airweave.domains.sources.protocols import SourceServiceProtocol
 from airweave.schemas.errors import NotFoundErrorResponse, RateLimitErrorResponse
 
 router = TrailingSlashRouter()

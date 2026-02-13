@@ -2,11 +2,9 @@
 
 from airweave.core.config import settings
 from airweave.core.logging import logger
-from airweave.core.protocols.registry import (
-    AuthProviderRegistryProtocol,
-    EntityDefinitionRegistryProtocol,
-    SourceRegistryProtocol,
-)
+from airweave.domains.auth_provider.protocols import AuthProviderRegistryProtocol
+from airweave.domains.entities.protocols import EntityDefinitionRegistryProtocol
+from airweave.domains.sources.protocols import SourceRegistryProtocol
 from airweave.domains.sources.types import SourceRegistryEntry
 from airweave.platform.configs._base import Fields
 from airweave.platform.sources import ALL_SOURCES

@@ -1,7 +1,7 @@
 """Auth provider registry — in-memory registry built once at startup."""
 
 from airweave.core.logging import logger
-from airweave.core.protocols.registry import AuthProviderRegistryProtocol
+from airweave.domains.auth_provider.protocols import AuthProviderRegistryProtocol
 from airweave.domains.auth_provider.types import AuthProviderRegistryEntry
 from airweave.platform.auth_providers import ALL_AUTH_PROVIDERS
 from airweave.platform.configs._base import Fields

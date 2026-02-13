@@ -2,10 +2,19 @@
 
 from typing import Protocol, TypeVar
 
-from airweave.adapters.registries.base import BaseRegistryEntry
-from airweave.domains.auth_provider.types import AuthProviderRegistryEntry
-from airweave.domains.entities.types import EntityDefinitionEntry
-from airweave.domains.sources.types import SourceRegistryEntry
+from pydantic import BaseModel, ConfigDict
+
+
+class BaseRegistryEntry(BaseModel):
+    """Registry entry."""
+
+    model_config = ConfigDict(frozen=True)
+
+    short_name: str
+    name: str
+    description: str | None
+    class_name: str
+
 
 EntryT = TypeVar("EntryT", bound=BaseRegistryEntry, covariant=True)
 
@@ -22,24 +31,4 @@ class RegistryProtocol(Protocol[EntryT]):
 
     def list_all(self) -> list[EntryT]:
         """List all registered entries."""
-        ...
-
-
-class SourceRegistryProtocol(RegistryProtocol[SourceRegistryEntry], Protocol):
-    """Source registry protocol."""
-
-    pass
-
-
-class AuthProviderRegistryProtocol(RegistryProtocol[AuthProviderRegistryEntry], Protocol):
-    """Auth provider registry protocol."""
-
-    pass
-
-
-class EntityDefinitionRegistryProtocol(RegistryProtocol[EntityDefinitionEntry], Protocol):
-    """Entity definition registry protocol."""
-
-    def list_for_source(self, source_short_name: str) -> list[EntityDefinitionEntry]:
-        """List all entity definitions for a given source."""
         ...

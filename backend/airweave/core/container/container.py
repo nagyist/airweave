@@ -17,10 +17,10 @@ from airweave.core.protocols import (
     CircuitBreaker,
     EventBus,
     OcrProvider,
-    SourceServiceProtocol,
     WebhookAdmin,
     WebhookPublisher,
 )
+from airweave.domains.sources.protocols import SourceServiceProtocol
 
 
 @dataclass(frozen=True)

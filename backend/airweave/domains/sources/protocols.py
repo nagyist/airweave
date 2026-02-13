@@ -3,6 +3,8 @@
 from typing import Protocol
 
 from airweave import schemas
+from airweave.core.protocols.registry import RegistryProtocol
+from airweave.domains.sources.types import SourceRegistryEntry
 
 
 class SourceServiceProtocol(Protocol):
@@ -15,3 +17,9 @@ class SourceServiceProtocol(Protocol):
     async def list(self) -> list[schemas.Source]:
         """List all sources."""
         ...
+
+
+class SourceRegistryProtocol(RegistryProtocol[SourceRegistryEntry], Protocol):
+    """Source registry protocol."""
+
+    pass

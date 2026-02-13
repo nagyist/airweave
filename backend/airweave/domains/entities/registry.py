@@ -3,7 +3,7 @@
 import re
 
 from airweave.core.logging import logger
-from airweave.core.protocols.registry import EntityDefinitionRegistryProtocol
+from airweave.domains.entities.protocols import EntityDefinitionRegistryProtocol
 from airweave.domains.entities.types import EntityDefinitionEntry
 from airweave.platform.entities import ENTITIES_BY_SOURCE
 

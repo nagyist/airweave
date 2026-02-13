@@ -1,4 +1,4 @@
-from airweave.adapters.registries.base import BaseRegistryEntry
+from airweave.core.protocols.registry import BaseRegistryEntry
 from airweave.platform.configs._base import Fields
 
 

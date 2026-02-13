@@ -1,9 +1,5 @@
 """Source registry — in-memory registry built once at startup from @source decorators."""
 
-from typing import Union, get_origin
-
-from pydantic_core import PydanticUndefined
-
 from airweave.core.config import settings
 from airweave.core.logging import logger
 from airweave.core.protocols.registry import (
@@ -178,6 +174,6 @@ class SourceRegistry(SourceRegistryProtocol):
         optional_fields = {
             name
             for name, info in auth_config_ref.model_fields.items()
-            if info.default is not PydanticUndefined or get_origin(info.annotation) is Union
+            if not info.is_required()
         }
         return all_fields, optional_fields

@@ -71,7 +71,7 @@ class SourceBase(BaseModel):
         ),
     )
     output_entity_definitions: List[str] = Field(
-        ...,
+        default_factory=list,
         description=(
             "List of entity definition short names that this source can produce "
             "(e.g., ['asana_task_entity', 'asana_project_entity'])."
@@ -151,6 +151,10 @@ class SourceUpdate(SourceBase):
 class SourceInDBBase(SourceBase):
     """Base schema for Source stored in database with system fields."""
 
+    output_entity_definition_ids: Optional[List[str]] = Field(
+        None,
+        description="Legacy DB column — maps to output_entity_definitions.",
+    )
     id: UUID = Field(
         ...,
         description=(

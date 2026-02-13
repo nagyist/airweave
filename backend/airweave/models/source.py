@@ -31,9 +31,7 @@ class Source(Base):
     organization_id = Column(ForeignKey("organization.id"), nullable=True)
     # List of entity definition short names this source can output
     # Column is still named output_entity_definition_ids in DB to avoid migration
-    output_entity_definitions = Column(
-        "output_entity_definition_ids", JSON, nullable=False
-    )
+    output_entity_definitions = Column("output_entity_definition_ids", JSON, nullable=False)
     config_schema = Column(JSON, nullable=True)  # JSON Schema for configuration
     labels: Mapped[list[str]] = mapped_column(JSON, nullable=True, default=list)
     supports_continuous: Mapped[bool] = mapped_column(

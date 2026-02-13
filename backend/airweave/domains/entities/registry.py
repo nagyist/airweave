@@ -3,6 +3,7 @@
 import re
 
 from airweave.core.logging import logger
+from airweave.core.protocols.registry import EntityDefinitionRegistryProtocol
 from airweave.domains.entities.types import EntityDefinitionEntry
 from airweave.platform.entities import ENTITIES_BY_SOURCE
 
@@ -16,7 +17,7 @@ def _to_snake_case(name: str) -> str:
     return re.sub(r"(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])", "_", name).lower()
 
 
-class EntityDefinitionRegistry:
+class EntityDefinitionRegistry(EntityDefinitionRegistryProtocol):
     """In-memory entity definition registry, built from ENTITIES_BY_SOURCE."""
 
     def __init__(self) -> None:

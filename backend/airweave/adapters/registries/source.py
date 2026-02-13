@@ -32,8 +32,8 @@ class SourceRegistryEntry(BaseRegistryEntry):
 
     # Resolved classes (read directly from decorator — no locator needed)
     source_class_ref: type
-    config_ref: type
-    auth_config_ref: type
+    config_ref: type | None
+    auth_config_ref: type | None
 
     # Precomputed fields
     auth_fields: Fields
@@ -143,9 +143,13 @@ class SourceRegistry(SourceRegistryProtocol):
         with ClassVar defaults on BaseSource). Missing required fields will raise
         AttributeError at startup.
         """
-        runtime_all, runtime_optional = self._compute_runtime_auth_fields(
-            source_cls.auth_config_class
-        )
+        # config_class and auth_config_class are actual types or None.
+        # auth_config_class is None for OAuth sources (they don't use direct auth).
+        # config_class is None for sources with no configuration.
+        config_ref = source_cls.config_class
+        auth_config_ref = source_cls.auth_config_class
+
+        runtime_all, runtime_optional = self._compute_runtime_auth_fields(auth_config_ref)
 
         # Resolve output entity definition short_names from the entity definition registry
         entity_entries = self._entity_definition_registry.list_for_source(source_cls.short_name)
@@ -157,10 +161,11 @@ class SourceRegistry(SourceRegistryProtocol):
             description=source_cls.__doc__,
             class_name=source_cls.__name__,
             source_class_ref=source_cls,
-            config_ref=source_cls.config_class,
-            auth_config_ref=source_cls.auth_config_class,
-            auth_fields=Fields.from_config_class(source_cls.auth_config_class),
-            config_fields=Fields.from_config_class(source_cls.config_class),
+            config_ref=config_ref,
+            auth_config_ref=auth_config_ref,
+            # OAuth sources have no auth config — empty fields is correct
+            auth_fields=Fields.from_config_class(auth_config_ref) if auth_config_ref else Fields(fields=[]),
+            config_fields=Fields.from_config_class(config_ref) if config_ref else Fields(fields=[]),
             supported_auth_providers=self._compute_supported_auth_providers(
                 source_cls.short_name, self._auth_provider_registry
             ),
@@ -197,13 +202,15 @@ class SourceRegistry(SourceRegistryProtocol):
 
     @staticmethod
     def _compute_runtime_auth_fields(
-        auth_config_ref: type,
+        auth_config_ref: type | None,
     ) -> tuple[list[str], set[str]]:
         """Precompute the auth field names the sync pipeline needs.
 
-        Introspects the Pydantic auth config model to determine all fields
-        and which are optional.
+        OAuth sources have no auth_config_class — returns empty for those.
         """
+        if auth_config_ref is None:
+            return [], set()
+
         all_fields = list(auth_config_ref.model_fields.keys())
         optional_fields = {
             name

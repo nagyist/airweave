@@ -7,7 +7,6 @@ import os
 import re
 from pathlib import Path
 from typing import Callable, Dict, Type
-from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -455,12 +454,12 @@ async def _sync_sources(
             sync_logger.error(f"Template validation failed for {source_module_name}")
             raise
 
-        # Get entity IDs for this module
-        output_entity_ids = []
+        # Get entity definition short names for this module
+        output_entity_definitions = []
         if source_module_name in module_entity_map:
-            output_entity_ids = [
-                UUID(id) for id in module_entity_map[source_module_name].get("entity_ids", [])
-            ]
+            output_entity_definitions = module_entity_map[source_module_name].get(
+                "entity_names", []
+            )
 
         # Convert oauth_type enum to string if present
         oauth_type = getattr(source_class, "oauth_type", None)
@@ -480,11 +479,11 @@ async def _sync_sources(
             auth_methods=[m.value for m in getattr(source_class, "auth_methods", [])],
             oauth_type=oauth_type,
             requires_byoc=getattr(source_class, "requires_byoc", False),
-            auth_config_class=getattr(source_class, "auth_config_class", None),
-            config_class=source_class.config_class,
+            auth_config_class=getattr(source_class.auth_config_class, "__name__", None),
+            config_class=getattr(source_class.config_class, "__name__", None),
             short_name=source_class.short_name,
             class_name=source_class.__name__,
-            output_entity_definition_ids=output_entity_ids,
+            output_entity_definitions=output_entity_definitions,
             labels=getattr(source_class, "labels", []),
             supports_continuous=getattr(source_class, "supports_continuous", False),
             federated_search=getattr(source_class, "federated_search", False),
@@ -537,13 +536,17 @@ async def _sync_auth_providers(
 
     auth_provider_definitions = []
     for auth_provider_class in auth_providers:
+        auth_config_cls = getattr(auth_provider_class, "auth_config_class", None)
+        config_cls = getattr(auth_provider_class, "config_class", None)
         auth_provider_def = schemas.AuthProviderCreate(
             name=auth_provider_class.provider_name,
             short_name=auth_provider_class.short_name,
             class_name=auth_provider_class.__name__,
             description=auth_provider_class.__doc__,
-            auth_config_class=getattr(auth_provider_class, "auth_config_class", None),
-            config_class=getattr(auth_provider_class, "config_class", None),
+            auth_config_class=getattr(auth_config_cls, "__name__", None)
+            if auth_config_cls
+            else None,
+            config_class=getattr(config_cls, "__name__", None) if config_cls else None,
         )
         auth_provider_definitions.append(auth_provider_def)
 

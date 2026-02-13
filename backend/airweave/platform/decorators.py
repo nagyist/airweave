@@ -185,8 +185,8 @@ def destination(
 def auth_provider(
     name: str,
     short_name: str,
-    auth_config_class: str,
-    config_class: str,
+    auth_config_class: Type[BaseModel],
+    config_class: Type[BaseModel],
 ) -> Callable[[type], type]:
     """Class decorator to mark a class as representing an Airweave auth provider.
 
@@ -194,8 +194,8 @@ def auth_provider(
     ----
         name (str): The name of the auth provider.
         short_name (str): The short name of the auth provider.
-        auth_config_class (str): The authentication config class of the auth provider.
-        config_class (str): The configuration class for the auth provider.
+        auth_config_class (Type[BaseModel]): The authentication config class.
+        config_class (Type[BaseModel]): The configuration class.
 
     Returns:
     -------

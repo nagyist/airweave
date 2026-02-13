@@ -45,7 +45,8 @@ class SourceService(SourceServiceProtocol):
         for entry in entries:
             if self._is_hidden_by_feature_flag(entry, enabled_features, ctx):
                 continue
-            result_sources.append(self._entry_to_schema(entry, enabled_features))
+            entry = self.source_registry.get(entry.short_name)
+            result_sources.append(entry)
 
         ctx.logger.info(f"Returning {len(result_sources)} sources")
         return result_sources

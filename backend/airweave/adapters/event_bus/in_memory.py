@@ -9,8 +9,6 @@ import fnmatch
 import logging
 from typing import TYPE_CHECKING
 
-from airweave.core.protocols.event_bus import EventBus
-
 if TYPE_CHECKING:
     from airweave.core.protocols.event_bus import DomainEvent, EventHandler
 
@@ -18,7 +16,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-class InMemoryEventBus(EventBus):
+class InMemoryEventBus:
     """In-memory event bus with pattern-based subscriptions.
 
     Implements the EventBus protocol. Events are delivered to all
@@ -69,7 +67,7 @@ class InMemoryEventBus(EventBus):
 
         # Fan out to all matching handlers concurrently
         results = await asyncio.gather(
-            *[handler.handle(event) for handler in matching_handlers],
+            *[handler(event) for handler in matching_handlers],
             return_exceptions=True,
         )
 

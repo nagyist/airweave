@@ -1,13 +1,12 @@
 """Base registry entry."""
 
-from dataclasses import dataclass
-
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 
-@dataclass(frozen=True)
 class BaseRegistryEntry(BaseModel):
     """Registry entry."""
+
+    model_config = ConfigDict(frozen=True)
 
     short_name: str
     name: str

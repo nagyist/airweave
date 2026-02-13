@@ -1,9 +1,6 @@
-from dataclasses import dataclass
-
 from airweave.adapters.registries.base import BaseRegistryEntry
 
 
-@dataclass(frozen=True)
 class EntityDefinitionEntry(BaseRegistryEntry):
     """Precomputed entity definition metadata."""
 

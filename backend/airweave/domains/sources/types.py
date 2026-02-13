@@ -1,10 +1,7 @@
-from dataclasses import dataclass
-
 from airweave.adapters.registries.base import BaseRegistryEntry
 from airweave.platform.configs._base import Fields
 
 
-@dataclass(frozen=True)
 class SourceRegistryEntry(BaseRegistryEntry):
     """Precomputed source metadata. Built once at startup from @source decorators."""
 

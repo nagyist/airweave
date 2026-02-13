@@ -164,7 +164,9 @@ class SourceRegistry(SourceRegistryProtocol):
             config_ref=config_ref,
             auth_config_ref=auth_config_ref,
             # OAuth sources have no auth config — empty fields is correct
-            auth_fields=Fields.from_config_class(auth_config_ref) if auth_config_ref else Fields(fields=[]),
+            auth_fields=Fields.from_config_class(auth_config_ref)
+            if auth_config_ref
+            else Fields(fields=[]),
             config_fields=Fields.from_config_class(config_ref) if config_ref else Fields(fields=[]),
             supported_auth_providers=self._compute_supported_auth_providers(
                 source_cls.short_name, self._auth_provider_registry

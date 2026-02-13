@@ -100,7 +100,7 @@ def _create_event_bus(webhook_publisher):
     - AnalyticsSubscriber: PostHog tracking
     """
     from airweave.adapters.event_bus import InMemoryEventBus
-    from airweave.domains.webhooks import WebhookEventHandler
+    from airweave.domains.webhooks.subscribers import WebhookEventHandler
 
     bus = InMemoryEventBus()
 

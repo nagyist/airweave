@@ -175,8 +175,11 @@ class SourceInDBBase(SourceBase):
         from_attributes = True
 
 
-class Source(SourceInDBBase):
-    """Complete source representation with authentication and configuration schemas."""
+class Source(SourceBase):
+    """Complete source representation with authentication and configuration schemas.
+
+    Served from the in-memory SourceRegistry — no database row needed.
+    """
 
     auth_fields: Optional[Fields] = Field(
         None,

@@ -74,9 +74,7 @@ class AuthProviderRegistry(AuthProviderRegistryProtocol):
                 entry = self._build_entry(provider_cls)
                 self._entries[short_name] = entry
             except Exception as e:
-                registry_logger.error(
-                    f"Failed to build registry entry for '{short_name}': {e}"
-                )
+                registry_logger.error(f"Failed to build registry entry for '{short_name}': {e}")
                 raise
 
         registry_logger.info(f"Built registry with {len(self._entries)} auth providers.")

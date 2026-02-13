@@ -302,7 +302,7 @@ class SourceConnectionService:
             )
 
         # Validate BYOC requirement: If source requires BYOC, auth method must be OAUTH_BYOC
-        if source_class.requires_byoc() and auth_method == AuthenticationMethod.OAUTH_BROWSER:
+        if source_class.requires_byoc and auth_method == AuthenticationMethod.OAUTH_BROWSER:
             raise HTTPException(
                 status_code=400,
                 detail=f"Source {obj_in.short_name} requires custom OAuth client credentials. "

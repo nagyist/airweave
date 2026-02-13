@@ -45,8 +45,8 @@ class SourceService(SourceServiceProtocol):
         for entry in entries:
             if self._is_hidden_by_feature_flag(entry, enabled_features, ctx):
                 continue
-            entry = self.source_registry.get(entry.short_name)
-            result_sources.append(entry)
+            mapped_schema = self._entry_to_schema(entry, enabled_features)
+            result_sources.append(mapped_schema)
 
         ctx.logger.info(f"Returning {len(result_sources)} sources")
         return result_sources
@@ -71,28 +71,33 @@ class SourceService(SourceServiceProtocol):
             if "oauth_browser" in entry.auth_methods or "oauth_token" in entry.auth_methods:
                 requires_byoc = True
 
-        return schemas.Source.model_validate(
-            {
-                "name": entry.name,
-                "short_name": entry.short_name,
-                "description": entry.description,
-                "class_name": entry.class_name,
-                "auth_methods": entry.auth_methods,
-                "oauth_type": entry.oauth_type,
-                "requires_byoc": requires_byoc,
-                "auth_fields": entry.auth_fields,
-                "config_fields": config_fields,
-                "supported_auth_providers": entry.supported_auth_providers,
-                "supports_continuous": entry.supports_continuous,
-                "federated_search": entry.federated_search,
-                "supports_temporal_relevance": entry.supports_temporal_relevance,
-                "supports_access_control": entry.supports_access_control,
-                "rate_limit_level": entry.rate_limit_level,
-                "feature_flag": entry.feature_flag,
-                "labels": entry.labels,
-                "output_entity_definitions": entry.output_entity_definitions,
-            }
-        )
+        try:
+            schema = schemas.Source.model_validate(
+                {
+                    "name": entry.name,
+                    "short_name": entry.short_name,
+                    "description": entry.description,
+                    "class_name": entry.class_name,
+                    "auth_methods": entry.auth_methods,
+                    "oauth_type": entry.oauth_type,
+                    "requires_byoc": requires_byoc,
+                    "auth_fields": entry.auth_fields,
+                    "config_fields": config_fields,
+                    "supported_auth_providers": entry.supported_auth_providers,
+                    "supports_continuous": entry.supports_continuous,
+                    "federated_search": entry.federated_search,
+                    "supports_temporal_relevance": entry.supports_temporal_relevance,
+                    "supports_access_control": entry.supports_access_control,
+                    "rate_limit_level": entry.rate_limit_level,
+                    "feature_flag": entry.feature_flag,
+                    "labels": entry.labels,
+                    "output_entity_definitions": entry.output_entity_definitions,
+                }
+            )
+        except Exception as e:
+            raise ValueError(f"Error validating source {entry.short_name}: {e}")
+
+        return schema
 
     def _is_hidden_by_feature_flag(
         self, entry: SourceRegistryEntry, enabled_features: list, ctx: ApiContext

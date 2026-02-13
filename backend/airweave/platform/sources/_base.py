@@ -323,7 +323,7 @@ class BaseSource:
         Raises:
             NotImplementedError: If source does not support federated search
         """
-        if not getattr(self.__class__, "_federated_search", False):
+        if not getattr(self.__class__, "federated_search", False):
             raise NotImplementedError(
                 f"Source {self.__class__.__name__} does not support federated search"
             )

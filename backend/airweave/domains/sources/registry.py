@@ -172,8 +172,6 @@ class SourceRegistry(SourceRegistryProtocol):
 
         all_fields = list(auth_config_ref.model_fields.keys())
         optional_fields = {
-            name
-            for name, info in auth_config_ref.model_fields.items()
-            if not info.is_required()
+            name for name, info in auth_config_ref.model_fields.items() if not info.is_required()
         }
         return all_fields, optional_fields

@@ -104,7 +104,7 @@ def _create_event_bus(webhook_publisher):
 
     bus = InMemoryEventBus()
 
-    # WebhookEventHandler subscribes to * — all domain events
+    # WebhookEventSubscriber subscribes to * — all domain events
     # Svix channel filtering handles per-endpoint event type matching
     webhook_subscriber = WebhookEventSubscriber(webhook_publisher)
     for pattern in webhook_subscriber.EVENT_PATTERNS:

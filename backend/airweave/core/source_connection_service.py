@@ -1277,7 +1277,7 @@ class SourceConnectionService:
         """
         # Check if this is a federated search source - these don't need syncs
         source_class = self._get_source_class(source.class_name)
-        if getattr(source_class, "_federated_search", False):
+        if getattr(source_class, "federated_search", False):
             ctx.logger.info(
                 f"Skipping sync creation for federated search source '{source.short_name}'. "
                 "Federated search sources are searched at query time."

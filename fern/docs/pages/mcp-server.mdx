@@ -7,11 +7,11 @@ slug: mcp-server
 
 The Airweave MCP server implements the [Model Context Protocol](https://modelcontextprotocol.io/) to let AI assistants search your synced data. It supports two deployment modes: **local** (stdio) for desktop AI clients and **hosted** (Streamable HTTP) for cloud platforms.
 
-### Prerequisites
+## Prerequisites
 
 Before you start you'll need:
 
-  - **A collection with data**: at least one source connection must have completed its initial sync. See the [Quickstart](https://docs.airweave.ai/quickstart) if you need to set this up.
+  - **A collection with data**: at least one source connection must have completed its initial sync. See the [Quickstart](/quickstart) if you need to set this up.
   - **An API key**: Create one in the Airweave dashboard under **API Keys**.
 
 ---
@@ -110,6 +110,14 @@ Local mode runs the MCP server as a local process that communicates over stdio. 
 | `AIRWEAVE_API_KEY` | Yes | Authenticates the MCP server with the Airweave API |
 | `AIRWEAVE_COLLECTION` | Yes | Readable ID of the collection to query |
 | `AIRWEAVE_BASE_URL` | No | Override for self-hosted instances (default: `https://api.airweave.ai`) |
+
+### Environment variables (hosted mode)
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `AIRWEAVE_COLLECTION` | No | Default collection to query if `X-Collection-Readable-ID` header is not provided |
+| `AIRWEAVE_BASE_URL` | No | Override for self-hosted instances (default: `https://api.airweave.ai`) |
+| `PORT` | No | HTTP server port (default: `8080`) |
 
 ---
 

@@ -500,7 +500,7 @@ class SyncOrchestrator:
         # Publish a progress heartbeat so the stuck-job detector knows we're alive.
         # ACL expansion (especially with 50K+ users) can take a long time without
         # producing entity progress updates, which would otherwise trigger cancellation.
-        await self.state_publisher.publish_progress()
+        await self.sync_context.state_publisher.publish_progress()
 
         try:
             await self.access_control_pipeline.process(
@@ -514,7 +514,7 @@ class SyncOrchestrator:
             )
 
         # Publish another heartbeat after ACL sync completes
-        await self.state_publisher.publish_progress()
+        await self.sync_context.state_publisher.publish_progress()
         # Don't fail the entire sync for ACL errors
 
     async def _finalize_progress_and_trackers(

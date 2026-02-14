@@ -488,11 +488,19 @@ class SyncOrchestrator:
         - Resolves to actions and dispatches to handlers
         - Handles orphan cleanup (full sync only)
         - Updates the cursor with DirSync cookie
+
+        Publishes progress heartbeats before and after to prevent the
+        stuck-job cleanup from cancelling during long-running ACL expansion.
         """
         source = self.sync_context.source_instance
         source_name = getattr(source, "_name", "unknown")
 
         self.sync_context.logger.info(f"Starting access control sync for {source_name}")
+
+        # Publish a progress heartbeat so the stuck-job detector knows we're alive.
+        # ACL expansion (especially with 50K+ users) can take a long time without
+        # producing entity progress updates, which would otherwise trigger cancellation.
+        await self.state_publisher.publish_progress()
 
         try:
             await self.access_control_pipeline.process(
@@ -504,7 +512,10 @@ class SyncOrchestrator:
                 f"ACL sync error: {get_error_message(e)}",
                 exc_info=True,
             )
-            # Don't fail the entire sync for ACL errors
+
+        # Publish another heartbeat after ACL sync completes
+        await self.state_publisher.publish_progress()
+        # Don't fail the entire sync for ACL errors
 
     async def _finalize_progress_and_trackers(
         self, status: SyncJobStatus, error: Optional[str] = None

@@ -136,6 +136,10 @@ class AccessControlPipeline:
                 memberships.append(membership)
                 if len(memberships) % 100 == 0:
                     sync_context.logger.debug(f"Collected {len(memberships)} memberships so far...")
+                # Publish progress heartbeat every 1000 memberships to prevent
+                # stuck-job detection from cancelling during long ACL expansion
+                if len(memberships) % 1000 == 0:
+                    await sync_context.state_publisher.publish_progress()
         except Exception as e:
             sync_context.logger.error(
                 f"Error collecting memberships: {get_error_message(e)}",

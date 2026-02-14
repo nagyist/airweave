@@ -26,6 +26,7 @@ from typing import Any, AsyncGenerator, Dict, List, Optional, Union
 
 from airweave.platform.access_control.schemas import MembershipTuple
 from airweave.platform.configs.auth import SharePoint2019V2AuthConfig
+from airweave.platform.configs.config import SharePoint2019V2Config
 from airweave.platform.cursors.sharepoint2019v2 import SharePoint2019V2Cursor
 from airweave.platform.decorators import source
 from airweave.platform.entities._base import BaseEntity, Breadcrumb
@@ -70,8 +71,8 @@ class PendingFileDownload:
     short_name="sharepoint2019v2",
     auth_methods=[AuthenticationMethod.DIRECT],
     oauth_type=None,
-    auth_config_class="SharePoint2019V2AuthConfig",
-    config_class="SharePoint2019V2Config",
+    auth_config_class=SharePoint2019V2AuthConfig,
+    config_class=SharePoint2019V2Config,
     supports_continuous=True,
     cursor_class=SharePoint2019V2Cursor,
     supports_access_control=True,
@@ -420,7 +421,7 @@ class SharePoint2019V2Source(BaseSource):
             async for entity in self._incremental_sync():
                 yield entity
 
-    async def _full_sync(self) -> AsyncGenerator[BaseEntity, None]:
+    async def _full_sync(self) -> AsyncGenerator[BaseEntity, None]:  # noqa: C901
         """Full crawl of the SharePoint site hierarchy.
 
         After completing the crawl, captures the current change token
@@ -581,7 +582,7 @@ class SharePoint2019V2Source(BaseSource):
         finally:
             ldap_client.close()
 
-    async def _incremental_sync(self) -> AsyncGenerator[BaseEntity, None]:
+    async def _incremental_sync(self) -> AsyncGenerator[BaseEntity, None]:  # noqa: C901
         """Incremental sync using SharePoint GetChanges API.
 
         Fetches only changes since the last stored change token.

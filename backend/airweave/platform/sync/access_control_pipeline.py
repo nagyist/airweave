@@ -108,8 +108,13 @@ class AccessControlPipeline:
     # Full ACL sync (existing logic + DirSync cookie seeding)
     # -------------------------------------------------------------------------
 
-    async def _process_full(self, source, sync_context: "SyncContext") -> int:
-        """Full ACL sync: collect all memberships, upsert, cleanup orphans.
+    async def _process_full(self, source, sync_context: "SyncContext") -> int:  # noqa: C901
+        """Full ACL sync: stream memberships to DB in batches, then cleanup orphans.
+
+        Memberships are deduped and written to PostgreSQL in batches as they
+        stream from the source. This ensures partial progress is persisted even
+        if the sync is interrupted. Orphan cleanup runs after all memberships
+        have been collected.
 
         After completion, seeds a DirSync cookie for future incremental syncs.
 
@@ -122,66 +127,87 @@ class AccessControlPipeline:
         """
         sync_context.logger.info("Starting FULL ACL sync")
 
-        # Step 1: Collect memberships from source
-        memberships: List[MembershipTuple] = []
-        try:
-            if not hasattr(source, "generate_access_control_memberships"):
-                sync_context.logger.warning(
-                    "Source has supports_access_control=True but no "
-                    "generate_access_control_memberships() method. Skipping."
-                )
-                return 0
+        BATCH_SIZE = 500
+        upserted_count = 0
+        total_collected = 0
+        batch_buffer: List[MembershipTuple] = []
+        collection_complete = False
 
+        if not hasattr(source, "generate_access_control_memberships"):
+            sync_context.logger.warning(
+                "Source has supports_access_control=True but no "
+                "generate_access_control_memberships() method. Skipping."
+            )
+            return 0
+
+        # Stream memberships from source, dedupe, and write to DB in batches
+        try:
             async for membership in source.generate_access_control_memberships():
-                memberships.append(membership)
-                if len(memberships) % 100 == 0:
-                    sync_context.logger.debug(f"Collected {len(memberships)} memberships so far...")
-                # Publish progress heartbeat every 1000 memberships to prevent
-                # stuck-job detection from cancelling during long ACL expansion
-                if len(memberships) % 1000 == 0:
+                total_collected += 1
+
+                # Dedupe via tracker (also records key for orphan detection)
+                is_new = self._tracker.track_membership(
+                    member_id=membership.member_id,
+                    member_type=membership.member_type,
+                    group_id=membership.group_id,
+                )
+                if not is_new:
+                    continue
+
+                batch_buffer.append(membership)
+
+                # Flush batch to DB when full
+                if len(batch_buffer) >= BATCH_SIZE:
+                    upserted_count += await self._flush_batch(batch_buffer, sync_context)
+                    batch_buffer = []
+
+                # Progress logging + heartbeat
+                if total_collected % 1000 == 0:
+                    stats = self._tracker.get_stats()
+                    sync_context.logger.debug(
+                        f"ACL progress: {total_collected} collected, "
+                        f"{stats.encountered} unique, "
+                        f"{upserted_count} written to DB"
+                    )
                     await sync_context.state_publisher.publish_progress()
+
+            collection_complete = True
+
         except Exception as e:
             sync_context.logger.error(
                 f"Error collecting memberships: {get_error_message(e)}",
                 exc_info=True,
             )
-            # Don't do orphan cleanup if collection failed
-            return 0
-
-        # Step 2: Track + dedupe
-        upserted_count = 0
-        unique_memberships: List[MembershipTuple] = []
-        for membership in memberships:
-            is_new = self._tracker.track_membership(
-                member_id=membership.member_id,
-                member_type=membership.member_type,
-                group_id=membership.group_id,
+            # Flush whatever we have in the buffer before giving up
+            if batch_buffer:
+                upserted_count += await self._flush_batch(batch_buffer, sync_context)
+            sync_context.logger.info(
+                f"ACL collection failed after {upserted_count} memberships written to DB"
             )
-            if is_new:
-                unique_memberships.append(membership)
+            # Don't do orphan cleanup if collection failed (incomplete data)
+            return upserted_count
+
+        # Flush remaining batch
+        if batch_buffer:
+            upserted_count += await self._flush_batch(batch_buffer, sync_context)
 
         stats = self._tracker.get_stats()
         sync_context.logger.info(
-            f"Collected {stats.encountered} unique memberships "
+            f"ACL collection complete: {total_collected} total, "
+            f"{stats.encountered} unique, {upserted_count} written to DB "
             f"({stats.duplicates_skipped} duplicates skipped)"
         )
 
-        # Step 3: Resolve + dispatch (upsert)
-        if unique_memberships:
-            batch = await self._resolver.resolve(unique_memberships, sync_context)
-            upserted_count = await self._dispatcher.dispatch(batch, sync_context)
-            self._tracker.record_upserted(upserted_count)
-            sync_context.logger.info(f"Upserted {upserted_count} ACL memberships to PostgreSQL")
-
-        # Step 4: Orphan cleanup (critical for security)
-        deleted_count = await self._cleanup_orphan_memberships(
-            sync_context, self._tracker.get_encountered_keys()
-        )
-        self._tracker.record_deleted(deleted_count)
-        if deleted_count > 0:
-            sync_context.logger.warning(
-                f"Deleted {deleted_count} orphan ACL memberships (revoked permissions)"
+        # Orphan cleanup (only if collection completed successfully)
+        if collection_complete:
+            deleted_count = await self._cleanup_orphan_memberships(
+                sync_context, self._tracker.get_encountered_keys()
             )
+            self._tracker.record_deleted(deleted_count)
+            if deleted_count > 0:
+                sync_context.logger.warning(
+                    f"Deleted {deleted_count} orphan ACL memberships (revoked permissions)"
+                )
 
         self._tracker.log_summary()
 
@@ -189,6 +215,31 @@ class AccessControlPipeline:
         await self._store_dirsync_cookie_after_full(source, sync_context)
 
         return upserted_count
+
+    async def _flush_batch(
+        self,
+        batch: List[MembershipTuple],
+        sync_context: "SyncContext",
+    ) -> int:
+        """Write a batch of deduplicated memberships to PostgreSQL.
+
+        Uses the resolver/dispatcher pipeline for consistency with
+        the existing action architecture.
+
+        Args:
+            batch: List of unique MembershipTuple objects to persist.
+            sync_context: Sync context.
+
+        Returns:
+            Number of memberships upserted.
+        """
+        if not batch:
+            return 0
+
+        resolved = await self._resolver.resolve(batch, sync_context)
+        count = await self._dispatcher.dispatch(resolved, sync_context)
+        self._tracker.record_upserted(count)
+        return count
 
     # -------------------------------------------------------------------------
     # Incremental ACL sync (DirSync delta changes)

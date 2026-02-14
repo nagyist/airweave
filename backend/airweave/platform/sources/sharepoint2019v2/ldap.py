@@ -298,7 +298,7 @@ class LDAPClient:
             f"{self.MAX_RETRIES} attempts: {last_error}"
         )
 
-    async def _query_members_batch(
+    async def _query_members_batch(  # noqa: C901
         self, member_dns: List[str]
     ) -> Dict[str, Optional[Tuple[List[str], str]]]:
         """Resolve multiple member DNs in a single batched LDAP query.
@@ -449,7 +449,7 @@ class LDAPClient:
 
         return sam_account_name
 
-    async def expand_group_recursive(
+    async def expand_group_recursive(  # noqa: C901
         self,
         group_login_name: str,
         visited_groups: Optional[Set[str]] = None,
@@ -1015,7 +1015,7 @@ class LDAPClient:
             more_results=more_results,
         )
 
-    def _process_dirsync_entries(
+    def _process_dirsync_entries(  # noqa: C901
         self,
         entries: List,
         is_initial: bool,
@@ -1133,7 +1133,7 @@ class LDAPClient:
         except (KeyError, IndexError, TypeError, AttributeError):
             return None
 
-    def _get_entry_members(
+    def _get_entry_members(  # noqa: C901
         self,
         entry: Any,
         incremental_mode: bool,

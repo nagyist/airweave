@@ -123,7 +123,7 @@ class AgenticSearchConfig:
     # here produces query embeddings in a different vector space than
     # the stored document embeddings, making semantic search useless.
     DENSE_EMBEDDER_PROVIDER = DenseEmbedderProvider.OPENAI
-    DENSE_EMBEDDER_MODEL = DenseEmbedderModel.TEXT_EMBEDDING_3_SMALL
+    DENSE_EMBEDDER_MODEL = DenseEmbedderModel.TEXT_EMBEDDING_3_LARGE
 
     # Sparse embedder
     SPARSE_EMBEDDER_PROVIDER = SparseEmbedderProvider.FASTEMBED

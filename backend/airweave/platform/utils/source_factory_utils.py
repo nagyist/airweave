@@ -431,6 +431,7 @@ async def get_auth_configuration(
     }
 
 
+# [code blue] remove once callers migrated to SourceLifecycleService.create()
 def wrap_source_with_airweave_client(
     source: Any,
     source_short_name: str,

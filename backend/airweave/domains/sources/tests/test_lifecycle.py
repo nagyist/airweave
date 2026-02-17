@@ -599,8 +599,9 @@ async def test_handle_auth_config_credentials(case: HandleAuthConfigCase):
     if case.expect_raw_passthrough:
         assert result == decrypted
     elif case.has_refresh_token:
-        assert result["access_token"] == "new-access-tok"
-        assert result["refresh_token"] == case.refresh_token_value
+        assert result is mock_auth_config.model_validate.return_value
+        expected_dict = {**decrypted, "access_token": "new-access-tok"}
+        mock_auth_config.model_validate.assert_called_with(expected_dict)
         assert len(oauth2_fake._calls) == 1
     else:
         assert result is mock_validated

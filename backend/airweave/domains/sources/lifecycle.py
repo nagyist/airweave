@@ -551,7 +551,7 @@ class SourceLifecycleService:
             )
             updated_credentials = decrypted_credential.copy()
             updated_credentials["access_token"] = oauth2_response.access_token
-            return updated_credentials
+            return auth_config_class.model_validate(updated_credentials)
 
         return source_credentials
 

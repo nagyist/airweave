@@ -22,6 +22,7 @@ from airweave.core.protocols.oauth2 import OAuth2ServiceProtocol
 from airweave.core.protocols.source_connection_repository import (
     SourceConnectionRepositoryProtocol,
 )
+from airweave.core.protocols.source_lifecycle import SourceLifecycleServiceProtocol
 from airweave.core.shared_models import FeatureFlag
 from airweave.domains.auth_provider.protocols import AuthProviderRegistryProtocol
 from airweave.domains.sources.exceptions import (
@@ -42,7 +43,7 @@ from airweave.platform.sync.token_manager import TokenManager
 from airweave.schemas.source_connection import OAuthType
 
 
-class SourceLifecycleService:
+class SourceLifecycleService(SourceLifecycleServiceProtocol):
     """Manages source instance creation, configuration, and validation.
 
     All external dependencies are injected via constructor — no module-level

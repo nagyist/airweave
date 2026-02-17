@@ -16,15 +16,15 @@ from typing import TYPE_CHECKING
 
 from airweave.adapters.circuit_breaker import InMemoryCircuitBreaker
 from airweave.adapters.event_bus.in_memory import InMemoryEventBus
-from airweave.adapters.ocr.docling import DoclingOcrAdapter
-from airweave.adapters.webhooks.endpoint_verifier import HttpEndpointVerifier
-from airweave.adapters.webhooks.svix import SvixAdapter
 from airweave.adapters.oauth2 import OAuth2Service
+from airweave.adapters.ocr.docling import DoclingOcrAdapter
 from airweave.adapters.repositories import (
     ConnectionRepository,
     IntegrationCredentialRepository,
     SourceConnectionRepository,
 )
+from airweave.adapters.webhooks.endpoint_verifier import HttpEndpointVerifier
+from airweave.adapters.webhooks.svix import SvixAdapter
 from airweave.core.container.container import Container
 from airweave.core.logging import logger
 from airweave.core.protocols.event_bus import EventBus

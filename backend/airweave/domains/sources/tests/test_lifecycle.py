@@ -20,8 +20,8 @@ from airweave.domains.sources.exceptions import (
     SourceNotFoundError,
     SourceValidationError,
 )
-from airweave.adapters.oauth2.fake import FakeOAuth2Service
-from airweave.adapters.repositories.fake import (
+from airweave.adapters.oauth2.fakes import FakeOAuth2Service
+from airweave.adapters.repositories.fakes import (
     FakeConnectionRepository,
     FakeIntegrationCredentialRepository,
     FakeSourceConnectionRepository,
@@ -29,6 +29,7 @@ from airweave.adapters.repositories.fake import (
 from airweave.domains.sources.fakes.registry import FakeSourceRegistry
 from airweave.domains.sources.lifecycle import SourceLifecycleService
 from airweave.domains.sources.tests.conftest import _make_ctx, _make_entry
+from airweave.domains.sources.types import AuthConfig, SourceConnectionData
 from airweave.platform.auth_providers.auth_result import AuthProviderMode
 from airweave.platform.configs._base import Fields
 
@@ -211,22 +212,22 @@ def _sc_data(
     oauth_type=None,
     readable_auth_provider_id=None,
     auth_provider_config=None,
-):
-    """Build a source_connection_data dict for testing private methods."""
-    return {
-        "source_connection_obj": MagicMock(),
-        "connection": MagicMock(),
-        "source_class": source_class,
-        "config_fields": config_fields or {},
-        "short_name": short_name,
-        "source_connection_id": uuid4(),
-        "auth_config_class": auth_config_class,
-        "connection_id": uuid4(),
-        "integration_credential_id": uuid4(),
-        "oauth_type": oauth_type,
-        "readable_auth_provider_id": readable_auth_provider_id,
-        "auth_provider_config": auth_provider_config,
-    }
+) -> SourceConnectionData:
+    """Build a SourceConnectionData for testing private methods."""
+    return SourceConnectionData(
+        source_connection_obj=MagicMock(),
+        connection=MagicMock(),
+        source_class=source_class,
+        config_fields=config_fields or {},
+        short_name=short_name,
+        source_connection_id=uuid4(),
+        auth_config_class=auth_config_class,
+        connection_id=uuid4(),
+        integration_credential_id=uuid4(),
+        oauth_type=oauth_type,
+        readable_auth_provider_id=readable_auth_provider_id,
+        auth_provider_config=auth_provider_config,
+    )
 
 
 # ===========================================================================
@@ -388,14 +389,15 @@ async def test_load_source_connection_data(case: LoadSCDataCase):
         data = await service._load_source_connection_data(
             db=MagicMock(), source_connection_id=sc.id, ctx=ctx, logger=ctx.logger
         )
-        assert data["short_name"] == case.short_name
-        assert data["source_class"] is _StubSourceValid
+        assert isinstance(data, SourceConnectionData)
+        assert data.short_name == case.short_name
+        assert data.source_class is _StubSourceValid
         if case.readable_auth_provider_id:
-            assert data["readable_auth_provider_id"] == case.readable_auth_provider_id
+            assert data.readable_auth_provider_id == case.readable_auth_provider_id
         if case.config_fields:
-            assert data["config_fields"] == case.config_fields
+            assert data.config_fields == case.config_fields
         if not case.has_cred_id and case.readable_auth_provider_id:
-            assert data["integration_credential_id"] is None
+            assert data.integration_credential_id is None
 
 
 # ===========================================================================
@@ -443,13 +445,16 @@ async def test_get_auth_configuration_routing(case: AuthConfigRoutingCase):
             db=MagicMock(), source_connection_data=data, ctx=ctx,
             logger=ctx.logger, access_token=case.access_token,
         )
-        assert result["credentials"] == case.access_token
-        assert result["auth_mode"] == AuthProviderMode.DIRECT
+        assert isinstance(result, AuthConfig)
+        assert result.credentials == case.access_token
+        assert result.auth_mode == AuthProviderMode.DIRECT
     elif case.expected_route == "auth_provider":
         with patch.object(service, "_get_auth_provider_configuration",
                           new_callable=AsyncMock) as mock_ap:
-            mock_ap.return_value = {"credentials": "ap", "auth_mode": AuthProviderMode.DIRECT,
-                                    "http_client_factory": None, "auth_provider_instance": None}
+            mock_ap.return_value = AuthConfig(
+                credentials="ap", auth_mode=AuthProviderMode.DIRECT,
+                http_client_factory=None, auth_provider_instance=None,
+            )
             result = await service._get_auth_configuration(
                 db=MagicMock(), source_connection_data=data, ctx=ctx,
                 logger=ctx.logger, access_token=case.access_token,
@@ -458,8 +463,10 @@ async def test_get_auth_configuration_routing(case: AuthConfigRoutingCase):
     else:
         with patch.object(service, "_get_database_credentials",
                           new_callable=AsyncMock) as mock_db:
-            mock_db.return_value = {"credentials": "db", "auth_mode": AuthProviderMode.DIRECT,
-                                    "http_client_factory": None, "auth_provider_instance": None}
+            mock_db.return_value = AuthConfig(
+                credentials="db", auth_mode=AuthProviderMode.DIRECT,
+                http_client_factory=None, auth_provider_instance=None,
+            )
             result = await service._get_auth_configuration(
                 db=MagicMock(), source_connection_data=data, ctx=ctx,
                 logger=ctx.logger, access_token=case.access_token,
@@ -504,7 +511,7 @@ async def test_get_database_credentials(case: DBCredCase):
     service = _make_service(cred_repo=cred_repo)
     ctx = _make_ctx()
     data = _sc_data(auth_config_class=case.auth_config_class)
-    data["integration_credential_id"] = cred_id if case.has_cred_id else None
+    data.integration_credential_id = cred_id if case.has_cred_id else None
 
     if case.expect_error:
         with pytest.raises(case.expect_error, match=case.error_match):
@@ -522,7 +529,8 @@ async def test_get_database_credentials(case: DBCredCase):
             result = await service._get_database_credentials(
                 db=MagicMock(), source_connection_data=data, ctx=ctx, logger=ctx.logger
             )
-        assert result["credentials"] == {"api_key": "sk"}
+        assert isinstance(result, AuthConfig)
+        assert result.credentials == {"api_key": "sk"}
         mock_handle.assert_called_once()
     else:
         with patch("airweave.domains.sources.lifecycle.credentials") as mock_creds:
@@ -530,8 +538,9 @@ async def test_get_database_credentials(case: DBCredCase):
             result = await service._get_database_credentials(
                 db=MagicMock(), source_connection_data=data, ctx=ctx, logger=ctx.logger
             )
-        assert result["credentials"] == {"access_token": "decrypted"}
-        assert result["auth_mode"] == AuthProviderMode.DIRECT
+        assert isinstance(result, AuthConfig)
+        assert result.credentials == {"access_token": "decrypted"}
+        assert result.auth_mode == AuthProviderMode.DIRECT
 
 
 # ===========================================================================
@@ -718,10 +727,12 @@ async def test_configure_token_manager(case: TokenManagerCase):
     source = MagicMock() if case.expect_tm_set else await _StubSourceValid.create("tok")
     data = _sc_data(short_name="src", oauth_type=case.oauth_type)
     ctx = _make_ctx()
-    auth_config = {
-        "auth_mode": case.auth_mode,
-        "auth_provider_instance": None,
-    }
+    auth_config = AuthConfig(
+        credentials="tok",
+        http_client_factory=None,
+        auth_provider_instance=None,
+        auth_mode=case.auth_mode,
+    )
 
     if case.expect_tm_set:
         with patch("airweave.domains.sources.lifecycle.TokenManager") as mock_tm:
@@ -762,14 +773,20 @@ class TestConfigureHttpClientFactory:
     def test_sets_when_present(self):
         source = MagicMock()
         factory = MagicMock()
-        SourceLifecycleService._configure_http_client_factory(
-            source, {"http_client_factory": factory})
+        ac = AuthConfig(
+            credentials="x", http_client_factory=factory,
+            auth_provider_instance=None, auth_mode=AuthProviderMode.DIRECT,
+        )
+        SourceLifecycleService._configure_http_client_factory(source, ac)
         source.set_http_client_factory.assert_called_once_with(factory)
 
     def test_noop_when_none(self):
         source = MagicMock()
-        SourceLifecycleService._configure_http_client_factory(
-            source, {"http_client_factory": None})
+        ac = AuthConfig(
+            credentials="x", http_client_factory=None,
+            auth_provider_instance=None, auth_mode=AuthProviderMode.DIRECT,
+        )
+        SourceLifecycleService._configure_http_client_factory(source, ac)
         source.set_http_client_factory.assert_not_called()
 
 
@@ -777,16 +794,14 @@ class TestConfigureSyncIdentifiers:
     def test_happy(self):
         source = MagicMock()
         ctx = _make_ctx()
-        SourceLifecycleService._configure_sync_identifiers(
-            source, {"source_connection_id": uuid4()}, ctx)
+        SourceLifecycleService._configure_sync_identifiers(source, _sc_data(), ctx)
         source.set_sync_identifiers.assert_called_once()
 
     def test_swallows_exception(self):
         source = MagicMock()
         source.set_sync_identifiers.side_effect = AttributeError
         ctx = _make_ctx()
-        SourceLifecycleService._configure_sync_identifiers(
-            source, {"source_connection_id": uuid4()}, ctx)
+        SourceLifecycleService._configure_sync_identifiers(source, _sc_data(), ctx)
 
 
 class TestConfigureFileDownloader:
@@ -869,9 +884,10 @@ MERGE_CONFIG_TABLE = [
 
 @pytest.mark.parametrize("case", MERGE_CONFIG_TABLE, ids=lambda c: c.id)
 def test_merge_source_config(case: MergeConfigCase):
-    data = {"config_fields": case.existing}
+    data = _sc_data()
+    data.config_fields = case.existing  # may be None for the null-config-fields case
     SourceLifecycleService._merge_source_config(data, case.provider)
-    assert data["config_fields"][case.expected_key] == case.expected_value
+    assert data.config_fields[case.expected_key] == case.expected_value
 
 
 # ===========================================================================
@@ -919,7 +935,8 @@ def test_build_source_config_field_mappings(case: ConfigMappingCase):
         entries.append(entry)
 
     service = _make_service(source_entries=entries)
-    result = service._build_source_config_field_mappings({"short_name": case.short_name})
+    data = _sc_data(short_name=case.short_name or "")
+    result = service._build_source_config_field_mappings(data)
     assert result == case.expected
 
 

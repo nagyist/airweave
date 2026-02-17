@@ -5,8 +5,6 @@ from __future__ import annotations
 from typing import Any, Dict, Optional
 from uuid import UUID
 
-from airweave.domains.sources.exceptions import SourceValidationError
-
 
 class FakeSourceLifecycleService:
     """Test implementation of SourceLifecycleServiceProtocol.

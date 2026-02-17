@@ -1,4 +1,11 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Any, Callable, Optional
+from uuid import UUID
+
 from airweave.core.protocols.registry import BaseRegistryEntry
+from airweave.platform.auth_providers.auth_result import AuthProviderMode
 from airweave.platform.configs._base import Fields
 
 
@@ -37,3 +44,44 @@ class SourceRegistryEntry(BaseRegistryEntry):
 
     # Output entity definitions (short_names — use entity_definition_registry.get() for full entry)
     output_entity_definitions: list[str]
+
+
+# ---------------------------------------------------------------------------
+# Internal value objects for SourceLifecycleService
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class SourceConnectionData:
+    """Loaded source connection + connection metadata, passed between lifecycle methods.
+
+    Built by _load_source_connection_data(), consumed by auth, credential,
+    and configuration helpers. Not frozen — _merge_source_config mutates config_fields.
+    """
+
+    source_connection_obj: Any
+    connection: Any
+    source_class: type
+    config_fields: dict
+    short_name: str
+    source_connection_id: UUID
+    auth_config_class: Optional[str]
+    connection_id: UUID
+    integration_credential_id: Optional[UUID]
+    oauth_type: Optional[str]
+    readable_auth_provider_id: Optional[str]
+    auth_provider_config: Optional[dict]
+
+
+@dataclass(frozen=True)
+class AuthConfig:
+    """Resolved auth configuration returned by _get_auth_configuration().
+
+    Carries credentials, optional HTTP client factory (for proxy mode),
+    auth provider instance, and the resolved auth mode.
+    """
+
+    credentials: Any
+    http_client_factory: Optional[Callable]
+    auth_provider_instance: Any  # Optional[BaseAuthProvider] at runtime
+    auth_mode: AuthProviderMode

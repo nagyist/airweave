@@ -30,6 +30,7 @@ from airweave.domains.sources.exceptions import (
     SourceValidationError,
 )
 from airweave.domains.sources.protocols import SourceRegistryProtocol
+from airweave.domains.sources.types import AuthConfig, SourceConnectionData
 from airweave.platform.auth_providers._base import BaseAuthProvider
 from airweave.platform.auth_providers.auth_result import AuthProviderMode
 from airweave.platform.auth_providers.pipedream import PipedreamAuthProvider
@@ -116,15 +117,14 @@ class SourceLifecycleService:
 
         # 3. Process credentials for source consumption
         source_credentials = self._process_credentials_for_source(
-            raw_credentials=auth_config["credentials"],
+            raw_credentials=auth_config.credentials,
             source_connection_data=source_connection_data,
             logger=logger,
         )
 
         # 4. Create source instance
-        source_class = source_connection_data["source_class"]
-        source = await source_class.create(
-            source_credentials, config=source_connection_data["config_fields"]
+        source = await source_connection_data.source_class.create(
+            source_credentials, config=source_connection_data.config_fields
         )
 
         # 5. Configure source
@@ -136,7 +136,7 @@ class SourceLifecycleService:
             db=db,
             source=source,
             source_connection_data=source_connection_data,
-            source_credentials=auth_config["credentials"],
+            source_credentials=auth_config.credentials,
             ctx=ctx,
             logger=logger,
             access_token=access_token,
@@ -148,8 +148,8 @@ class SourceLifecycleService:
 
         self._wrap_source_with_airweave_client(
             source=source,
-            source_short_name=source_connection_data["short_name"],
-            source_connection_id=source_connection_data["source_connection_id"],
+            source_short_name=source_connection_data.short_name,
+            source_connection_id=source_connection_data.source_connection_id,
             ctx=ctx,
             logger=logger,
         )
@@ -201,11 +201,8 @@ class SourceLifecycleService:
         source_connection_id: UUID,
         ctx: ApiContext,
         logger: ContextualLogger,
-    ) -> dict:
-        """Load source connection, connection, and resolve source class from registry.
-
-        Returns a dict compatible with existing source_factory_utils functions.
-        """
+    ) -> SourceConnectionData:
+        """Load source connection, connection, and resolve source class from registry."""
         source_connection = await self._sc_repo.get(db, source_connection_id, ctx)
         if not source_connection:
             raise NotFoundException(f"Source connection {source_connection_id} not found")
@@ -218,17 +215,12 @@ class SourceLifecycleService:
         except KeyError:
             raise SourceNotFoundError(short_name)
 
-        source_class = entry.source_class_ref
-        auth_config_class = entry.auth_config_ref.__name__ if entry.auth_config_ref else None
-        oauth_type = entry.oauth_type
-
         # Load connection for credential access
         connection = await self._conn_repo.get(db, source_connection.connection_id, ctx)
         if not connection:
             raise NotFoundException("Connection not found")
 
         connection_id = UUID(str(connection.id))
-        source_connection_id_clean = UUID(str(source_connection.id))
 
         readable_auth_provider_id = getattr(source_connection, "readable_auth_provider_id", None)
 
@@ -241,22 +233,20 @@ class SourceLifecycleService:
             else None
         )
 
-        config_fields = source_connection.config_fields or {}
-
-        return {
-            "source_connection_obj": source_connection,
-            "connection": connection,
-            "source_class": source_class,
-            "config_fields": config_fields,
-            "short_name": short_name,
-            "source_connection_id": source_connection_id_clean,
-            "auth_config_class": auth_config_class,
-            "connection_id": connection_id,
-            "integration_credential_id": integration_credential_id,
-            "oauth_type": oauth_type,
-            "readable_auth_provider_id": readable_auth_provider_id,
-            "auth_provider_config": getattr(source_connection, "auth_provider_config", None),
-        }
+        return SourceConnectionData(
+            source_connection_obj=source_connection,
+            connection=connection,
+            source_class=entry.source_class_ref,
+            config_fields=source_connection.config_fields or {},
+            short_name=short_name,
+            source_connection_id=UUID(str(source_connection.id)),
+            auth_config_class=(entry.auth_config_ref.__name__ if entry.auth_config_ref else None),
+            connection_id=connection_id,
+            integration_credential_id=integration_credential_id,
+            oauth_type=entry.oauth_type,
+            readable_auth_provider_id=readable_auth_provider_id,
+            auth_provider_config=getattr(source_connection, "auth_provider_config", None),
+        )
 
     # ------------------------------------------------------------------
     # Private: auth configuration
@@ -265,11 +255,11 @@ class SourceLifecycleService:
     async def _get_auth_configuration(
         self,
         db: Any,
-        source_connection_data: dict,
+        source_connection_data: SourceConnectionData,
         ctx: ApiContext,
         logger: ContextualLogger,
         access_token: Optional[str] = None,
-    ) -> dict:
+    ) -> AuthConfig:
         """Get complete auth configuration including credentials and proxy setup.
 
         Handles three auth methods:
@@ -280,23 +270,23 @@ class SourceLifecycleService:
         # Case 1: Direct token injection (highest priority — sync only)
         if access_token:
             logger.debug("Using directly injected access token")
-            return {
-                "credentials": access_token,
-                "http_client_factory": None,
-                "auth_provider_instance": None,
-                "auth_mode": AuthProviderMode.DIRECT,
-            }
+            return AuthConfig(
+                credentials=access_token,
+                http_client_factory=None,
+                auth_provider_instance=None,
+                auth_mode=AuthProviderMode.DIRECT,
+            )
 
         # Case 2: Auth provider connection
-        readable_auth_provider_id = source_connection_data.get("readable_auth_provider_id")
-        auth_provider_config = source_connection_data.get("auth_provider_config")
-
-        if readable_auth_provider_id and auth_provider_config:
+        if (
+            source_connection_data.readable_auth_provider_id
+            and source_connection_data.auth_provider_config
+        ):
             return await self._get_auth_provider_configuration(
                 db=db,
                 source_connection_data=source_connection_data,
-                readable_auth_provider_id=readable_auth_provider_id,
-                auth_provider_config=auth_provider_config,
+                readable_auth_provider_id=source_connection_data.readable_auth_provider_id,
+                auth_provider_config=source_connection_data.auth_provider_config,
                 ctx=ctx,
                 logger=logger,
             )
@@ -312,12 +302,12 @@ class SourceLifecycleService:
     async def _get_auth_provider_configuration(
         self,
         db: Any,
-        source_connection_data: dict,
+        source_connection_data: SourceConnectionData,
         readable_auth_provider_id: str,
         auth_provider_config: Dict[str, Any],
         ctx: ApiContext,
         logger: ContextualLogger,
-    ) -> dict:
+    ) -> AuthConfig:
         """Resolve credentials via an auth provider (Pipedream, Composio, etc.)."""
         logger.info("Using auth provider for authentication")
 
@@ -330,7 +320,7 @@ class SourceLifecycleService:
         )
 
         # Get runtime auth fields from the source registry (precomputed at startup)
-        short_name = source_connection_data["short_name"]
+        short_name = source_connection_data.short_name
         entry = self._source_registry.get(short_name)
         auth_fields_all = entry.runtime_auth_all_fields
         auth_fields_optional = entry.runtime_auth_optional_fields
@@ -361,60 +351,60 @@ class SourceLifecycleService:
                     logger=logger,
                 )
 
-            return {
-                "credentials": "PROXY_MODE",
-                "http_client_factory": http_client_factory,
-                "auth_provider_instance": auth_provider_instance,
-                "auth_mode": AuthProviderMode.PROXY,
-            }
+            return AuthConfig(
+                credentials="PROXY_MODE",
+                http_client_factory=http_client_factory,
+                auth_provider_instance=auth_provider_instance,
+                auth_mode=AuthProviderMode.PROXY,
+            )
 
-        return {
-            "credentials": auth_result.credentials,
-            "http_client_factory": None,
-            "auth_provider_instance": auth_provider_instance,
-            "auth_mode": AuthProviderMode.DIRECT,
-        }
+        return AuthConfig(
+            credentials=auth_result.credentials,
+            http_client_factory=None,
+            auth_provider_instance=auth_provider_instance,
+            auth_mode=AuthProviderMode.DIRECT,
+        )
 
     async def _get_database_credentials(
         self,
         db: Any,
-        source_connection_data: dict,
+        source_connection_data: SourceConnectionData,
         ctx: ApiContext,
         logger: ContextualLogger,
-    ) -> dict:
+    ) -> AuthConfig:
         """Load and decrypt credentials from the database."""
-        integration_credential_id = source_connection_data.get("integration_credential_id")
-        if not integration_credential_id:
+        if not source_connection_data.integration_credential_id:
             raise NotFoundException("Source connection has no integration credential")
 
-        credential = await self._cred_repo.get(db, integration_credential_id, ctx)
+        credential = await self._cred_repo.get(
+            db, source_connection_data.integration_credential_id, ctx
+        )
         if not credential:
             raise NotFoundException("Source integration credential not found")
 
         decrypted_credential = credentials.decrypt(credential.encrypted_credentials)
 
-        auth_config_class = source_connection_data.get("auth_config_class")
-        if auth_config_class:
+        if source_connection_data.auth_config_class:
             processed = await self._handle_auth_config_credentials(
                 db=db,
                 source_connection_data=source_connection_data,
                 decrypted_credential=decrypted_credential,
                 ctx=ctx,
-                connection_id=source_connection_data.get("connection_id"),
+                connection_id=source_connection_data.connection_id,
             )
-            return {
-                "credentials": processed,
-                "http_client_factory": None,
-                "auth_provider_instance": None,
-                "auth_mode": AuthProviderMode.DIRECT,
-            }
+            return AuthConfig(
+                credentials=processed,
+                http_client_factory=None,
+                auth_provider_instance=None,
+                auth_mode=AuthProviderMode.DIRECT,
+            )
 
-        return {
-            "credentials": decrypted_credential,
-            "http_client_factory": None,
-            "auth_provider_instance": None,
-            "auth_mode": AuthProviderMode.DIRECT,
-        }
+        return AuthConfig(
+            credentials=decrypted_credential,
+            http_client_factory=None,
+            auth_provider_instance=None,
+            auth_mode=AuthProviderMode.DIRECT,
+        )
 
     # ------------------------------------------------------------------
     # Private: auth helpers
@@ -480,7 +470,7 @@ class SourceLifecycleService:
     @staticmethod
     async def _create_pipedream_proxy_factory(
         auth_provider_instance: PipedreamAuthProvider,
-        source_connection_data: dict,
+        source_connection_data: SourceConnectionData,
         ctx: ApiContext,
         logger: ContextualLogger,
     ) -> Optional[Callable]:
@@ -494,7 +484,7 @@ class SourceLifecycleService:
                 }
 
                 pipedream_app_slug = auth_provider_instance._get_pipedream_app_slug(
-                    source_connection_data["short_name"]
+                    source_connection_data.short_name
                 )
 
                 response = await client.get(
@@ -525,13 +515,13 @@ class SourceLifecycleService:
                 **httpx_kwargs,
             )
 
-        logger.info(f"Configured Pipedream proxy for {source_connection_data['short_name']}")
+        logger.info(f"Configured Pipedream proxy for {source_connection_data.short_name}")
         return create_proxy_client
 
     async def _handle_auth_config_credentials(
         self,
         db: Any,
-        source_connection_data: dict,
+        source_connection_data: SourceConnectionData,
         decrypted_credential: dict,
         ctx: ApiContext,
         connection_id: UUID,
@@ -541,7 +531,7 @@ class SourceLifecycleService:
         Uses source_registry.auth_config_ref instead of resource_locator.get_auth_config().
         Uses injected oauth2_service instead of module-level singleton.
         """
-        short_name = source_connection_data["short_name"]
+        short_name = source_connection_data.short_name
         entry = self._source_registry.get(short_name)
         auth_config_class = entry.auth_config_ref
 
@@ -557,7 +547,7 @@ class SourceLifecycleService:
                 ctx,
                 connection_id,
                 decrypted_credential,
-                source_connection_data["config_fields"],
+                source_connection_data.config_fields,
             )
             updated_credentials = decrypted_credential.copy()
             updated_credentials["access_token"] = oauth2_response.access_token
@@ -572,7 +562,7 @@ class SourceLifecycleService:
     def _process_credentials_for_source(
         self,
         raw_credentials: Any,
-        source_connection_data: dict,
+        source_connection_data: SourceConnectionData,
         logger: ContextualLogger,
     ) -> Any:
         """Process raw credentials into the format expected by the source.
@@ -582,8 +572,8 @@ class SourceLifecycleService:
         2. Sources with auth_config_class and dict credentials: Convert to auth config object
         3. Other sources: Pass through as-is
         """
-        short_name = source_connection_data["short_name"]
-        oauth_type = source_connection_data.get("oauth_type")
+        short_name = source_connection_data.short_name
+        oauth_type = source_connection_data.oauth_type
 
         # Case 1: OAuth sources without auth_config_class need just the access_token string
         entry = self._source_registry.get(short_name)
@@ -628,17 +618,17 @@ class SourceLifecycleService:
             source.set_logger(logger)
 
     @staticmethod
-    def _configure_http_client_factory(source: BaseSource, auth_config: dict) -> None:
-        if auth_config.get("http_client_factory"):
-            source.set_http_client_factory(auth_config["http_client_factory"])
+    def _configure_http_client_factory(source: BaseSource, auth_config: AuthConfig) -> None:
+        if auth_config.http_client_factory:
+            source.set_http_client_factory(auth_config.http_client_factory)
 
     @staticmethod
     def _configure_sync_identifiers(
-        source: BaseSource, source_connection_data: dict, ctx: ApiContext
+        source: BaseSource, source_connection_data: SourceConnectionData, ctx: ApiContext
     ) -> None:
         try:
             organization_id = ctx.organization.id
-            sc_id = source_connection_data.get("source_connection_id")
+            sc_id = source_connection_data.source_connection_id
             if hasattr(source, "set_sync_identifiers") and sc_id:
                 source.set_sync_identifiers(
                     organization_id=str(organization_id),
@@ -665,34 +655,32 @@ class SourceLifecycleService:
     async def _configure_token_manager(
         db: Any,
         source: BaseSource,
-        source_connection_data: dict,
+        source_connection_data: SourceConnectionData,
         source_credentials: Any,
         ctx: ApiContext,
         logger: ContextualLogger,
         access_token: Optional[str],
-        auth_config: dict,
+        auth_config: AuthConfig,
     ) -> None:
         """Set up token manager for OAuth sources that support refresh."""
-        auth_mode = auth_config.get("auth_mode")
-        auth_provider_instance: Optional[BaseAuthProvider] = auth_config.get(
-            "auth_provider_instance"
-        )
+        auth_mode = auth_config.auth_mode
+        auth_provider_instance: Optional[BaseAuthProvider] = auth_config.auth_provider_instance
 
         if access_token is not None:
             logger.debug(
-                f"Skipping token manager for {source_connection_data['short_name']} "
+                f"Skipping token manager for {source_connection_data.short_name} "
                 f"— direct token injection"
             )
             return
 
         if auth_mode == AuthProviderMode.PROXY:
             logger.info(
-                f"Skipping token manager for {source_connection_data['short_name']} — proxy mode"
+                f"Skipping token manager for {source_connection_data.short_name} — proxy mode"
             )
             return
 
-        short_name = source_connection_data["short_name"]
-        oauth_type = source_connection_data.get("oauth_type")
+        short_name = source_connection_data.short_name
+        oauth_type = source_connection_data.oauth_type
 
         if not oauth_type:
             return
@@ -709,11 +697,9 @@ class SourceLifecycleService:
                 "SourceConnection",
                 (),
                 {
-                    "id": source_connection_data["connection_id"],
-                    "integration_credential_id": source_connection_data[
-                        "integration_credential_id"
-                    ],
-                    "config_fields": source_connection_data.get("config_fields"),
+                    "id": source_connection_data.connection_id,
+                    "integration_credential_id": source_connection_data.integration_credential_id,
+                    "config_fields": source_connection_data.config_fields,
                 },
             )()
 
@@ -786,14 +772,14 @@ class SourceLifecycleService:
 
     def _build_source_config_field_mappings(
         self,
-        source_connection_data: dict,
+        source_connection_data: SourceConnectionData,
     ) -> Dict[str, str]:
         """Build a mapping of config fields that can be populated by auth providers.
 
         Introspects the source's config class (from registry) for fields with
         `auth_provider_field` in their json_schema_extra.
         """
-        short_name = source_connection_data.get("short_name")
+        short_name = source_connection_data.short_name
         if not short_name:
             return {}
 
@@ -816,15 +802,15 @@ class SourceLifecycleService:
 
     @staticmethod
     def _merge_source_config(
-        source_connection_data: dict,
+        source_connection_data: SourceConnectionData,
         source_config: Dict[str, Any],
     ) -> None:
         """Merge auth-provider-sourced config into config_fields.
 
         User-provided values take precedence over auth-provider values.
         """
-        existing_config = source_connection_data.get("config_fields") or {}
+        existing_config = source_connection_data.config_fields or {}
         for key, value in source_config.items():
             if key not in existing_config or existing_config[key] is None:
                 existing_config[key] = value
-        source_connection_data["config_fields"] = existing_config
+        source_connection_data.config_fields = existing_config

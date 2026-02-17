@@ -51,7 +51,6 @@ class _StubSourceValid:
         instance._config = config
         instance._logger = None
         instance._token_manager = None
-        instance._file_downloader = None
         instance._sync_org_id = None
         instance._sync_sc_id = None
         return instance
@@ -71,9 +70,6 @@ class _StubSourceValid:
 
     def set_token_manager(self, tm):
         self._token_manager = tm
-
-    def set_file_downloader(self, fd):
-        self._file_downloader = fd
 
 
 class _StubSourceValidateFalse:
@@ -805,25 +801,6 @@ class TestConfigureSyncIdentifiers:
         SourceLifecycleService._configure_sync_identifiers(source, _sc_data(), ctx)
 
 
-class TestConfigureFileDownloader:
-    def test_happy(self):
-        source = MagicMock()
-        sync_job = MagicMock()
-        sync_job.id = uuid4()
-        with patch("airweave.domains.sources.lifecycle.FileService"):
-            SourceLifecycleService._configure_file_downloader(source, sync_job, MagicMock())
-        source.set_file_downloader.assert_called_once()
-
-    def test_raises_without_sync_job(self):
-        with pytest.raises(ValueError, match="sync_job is required"):
-            SourceLifecycleService._configure_file_downloader(MagicMock(), None, MagicMock())
-
-    def test_raises_without_sync_job_id(self):
-        sync_job = MagicMock(spec=[])
-        with pytest.raises(ValueError, match="sync_job is required"):
-            SourceLifecycleService._configure_file_downloader(MagicMock(), sync_job, MagicMock())
-
-
 # ===========================================================================
 # _wrap_source_with_airweave_client() — table-driven
 # ===========================================================================
@@ -1028,7 +1005,6 @@ async def test_create_auth_provider_instance(case: AuthProviderInstanceCase):
 class CreateCase:
     id: str
     access_token: str | None = None
-    with_sync_job: bool = False
     expect_logger: bool = True
     expect_http_client: bool = True
 
@@ -1036,7 +1012,6 @@ class CreateCase:
 CREATE_TABLE = [
     CreateCase(id="db-creds-no-sync-job"),
     CreateCase(id="access-token-injection", access_token="injected"),
-    CreateCase(id="with-sync-job", with_sync_job=True),
 ]
 
 
@@ -1059,21 +1034,12 @@ async def test_create(case: CreateCase):
                             conn_repo=conn_repo, cred_repo=cred_repo)
     ctx = _make_ctx()
 
-    sync_job = None
-    if case.with_sync_job:
-        sync_job = MagicMock()
-        sync_job.id = uuid4()
-
-    with (
-        patch("airweave.domains.sources.lifecycle.credentials") as mock_creds,
-        patch("airweave.domains.sources.lifecycle.FileService") as mock_fs,
-    ):
+    with patch("airweave.domains.sources.lifecycle.credentials") as mock_creds:
         mock_creds.decrypt.return_value = {"access_token": "tok"}
-        mock_fs.return_value = MagicMock()
 
         source = await service.create(
             db=MagicMock(), source_connection_id=sc.id, ctx=ctx,
-            access_token=case.access_token, sync_job=sync_job,
+            access_token=case.access_token,
         )
 
     assert isinstance(source, _StubSourceValid)
@@ -1081,8 +1047,6 @@ async def test_create(case: CreateCase):
         assert source._logger is not None
     if case.expect_http_client:
         assert source._http_client_factory is not None
-    if case.with_sync_job:
-        assert source._file_downloader is not None
 
 
 # ===========================================================================

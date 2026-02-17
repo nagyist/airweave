@@ -37,13 +37,11 @@ class FakeSourceLifecycleService:
         ctx: Any,
         *,
         access_token: Optional[str] = None,
-        sync_job: Optional[Any] = None,
     ) -> Any:
         self.create_calls.append(
             {
                 "source_connection_id": source_connection_id,
                 "access_token": access_token,
-                "sync_job": sync_job,
             }
         )
         if source_connection_id not in self._sources:

@@ -38,7 +38,6 @@ from airweave.platform.auth_providers.pipedream import PipedreamAuthProvider
 from airweave.platform.http_client import PipedreamProxyClient
 from airweave.platform.http_client.airweave_client import AirweaveHttpClient
 from airweave.platform.sources._base import BaseSource
-from airweave.platform.storage import FileService
 from airweave.platform.sync.token_manager import TokenManager
 from airweave.schemas.source_connection import OAuthType
 
@@ -87,7 +86,6 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
         ctx: ApiContext,
         *,
         access_token: Optional[str] = None,
-        sync_job: Optional[Any] = None,
     ) -> BaseSource:
         """Create a fully configured source instance for sync or search.
 
@@ -97,7 +95,7 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
         3. Get auth configuration (credentials, proxy, auth provider)
         4. Process credentials for source consumption
         5. Create source instance
-        6. Configure logger, token manager, HTTP client, file downloader,
+        6. Configure logger, token manager, HTTP client,
            rate limiting, sync identifiers
         """
         logger = ctx.logger
@@ -143,9 +141,6 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
             access_token=access_token,
             auth_config=auth_config,
         )
-
-        if sync_job is not None:
-            self._configure_file_downloader(source, sync_job, logger)
 
         self._wrap_source_with_airweave_client(
             source=source,
@@ -637,20 +632,6 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
                 )
         except Exception:
             pass  # Non-fatal for older sources
-
-    @staticmethod
-    def _configure_file_downloader(
-        source: BaseSource, sync_job: Any, logger: ContextualLogger
-    ) -> None:
-        if not sync_job or not hasattr(sync_job, "id"):
-            raise ValueError("sync_job is required for file downloader initialization.")
-
-        file_downloader = FileService(sync_job_id=sync_job.id)
-        source.set_file_downloader(file_downloader)
-        logger.debug(
-            f"File downloader configured for {source.__class__.__name__} "
-            f"(sync_job_id: {sync_job.id})"
-        )
 
     @staticmethod
     async def _configure_token_manager(

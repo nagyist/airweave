@@ -22,7 +22,6 @@ class SourceLifecycleServiceProtocol(Protocol):
         ctx: Any,
         *,
         access_token: Optional[str] = None,
-        sync_job: Optional[Any] = None,
     ) -> Any:
         """Create a fully configured source instance for sync or search.
 
@@ -32,7 +31,6 @@ class SourceLifecycleServiceProtocol(Protocol):
         - Token manager (OAuth sources with refresh)
         - HTTP client (vanilla httpx or Pipedream proxy)
         - Rate limiting wrapper (AirweaveHttpClient)
-        - File downloader (if sync_job provided)
         - Sync identifiers
 
         Args:
@@ -41,7 +39,6 @@ class SourceLifecycleServiceProtocol(Protocol):
             ctx: API context (provides org, logger)
             access_token: Direct token injection (skips credential loading
                           and token manager)
-            sync_job: Sync job schema (required for file downloader)
 
         Returns:
             Fully configured BaseSource instance.

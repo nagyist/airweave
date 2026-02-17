@@ -15,20 +15,23 @@ from typing import Any
 
 from airweave.core.protocols import (
     CircuitBreaker,
-    ConnectionRepositoryProtocol,
     EndpointVerifier,
     EventBus,
-    IntegrationCredentialRepositoryProtocol,
-    OAuth2ServiceProtocol,
     OcrProvider,
-    SourceConnectionRepositoryProtocol,
-    SourceLifecycleServiceProtocol,
     WebhookAdmin,
     WebhookPublisher,
     WebhookServiceProtocol,
 )
 from airweave.domains.auth_provider.protocols import AuthProviderRegistryProtocol
-from airweave.domains.sources.protocols import SourceRegistryProtocol, SourceServiceProtocol
+from airweave.domains.connections.protocols import ConnectionRepositoryProtocol
+from airweave.domains.credentials.protocols import IntegrationCredentialRepositoryProtocol
+from airweave.domains.oauth.protocols import OAuth2ServiceProtocol
+from airweave.domains.source_connections.protocols import SourceConnectionRepositoryProtocol
+from airweave.domains.sources.protocols import (
+    SourceLifecycleServiceProtocol,
+    SourceRegistryProtocol,
+    SourceServiceProtocol,
+)
 
 
 @dataclass(frozen=True)

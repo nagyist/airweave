@@ -16,13 +16,11 @@ from typing import TYPE_CHECKING
 
 from airweave.adapters.circuit_breaker import InMemoryCircuitBreaker
 from airweave.adapters.event_bus.in_memory import InMemoryEventBus
-from airweave.adapters.oauth2 import OAuth2Service
 from airweave.adapters.ocr.docling import DoclingOcrAdapter
-from airweave.adapters.repositories import (
-    ConnectionRepository,
-    IntegrationCredentialRepository,
-    SourceConnectionRepository,
-)
+from airweave.domains.connections.repository import ConnectionRepository
+from airweave.domains.credentials.repository import IntegrationCredentialRepository
+from airweave.domains.oauth.oauth2_service import OAuth2Service
+from airweave.domains.source_connections.repository import SourceConnectionRepository
 from airweave.adapters.webhooks.endpoint_verifier import HttpEndpointVerifier
 from airweave.adapters.webhooks.svix import SvixAdapter
 from airweave.core.container.container import Container

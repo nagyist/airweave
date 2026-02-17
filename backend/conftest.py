@@ -136,7 +136,7 @@ def fake_source_lifecycle_service():
 @pytest.fixture
 def fake_sc_repo():
     """Fake SourceConnectionRepository."""
-    from airweave.adapters.repositories.fakes import FakeSourceConnectionRepository
+    from airweave.domains.source_connections.fakes.repository import FakeSourceConnectionRepository
 
     return FakeSourceConnectionRepository()
 
@@ -144,7 +144,7 @@ def fake_sc_repo():
 @pytest.fixture
 def fake_conn_repo():
     """Fake ConnectionRepository."""
-    from airweave.adapters.repositories.fakes import FakeConnectionRepository
+    from airweave.domains.connections.fakes.repository import FakeConnectionRepository
 
     return FakeConnectionRepository()
 
@@ -152,7 +152,7 @@ def fake_conn_repo():
 @pytest.fixture
 def fake_cred_repo():
     """Fake IntegrationCredentialRepository."""
-    from airweave.adapters.repositories.fakes import FakeIntegrationCredentialRepository
+    from airweave.domains.credentials.fakes.repository import FakeIntegrationCredentialRepository
 
     return FakeIntegrationCredentialRepository()
 
@@ -160,7 +160,7 @@ def fake_cred_repo():
 @pytest.fixture
 def fake_oauth2_service():
     """Fake OAuth2Service."""
-    from airweave.adapters.oauth2.fakes import FakeOAuth2Service
+    from airweave.domains.oauth.fakes.oauth2_service import FakeOAuth2Service
 
     return FakeOAuth2Service()
 

@@ -12,6 +12,10 @@ from uuid import UUID, uuid4
 
 import pytest
 
+from airweave.domains.connections.fakes.repository import FakeConnectionRepository
+from airweave.domains.credentials.fakes.repository import FakeIntegrationCredentialRepository
+from airweave.domains.oauth.fakes.oauth2_service import FakeOAuth2Service
+from airweave.domains.source_connections.fakes.repository import FakeSourceConnectionRepository
 from airweave.core.exceptions import NotFoundException
 from airweave.domains.auth_provider.fake import FakeAuthProviderRegistry
 from airweave.domains.auth_provider.types import AuthProviderRegistryEntry
@@ -19,12 +23,6 @@ from airweave.domains.sources.exceptions import (
     SourceCreationError,
     SourceNotFoundError,
     SourceValidationError,
-)
-from airweave.adapters.oauth2.fakes import FakeOAuth2Service
-from airweave.adapters.repositories.fakes import (
-    FakeConnectionRepository,
-    FakeIntegrationCredentialRepository,
-    FakeSourceConnectionRepository,
 )
 from airweave.domains.sources.fakes.registry import FakeSourceRegistry
 from airweave.domains.sources.lifecycle import SourceLifecycleService

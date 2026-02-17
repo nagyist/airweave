@@ -5,6 +5,10 @@ from __future__ import annotations
 from typing import Any, Dict, Optional
 from uuid import UUID
 
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from airweave.api.context import ApiContext
+
 
 class FakeSourceLifecycleService:
     """Test implementation of SourceLifecycleServiceProtocol.
@@ -32,9 +36,9 @@ class FakeSourceLifecycleService:
 
     async def create(
         self,
-        db: Any,
+        db: AsyncSession,
         source_connection_id: UUID,
-        ctx: Any,
+        ctx: ApiContext,
         *,
         access_token: Optional[str] = None,
     ) -> Any:

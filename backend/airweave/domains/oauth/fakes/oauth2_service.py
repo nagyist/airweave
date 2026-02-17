@@ -1,7 +1,11 @@
 """Fake OAuth2 service for testing."""
 
-from typing import Any, Optional
+from typing import Optional
 from uuid import UUID
+
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from airweave.api.context import ApiContext
 
 
 class FakeOAuth2TokenResponse:
@@ -27,9 +31,9 @@ class FakeOAuth2Service:
 
     async def refresh_access_token(
         self,
-        db: Any,
+        db: AsyncSession,
         integration_short_name: str,
-        ctx: Any,
+        ctx: ApiContext,
         connection_id: UUID,
         decrypted_credential: dict,
         config_fields: Optional[dict] = None,

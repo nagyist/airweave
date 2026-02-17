@@ -9,20 +9,21 @@ from typing import Any, Callable, Dict, Optional
 from uuid import UUID
 
 import httpx
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave.api.context import ApiContext
 from airweave.core import credentials
 from airweave.core.exceptions import NotFoundException
 from airweave.core.logging import ContextualLogger
-from airweave.core.protocols.connection_repository import ConnectionRepositoryProtocol
-from airweave.core.protocols.integration_credential_repository import (
+from airweave.domains.connections.protocols import ConnectionRepositoryProtocol
+from airweave.domains.credentials.protocols import (
     IntegrationCredentialRepositoryProtocol,
 )
-from airweave.core.protocols.oauth2 import OAuth2ServiceProtocol
-from airweave.core.protocols.source_connection_repository import (
+from airweave.domains.oauth.protocols import OAuth2ServiceProtocol
+from airweave.domains.source_connections.protocols import (
     SourceConnectionRepositoryProtocol,
 )
-from airweave.core.protocols.source_lifecycle import SourceLifecycleServiceProtocol
+from airweave.domains.sources.protocols import SourceLifecycleServiceProtocol
 from airweave.core.shared_models import FeatureFlag
 from airweave.domains.auth_provider.protocols import AuthProviderRegistryProtocol
 from airweave.domains.sources.exceptions import (
@@ -81,7 +82,7 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
 
     async def create(
         self,
-        db: Any,
+        db: AsyncSession,
         source_connection_id: UUID,
         ctx: ApiContext,
         *,
@@ -193,7 +194,7 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
 
     async def _load_source_connection_data(
         self,
-        db: Any,
+        db: AsyncSession,
         source_connection_id: UUID,
         ctx: ApiContext,
         logger: ContextualLogger,
@@ -250,7 +251,7 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
 
     async def _get_auth_configuration(
         self,
-        db: Any,
+        db: AsyncSession,
         source_connection_data: SourceConnectionData,
         ctx: ApiContext,
         logger: ContextualLogger,
@@ -297,7 +298,7 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
 
     async def _get_auth_provider_configuration(
         self,
-        db: Any,
+        db: AsyncSession,
         source_connection_data: SourceConnectionData,
         readable_auth_provider_id: str,
         auth_provider_config: Dict[str, Any],
@@ -363,7 +364,7 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
 
     async def _get_database_credentials(
         self,
-        db: Any,
+        db: AsyncSession,
         source_connection_data: SourceConnectionData,
         ctx: ApiContext,
         logger: ContextualLogger,
@@ -408,7 +409,7 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
 
     async def _create_auth_provider_instance(
         self,
-        db: Any,
+        db: AsyncSession,
         readable_auth_provider_id: str,
         auth_provider_config: Dict[str, Any],
         ctx: ApiContext,
@@ -516,7 +517,7 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
 
     async def _handle_auth_config_credentials(
         self,
-        db: Any,
+        db: AsyncSession,
         source_connection_data: SourceConnectionData,
         decrypted_credential: dict,
         ctx: ApiContext,
@@ -635,7 +636,7 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
 
     @staticmethod
     async def _configure_token_manager(
-        db: Any,
+        db: AsyncSession,
         source: BaseSource,
         source_connection_data: SourceConnectionData,
         source_credentials: Any,

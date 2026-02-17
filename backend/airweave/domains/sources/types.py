@@ -5,6 +5,9 @@ from typing import Any, Callable, Optional
 from uuid import UUID
 
 from airweave.core.protocols.registry import BaseRegistryEntry
+from airweave.models.connection import Connection
+from airweave.models.source_connection import SourceConnection
+from airweave.platform.auth_providers._base import BaseAuthProvider
 from airweave.platform.auth_providers.auth_result import AuthProviderMode
 from airweave.platform.configs._base import Fields
 
@@ -59,8 +62,8 @@ class SourceConnectionData:
     and configuration helpers. Not frozen — _merge_source_config mutates config_fields.
     """
 
-    source_connection_obj: Any
-    connection: Any
+    source_connection_obj: SourceConnection
+    connection: Connection
     source_class: type
     config_fields: dict
     short_name: str
@@ -83,5 +86,5 @@ class AuthConfig:
 
     credentials: Any
     http_client_factory: Optional[Callable]
-    auth_provider_instance: Any  # Optional[BaseAuthProvider] at runtime
+    auth_provider_instance: Optional[BaseAuthProvider]
     auth_mode: AuthProviderMode

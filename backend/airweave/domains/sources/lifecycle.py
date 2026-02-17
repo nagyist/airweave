@@ -5,10 +5,11 @@ set_*() calls that were duplicated across sync builders, search factories, and
 credential services.
 """
 
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Dict, Optional, Union
 from uuid import UUID
 
 import httpx
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave.api.context import ApiContext
@@ -41,6 +42,8 @@ from airweave.platform.http_client.airweave_client import AirweaveHttpClient
 from airweave.platform.sources._base import BaseSource
 from airweave.platform.sync.token_manager import TokenManager
 from airweave.schemas.source_connection import OAuthType
+
+SourceCredentials = Union[str, dict, BaseModel]
 
 
 class SourceLifecycleService(SourceLifecycleServiceProtocol):
@@ -156,7 +159,7 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
     async def validate(
         self,
         short_name: str,
-        credentials: Any,
+        credentials: Union[dict, BaseModel, str],
         config: Optional[Dict[str, Any]] = None,
     ) -> None:
         """Validate credentials by creating a lightweight source and calling .validate().
@@ -522,7 +525,7 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
         decrypted_credential: dict,
         ctx: ApiContext,
         connection_id: UUID,
-    ) -> Any:
+    ) -> Union[dict, BaseModel]:
         """Handle credentials that require auth config (e.g. OAuth refresh).
 
         Uses source_registry.auth_config_ref instead of resource_locator.get_auth_config().
@@ -558,10 +561,10 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
 
     def _process_credentials_for_source(
         self,
-        raw_credentials: Any,
+        raw_credentials: Union[dict, BaseModel],
         source_connection_data: SourceConnectionData,
         logger: ContextualLogger,
-    ) -> Any:
+    ) -> SourceCredentials:
         """Process raw credentials into the format expected by the source.
 
         Handles three cases:
@@ -639,7 +642,7 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
         db: AsyncSession,
         source: BaseSource,
         source_connection_data: SourceConnectionData,
-        source_credentials: Any,
+        source_credentials: SourceCredentials,
         ctx: ApiContext,
         logger: ContextualLogger,
         access_token: Optional[str],

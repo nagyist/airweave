@@ -1,9 +1,11 @@
 """Protocols for source services."""
 
-from typing import Any, Dict, Optional, Protocol
+from typing import Any, Dict, Optional, Protocol, Union
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from pydantic import BaseModel
 
 from airweave import schemas
 from airweave.api.context import ApiContext
@@ -71,7 +73,7 @@ class SourceLifecycleServiceProtocol(Protocol):
     async def validate(
         self,
         short_name: str,
-        credentials: Any,
+        credentials: Union[dict, BaseModel, str],
         config: Optional[Dict[str, Any]] = None,
     ) -> None:
         """Validate credentials by creating a lightweight source and

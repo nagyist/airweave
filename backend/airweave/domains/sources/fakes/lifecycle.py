@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Union
 from uuid import UUID
 
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave.api.context import ApiContext
+from airweave.platform.sources._base import BaseSource
 
 
 class FakeSourceLifecycleService:
@@ -29,7 +31,7 @@ class FakeSourceLifecycleService:
     """
 
     def __init__(self) -> None:
-        self._sources: dict[UUID, Any] = {}
+        self._sources: dict[UUID, BaseSource] = {}
         self._validate_errors: dict[str, Exception] = {}
         self.create_calls: list[dict] = []
         self.validate_calls: list[dict] = []
@@ -41,7 +43,7 @@ class FakeSourceLifecycleService:
         ctx: ApiContext,
         *,
         access_token: Optional[str] = None,
-    ) -> Any:
+    ) -> BaseSource:
         self.create_calls.append(
             {
                 "source_connection_id": source_connection_id,
@@ -57,7 +59,7 @@ class FakeSourceLifecycleService:
     async def validate(
         self,
         short_name: str,
-        credentials: Any,
+        credentials: Union[dict, BaseModel, str],
         config: Optional[Dict[str, Any]] = None,
     ) -> None:
         self.validate_calls.append(
@@ -72,7 +74,7 @@ class FakeSourceLifecycleService:
 
     # Test helpers
 
-    def seed_source(self, source_connection_id: UUID, source: Any) -> None:
+    def seed_source(self, source_connection_id: UUID, source: BaseSource) -> None:
         """Pre-populate a source instance that create() will return."""
         self._sources[source_connection_id] = source
 

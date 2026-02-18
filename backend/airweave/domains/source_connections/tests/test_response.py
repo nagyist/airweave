@@ -249,6 +249,83 @@ async def test_build_response_minimal_authenticated():
 
 
 @pytest.mark.asyncio
+async def test_build_response_auth_url_override():
+    """auth_url_override takes precedence, no init session lookup needed."""
+    f = _fixture()
+    f.source_registry.seed(_make_registry_entry("slack"))
+    expiry = datetime(2026, 6, 1, 12, 0, 0, tzinfo=timezone.utc)
+    sc = _make_source_conn(is_authenticated=False)
+
+    result = await f.builder.build_response(
+        None, sc, _make_ctx(),
+        auth_url_override="https://oauth.example.com/authorize",
+        auth_url_expiry_override=expiry,
+    )
+
+    assert result.auth.auth_url == "https://oauth.example.com/authorize"
+    assert result.auth.auth_url_expires == expiry
+    assert result.auth.redirect_url is None
+
+
+@pytest.mark.asyncio
+async def test_build_response_auth_url_override_without_expiry():
+    """auth_url_override without expiry → auth_url set, auth_url_expires None."""
+    f = _fixture()
+    f.source_registry.seed(_make_registry_entry("slack"))
+    sc = _make_source_conn(is_authenticated=False)
+
+    result = await f.builder.build_response(
+        None, sc, _make_ctx(),
+        auth_url_override="https://oauth.example.com/authorize",
+    )
+
+    assert result.auth.auth_url == "https://oauth.example.com/authorize"
+    assert result.auth.auth_url_expires is None
+
+
+@pytest.mark.asyncio
+async def test_build_response_init_session_resolves_via_repo():
+    """connection_init_session_id → repo lookup → auth_url/redirect_url populated."""
+    f = _fixture()
+    f.source_registry.seed(_make_registry_entry("slack"))
+    session_id = uuid4()
+    redirect_code = "redir-abc-123"
+    redirect_expiry = datetime(2026, 7, 1, 0, 0, 0, tzinfo=timezone.utc)
+
+    init_session = SimpleNamespace(
+        overrides={"redirect_url": "https://app.example.com/callback"},
+        redirect_session=SimpleNamespace(code=redirect_code, expires_at=redirect_expiry),
+    )
+    f.sc_repo.seed_init_session(session_id, init_session)
+
+    sc = _make_source_conn(
+        is_authenticated=False,
+        connection_init_session_id=session_id,
+    )
+    result = await f.builder.build_response(None, sc, _make_ctx())
+
+    assert redirect_code in result.auth.auth_url
+    assert result.auth.auth_url_expires == redirect_expiry
+    assert result.auth.redirect_url == "https://app.example.com/callback"
+
+
+@pytest.mark.asyncio
+async def test_build_response_init_session_not_found():
+    """connection_init_session_id set but not in repo → all auth urls None."""
+    f = _fixture()
+    f.source_registry.seed(_make_registry_entry("slack"))
+    sc = _make_source_conn(
+        is_authenticated=False,
+        connection_init_session_id=uuid4(),
+    )
+    result = await f.builder.build_response(None, sc, _make_ctx())
+
+    assert result.auth.auth_url is None
+    assert result.auth.auth_url_expires is None
+    assert result.auth.redirect_url is None
+
+
+@pytest.mark.asyncio
 async def test_build_response_config_fields_passthrough():
     """Config fields on ORM → passed through; None → None."""
     f = _fixture()

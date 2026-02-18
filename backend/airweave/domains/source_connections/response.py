@@ -64,10 +64,22 @@ class ResponseBuilder(ResponseBuilderProtocol):
     # ------------------------------------------------------------------
 
     async def build_response(
-        self, db: AsyncSession, source_conn: SourceConnection, ctx: ApiContext
+        self,
+        db: AsyncSession,
+        source_conn: SourceConnection,
+        ctx: ApiContext,
+        *,
+        auth_url_override: Optional[str] = None,
+        auth_url_expiry_override: Optional[datetime] = None,
     ) -> SourceConnectionSchema:
         """Build complete SourceConnection response from an ORM object."""
-        auth = await self._build_auth_details(db, source_conn, ctx)
+        auth = await self._build_auth_details(
+            db,
+            source_conn,
+            ctx,
+            auth_url_override=auth_url_override,
+            auth_url_expiry_override=auth_url_expiry_override,
+        )
         schedule = await self._build_schedule_details(db, source_conn, ctx)
         sync_details = await self._build_sync_details(db, source_conn, ctx)
         entities = await self._build_entity_summary(db, source_conn, ctx)
@@ -140,7 +152,13 @@ class ResponseBuilder(ResponseBuilderProtocol):
     # ------------------------------------------------------------------
 
     async def _build_auth_details(
-        self, db: AsyncSession, source_conn: SourceConnection, ctx: ApiContext
+        self,
+        db: AsyncSession,
+        source_conn: SourceConnection,
+        ctx: ApiContext,
+        *,
+        auth_url_override: Optional[str] = None,
+        auth_url_expiry_override: Optional[datetime] = None,
     ) -> AuthenticationDetails:
         """Build authentication details section."""
         actual_auth_method = await self._resolve_auth_method(db, source_conn, ctx)
@@ -157,14 +175,14 @@ class ResponseBuilder(ResponseBuilderProtocol):
         auth_url_expires: Optional[datetime] = None
         redirect_url: Optional[str] = None
 
-        if source_conn.connection_init_session_id:
+        if auth_url_override:
+            # [code blue] wire auth_url overrides from service layer during BYOC flows
+            auth_url = auth_url_override
+            auth_url_expires = auth_url_expiry_override
+        elif source_conn.connection_init_session_id:
             auth_url, auth_url_expires, redirect_url = await self._resolve_oauth_pending(
                 db, source_conn, ctx
             )
-        elif hasattr(source_conn, "authentication_url") and source_conn.authentication_url:
-            auth_url = source_conn.authentication_url
-            if hasattr(source_conn, "authentication_url_expiry"):
-                auth_url_expires = source_conn.authentication_url_expiry
 
         return AuthenticationDetails(
             method=actual_auth_method,
@@ -214,19 +232,9 @@ class ResponseBuilder(ResponseBuilderProtocol):
 
         Returns (auth_url, auth_url_expires, redirect_url).
         """
-        from sqlalchemy import select
-        from sqlalchemy.orm import selectinload
-
-        from airweave.models import ConnectionInitSession
-
-        stmt = (
-            select(ConnectionInitSession)
-            .where(ConnectionInitSession.id == source_conn.connection_init_session_id)
-            .where(ConnectionInitSession.organization_id == ctx.organization.id)
-            .options(selectinload(ConnectionInitSession.redirect_session))
+        init_session = await self._sc_repo.get_init_session_with_redirect(
+            db, source_conn.connection_init_session_id, ctx
         )
-        result = await db.execute(stmt)
-        init_session = result.scalar_one_or_none()
 
         auth_url: Optional[str] = None
         auth_url_expires: Optional[datetime] = None

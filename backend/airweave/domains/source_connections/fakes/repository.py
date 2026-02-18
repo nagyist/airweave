@@ -1,6 +1,6 @@
 """Fake source connection repository for testing."""
 
-from typing import Optional
+from typing import Any, Dict, Optional
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -13,12 +13,27 @@ class FakeSourceConnectionRepository:
     """In-memory fake for SourceConnectionRepositoryProtocol."""
 
     def __init__(self) -> None:
+        """Initialize with empty stores."""
         self._store: dict[UUID, SourceConnection] = {}
+        self._schedule_info: dict[UUID, Dict[str, Any]] = {}
         self._calls: list[tuple] = []
 
     def seed(self, id: UUID, obj: SourceConnection) -> None:
+        """Seed a source connection by ID."""
         self._store[id] = obj
 
+    def seed_schedule_info(self, sc_id: UUID, info: Dict[str, Any]) -> None:
+        """Seed schedule info keyed by source connection ID."""
+        self._schedule_info[sc_id] = info
+
     async def get(self, db: AsyncSession, id: UUID, ctx: ApiContext) -> Optional[SourceConnection]:
+        """Return seeded connection or None."""
         self._calls.append(("get", db, id, ctx))
         return self._store.get(id)
+
+    async def get_schedule_info(
+        self, db: AsyncSession, source_connection: SourceConnection
+    ) -> Optional[Dict[str, Any]]:
+        """Return seeded schedule info or None."""
+        self._calls.append(("get_schedule_info", db, source_connection))
+        return self._schedule_info.get(source_connection.id)

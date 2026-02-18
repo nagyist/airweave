@@ -60,7 +60,7 @@ console.log(`Subscription ID: ${subscription.id}`);
 {
   "id": "ep_2bVxUn3RFnLYHa8z6ZKHMT9PqPX",
   "url": "https://your-server.com/webhooks/airweave",
-  "filter_types": ["sync.completed", "sync.failed"],
+  "filter_types": ["sync.completed", "sync.failed", "source_connection.created", "collection.deleted"],
   "disabled": false,
   "created_at": "2025-01-15T10:30:00Z",
   "updated_at": "2025-01-15T10:30:00Z"
@@ -77,7 +77,7 @@ Your endpoint receives POST requests with event payloads. Here's how to handle t
 
 <CodeBlocks>
 ```python title="Python (FastAPI)"
-from fastapi import FastAPI, Request, HTTPException
+from fastapi import FastAPI, Request
 
 app = FastAPI()
 

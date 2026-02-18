@@ -45,7 +45,7 @@ class BillingPeriodUsage(BaseModel):
 
     # Daily usage trend (last 30 days or full period)
     daily_usage: List[UsageSnapshot] = Field(
-        default_factory=list, description="Daily snapshots for trend visualization", max_items=30
+        default_factory=list, description="Daily snapshots for trend visualization", max_length=30
     )
 
     # Computed fields
@@ -72,7 +72,7 @@ class UsageDashboard(BaseModel):
     previous_periods: List[BillingPeriodUsage] = Field(
         default_factory=list,
         description="Historical billing periods",
-        max_items=6,  # Last 6 periods
+        max_length=6,  # Last 6 periods
     )
 
     # Quick stats

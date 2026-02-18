@@ -36,6 +36,12 @@ from airweave.domains.credentials.repository import IntegrationCredentialReposit
 from airweave.domains.entities.entity_count_repository import EntityCountRepository
 from airweave.domains.entities.registry import EntityDefinitionRegistry
 from airweave.domains.oauth.oauth2_service import OAuth2Service
+from airweave.domains.oauth.repository import (
+    CredentialEncryptor,
+    OAuthConnectionRepository,
+    OAuthCredentialRepository,
+    OAuthSourceRepository,
+)
 from airweave.domains.source_connections.repository import SourceConnectionRepository
 from airweave.domains.source_connections.response import ResponseBuilder
 from airweave.domains.source_connections.service import SourceConnectionService
@@ -250,7 +256,7 @@ def _create_source_services(settings: Settings) -> dict:
     2. Entity definition registry (no dependencies)
     3. Source registry (depends on both)
     4. Repository adapters (thin wrappers around crud singletons)
-    5. OAuth2 adapter (thin wrapper around oauth2_service singleton)
+    5. OAuth2 service (with injected repos, encryptor, settings)
     6. SourceLifecycleService (depends on all of the above)
     """
     auth_provider_registry = AuthProviderRegistry()
@@ -269,7 +275,13 @@ def _create_source_services(settings: Settings) -> dict:
     cred_repo = IntegrationCredentialRepository()
     entity_count_repo = EntityCountRepository()
     sync_job_repo = SyncJobRepository()
-    oauth2_svc = OAuth2Service()
+    oauth2_svc = OAuth2Service(
+        settings=settings,
+        conn_repo=OAuthConnectionRepository(),
+        cred_repo=OAuthCredentialRepository(),
+        encryptor=CredentialEncryptor(),
+        source_repo=OAuthSourceRepository(),
+    )
 
     response_builder = ResponseBuilder(
         sc_repo=sc_repo,

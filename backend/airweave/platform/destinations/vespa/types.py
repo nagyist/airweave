@@ -5,7 +5,7 @@ Simple Pydantic models for type safety and clear interfaces between components.
 
 from typing import Any, Dict, List
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class VespaDocument(BaseModel):
@@ -44,7 +44,4 @@ class VespaQueryResponse(BaseModel):
     coverage_percent: float = Field(default=100.0, description="Search coverage percentage")
     query_time_ms: float = Field(default=0.0, description="Query execution time in milliseconds")
 
-    class Config:
-        """Allow extra fields from Vespa response."""
-
-        extra = "allow"
+    model_config = ConfigDict(extra="allow")

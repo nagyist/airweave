@@ -2,7 +2,7 @@
 
 from typing import Optional
 
-from pydantic import Field, field_validator, model_validator
+from pydantic import ConfigDict, Field, field_validator, model_validator
 
 from airweave.platform.configs._base import BaseConfig
 
@@ -189,10 +189,8 @@ class BaseDatabaseAuthConfig(AuthConfig):
                 )
         return v
 
-    class Config:
-        """Pydantic config."""
-
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "host": "localhost",
                 "port": 5432,
@@ -203,6 +201,7 @@ class BaseDatabaseAuthConfig(AuthConfig):
                 "tables": "users,orders",
             }
         }
+    )
 
 
 # Destination auth configs

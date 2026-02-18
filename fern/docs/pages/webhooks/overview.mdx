@@ -13,9 +13,21 @@ The Webhooks API is currently in beta. The API is stable but may receive enhance
 
 ## What are Webhooks?
 
-Webhooks are real-time notifications that Airweave sends when things happen in your organization — syncs completing, source connections being created, collections being updated. Instead of constantly polling the API, you register a webhook endpoint and Airweave pushes updates to you the moment they occur.
+Webhooks are real-time notifications that Airweave sends when things happen in your organization: syncs completing, source connections being created, collections being updated. Instead of constantly polling the API, you register a webhook endpoint and Airweave pushes updates to you the moment they occur.
 
 This is the foundation for building reactive integrations. Trigger downstream workflows, update dashboards, send alerts, or sync state with external systems automatically.
+
+<video
+  src="./create-webhook-splitscreen-demo.mp4"
+  controls
+  loop
+  autoplay
+  muted
+  playsinline
+  style={{ aspectRatio: '16 / 9', width: '100%' }}
+>
+  Your browser does not support the video tag.
+</video>
 
 ## Why Use Webhooks?
 
@@ -59,7 +71,7 @@ Airweave publishes events across three lifecycle domains:
 | `collection.deleted` | Collection removed | Collection and all associated data deleted |
 
 <Tip>
-Most integrations only need `sync.completed` and `sync.failed`. Subscribe to source connection and collection events if you need to track infrastructure changes — for example, to audit when connections are added or removed, or to react when collections are created.
+Most integrations only need `sync.completed` and `sync.failed`. Subscribe to source connection and collection events if you need to track infrastructure changes, for example, to audit when connections are added or removed, or to react when collections are created.
 </Tip>
 
 ## How It Works
@@ -90,7 +102,7 @@ Svix handles retries, delivery guarantees, and signs every outbound delivery. Yo
   </Card>
 
   <Card title="Track Infrastructure Changes" icon="sitemap">
-    Know the moment a source connection is added, authenticated, or deleted — or when collections change.
+    Know the moment a source connection is added, authenticated, or deleted, or when collections change.
   </Card>
 
   <Card title="Audit & Logging" icon="scroll">

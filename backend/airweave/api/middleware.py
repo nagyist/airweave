@@ -7,6 +7,7 @@ import asyncio
 import time
 import traceback
 import uuid
+from collections.abc import Callable
 from typing import List, Union
 
 from fastapi import Request, Response
@@ -513,6 +514,50 @@ async def rate_limit_exception_handler(
     )
 
 
+_METRICS_SKIP_PATHS = frozenset({"/health"})
+
+
+async def http_metrics_middleware(request: Request, call_next: Callable) -> Response:
+    """Middleware to record HTTP metrics (counts, latency, in-flight).
+
+    Reads the ``HttpMetrics`` implementation from ``request.app.state.http_metrics``
+    so the middleware is decoupled from any concrete metrics library.
+    """
+    if request.url.path in _METRICS_SKIP_PATHS:
+        return await call_next(request)
+
+    metrics = request.app.state.http_metrics
+    method = request.method
+    metrics.inc_in_progress(method)
+    start = time.perf_counter()
+    try:
+        response = await call_next(request)
+    except Exception:
+        metrics.dec_in_progress(method)
+        raise
+
+    duration = time.perf_counter() - start
+    metrics.dec_in_progress(method)
+    endpoint = _build_endpoint_name(request, fallback="unmatched")
+
+    metrics.observe_request(
+        method=method,
+        endpoint=endpoint,
+        status_code=str(response.status_code),
+        duration=duration,
+    )
+
+    content_length = response.headers.get("content-length")
+    if content_length is not None:
+        metrics.observe_response_size(
+            method=method,
+            endpoint=endpoint,
+            size=int(content_length),
+        )
+
+    return response
+
+
 async def analytics_middleware(request: Request, call_next):
     """Track API calls automatically via middleware.
 
@@ -538,11 +583,18 @@ async def analytics_middleware(request: Request, call_next):
     return response
 
 
-def _build_endpoint_name(request: Request) -> str:
+def _build_endpoint_name(request: Request, *, fallback: str | None = None) -> str:
     """Build endpoint name using FastAPI's route information.
 
     Uses the matched route path template from FastAPI, which already contains
     parameter placeholders like {uuid}, {readable_id}, etc.
+
+    Args:
+        request: The incoming request.
+        fallback: Value to return when no route is matched.  Defaults to the
+            raw request path (stripped of trailing slash).  The Prometheus
+            middleware passes ``"unmatched"`` to cap label cardinality from
+            404-scanning bots.
 
     Returns:
         str: endpoint_path_template like "/collections/{readable_id}/search"
@@ -556,7 +608,7 @@ def _build_endpoint_name(request: Request) -> str:
         return route.path
 
     # Fallback to raw path if route not available (shouldn't happen in normal operation)
-    return request.url.path.rstrip("/")
+    return fallback if fallback is not None else request.url.path.rstrip("/")
 
 
 def _should_skip_analytics(request: Request) -> bool:

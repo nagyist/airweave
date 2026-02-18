@@ -18,6 +18,7 @@ from airweave.core.protocols import (
     EndpointVerifier,
     EventBus,
     HealthServiceProtocol,
+    HttpMetrics,
     OcrProvider,
     WebhookAdmin,
     WebhookPublisher,
@@ -60,6 +61,7 @@ class Container:
             ocr_provider=FakeOcrProvider(),
             endpoint_verifier=FakeEndpointVerifier(),
             webhook_service=FakeWebhookService(),
+            http_metrics=FakeHttpMetrics(),
         )
 
         # FastAPI endpoints: use Inject() to pull individual protocols
@@ -85,6 +87,9 @@ class Container:
 
     # OCR provider (with fallback chain + circuit breaking)
     ocr_provider: OcrProvider
+
+    # HTTP metrics (request count, latency, in-flight, response size)
+    http_metrics: HttpMetrics
 
     # Source service — API-facing source operations
     source_service: SourceServiceProtocol

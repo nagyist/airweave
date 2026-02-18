@@ -14,6 +14,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import HTMLResponse
 from pydantic import ValidationError
 
+from airweave.api.metrics_server import ApiMetricsServer
 from airweave.api.middleware import (
     DynamicCORSMiddleware,
     add_request_id,
@@ -25,6 +26,7 @@ from airweave.api.middleware import (
     not_found_exception_handler,
     payment_required_exception_handler,
     permission_exception_handler,
+    http_metrics_middleware,
     rate_limit_exception_handler,
     rate_limit_headers_middleware,
     request_body_size_middleware,
@@ -112,7 +114,19 @@ async def lifespan(app: FastAPI):
             f"(Temporal may not be available): {e}"
         )
 
-    yield
+    # Expose the HTTP metrics adapter on app.state so the middleware can read it
+    http_metrics = container_mod.container.http_metrics
+    app.state.http_metrics = http_metrics
+
+    # Start internal Prometheus metrics server on a separate port
+    metrics_server = ApiMetricsServer(
+        http_metrics, settings.API_METRICS_PORT, settings.API_METRICS_HOST
+    )
+    await metrics_server.start()
+    try:
+        yield
+    finally:
+        await metrics_server.stop()
 
     container_mod.container.health.shutting_down = True
 
@@ -133,9 +147,13 @@ app = FastAPI(
 
 app.include_router(api_router)
 
-# Register middleware directly in the correct order
-# Order matters: first registered = outermost middleware (processes request first)
+# Register middleware directly in the correct order.
+# Order matters: first registered = outermost (processes request first).
+# http_metrics_middleware is intentionally early so it captures
+# end-to-end latency and counts 413/408/429 responses generated
+# by inner middlewares (body-size, timeout, rate-limit).
 app.middleware("http")(add_request_id)
+app.middleware("http")(http_metrics_middleware)
 app.middleware("http")(request_body_size_middleware)
 app.middleware("http")(request_timeout_middleware)
 app.middleware("http")(rate_limit_headers_middleware)

@@ -20,6 +20,7 @@ from airweave.adapters.encryption.fernet import FernetCredentialEncryptor
 from airweave.adapters.event_bus.in_memory import InMemoryEventBus
 from airweave.adapters.health import PostgresHealthProbe, RedisHealthProbe, TemporalHealthProbe
 from airweave.adapters.http_metrics import PrometheusHttpMetrics
+from airweave.adapters.metrics_renderer import PrometheusMetricsRenderer
 from airweave.adapters.ocr.docling import DoclingOcrAdapter
 from airweave.adapters.ocr.fallback import FallbackOcrProvider
 from airweave.adapters.ocr.mistral import MistralOcrAdapter
@@ -127,6 +128,7 @@ def create_container(settings: Settings) -> Container:
     metrics_registry = CollectorRegistry()
     http_metrics = PrometheusHttpMetrics(registry=metrics_registry)
     agentic_search_metrics = PrometheusAgenticSearchMetrics(registry=metrics_registry)
+    metrics_renderer = PrometheusMetricsRenderer(registry=metrics_registry)
 
     # Source Service + Source Lifecycle Service
     # Auth provider registry is built first, then passed to the source
@@ -144,6 +146,7 @@ def create_container(settings: Settings) -> Container:
         ocr_provider=ocr_provider,
         http_metrics=http_metrics,
         agentic_search_metrics=agentic_search_metrics,
+        metrics_renderer=metrics_renderer,
         source_service=source_deps["source_service"],
         source_registry=source_deps["source_registry"],
         auth_provider_registry=source_deps["auth_provider_registry"],

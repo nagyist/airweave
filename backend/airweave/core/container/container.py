@@ -20,6 +20,7 @@ from airweave.core.protocols import (
     EventBus,
     HealthServiceProtocol,
     HttpMetrics,
+    MetricsRenderer,
     OcrProvider,
     WebhookAdmin,
     WebhookPublisher,
@@ -54,6 +55,9 @@ class Container:
         from airweave.adapters.event_bus import FakeEventBus
         from airweave.adapters.circuit_breaker import FakeCircuitBreaker
         from airweave.adapters.ocr import FakeOcrProvider
+        from airweave.adapters.http_metrics import FakeHttpMetrics
+        from airweave.adapters.agentic_search_metrics import FakeAgenticSearchMetrics
+        from airweave.adapters.metrics_renderer import FakeMetricsRenderer
         test_container = Container(
             event_bus=FakeEventBus(),
             webhook_publisher=FakeWebhookPublisher(),
@@ -64,6 +68,7 @@ class Container:
             webhook_service=FakeWebhookService(),
             http_metrics=FakeHttpMetrics(),
             agentic_search_metrics=FakeAgenticSearchMetrics(),
+            metrics_renderer=FakeMetricsRenderer(),
         )
 
         # FastAPI endpoints: use Inject() to pull individual protocols
@@ -95,6 +100,9 @@ class Container:
 
     # Agentic search metrics (iterations, step durations, result counts)
     agentic_search_metrics: AgenticSearchMetrics
+
+    # Metrics renderer (serializes the shared registry for /metrics)
+    metrics_renderer: MetricsRenderer
 
     # Source service — API-facing source operations
     source_service: SourceServiceProtocol

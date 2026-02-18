@@ -1,8 +1,11 @@
 """HttpMetrics protocol for HTTP request/response instrumentation.
 
-Abstracts metric collection so the middleware and metrics server depend
-on a protocol rather than a concrete library.  Production uses Prometheus;
-tests inject a fake that records calls in memory.
+Abstracts metric collection so the middleware depends on a protocol rather
+than a concrete library.  Production uses Prometheus; tests inject a fake
+that records calls in memory.
+
+Serialization (generate / content_type) lives in the separate
+MetricsRenderer protocol so this protocol stays backend-agnostic.
 """
 
 from typing import Protocol, runtime_checkable
@@ -44,13 +47,4 @@ class HttpMetrics(Protocol):
         size: int,
     ) -> None:
         """Record the response body size in bytes."""
-        ...
-
-    @property
-    def content_type(self) -> str:
-        """MIME type for the serialized metrics output."""
-        ...
-
-    def generate(self) -> bytes:
-        """Serialize all collected metrics in Prometheus text exposition format."""
         ...

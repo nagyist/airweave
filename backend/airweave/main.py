@@ -115,12 +115,16 @@ async def lifespan(app: FastAPI):
         )
 
     # Expose the HTTP metrics adapter on app.state so the middleware can read it
-    http_metrics = container_mod.container.http_metrics
-    app.state.http_metrics = http_metrics
+    app.state.http_metrics = container_mod.container.http_metrics
 
-    # Start internal Prometheus metrics server on a separate port
+    # Start internal Prometheus metrics server on a separate port.
+    # Uses the shared MetricsRenderer (backed by the same CollectorRegistry
+    # as both HttpMetrics and AgenticSearchMetrics) so all metric families
+    # are served on a single /metrics endpoint.
     metrics_server = ApiMetricsServer(
-        http_metrics, settings.API_METRICS_PORT, settings.API_METRICS_HOST
+        container_mod.container.metrics_renderer,
+        settings.API_METRICS_PORT,
+        settings.API_METRICS_HOST,
     )
     await metrics_server.start()
     try:

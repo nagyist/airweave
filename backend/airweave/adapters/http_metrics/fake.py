@@ -40,7 +40,6 @@ class FakeHttpMetrics:
         self.in_progress: dict[str, int] = {}
         self.requests: list[RequestRecord] = []
         self.response_sizes: list[ResponseSizeRecord] = []
-        self.generate_calls: int = 0
 
     def inc_in_progress(self, method: str) -> None:
         self.in_progress[method] = self.in_progress.get(method, 0) + 1
@@ -60,14 +59,6 @@ class FakeHttpMetrics:
     def observe_response_size(self, method: str, endpoint: str, size: int) -> None:
         self.response_sizes.append(ResponseSizeRecord(method, endpoint, size))
 
-    @property
-    def content_type(self) -> str:
-        return "text/plain"
-
-    def generate(self) -> bytes:
-        self.generate_calls += 1
-        return b"# fake metrics\n"
-
     # -- test helpers --
 
     def clear(self) -> None:
@@ -75,4 +66,3 @@ class FakeHttpMetrics:
         self.in_progress.clear()
         self.requests.clear()
         self.response_sizes.clear()
-        self.generate_calls = 0

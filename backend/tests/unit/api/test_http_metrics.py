@@ -6,25 +6,24 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from airweave.adapters.http_metrics import FakeHttpMetrics, PrometheusHttpMetrics
+from airweave.adapters.metrics_renderer import FakeMetricsRenderer
 
 
 class TestFakeHttpMetrics:
     """Tests for the FakeHttpMetrics test helper."""
 
     def test_clear_resets_all_state(self):
-        """clear() should empty every collection and reset generate_calls."""
+        """clear() should empty every collection."""
         fake = FakeHttpMetrics()
         fake.inc_in_progress("GET")
         fake.observe_request("GET", "/test", "200", 0.01)
         fake.observe_response_size("GET", "/test", 512)
-        fake.generate()
 
         fake.clear()
 
         assert fake.in_progress == {}
         assert fake.requests == []
         assert fake.response_sizes == []
-        assert fake.generate_calls == 0
 
 
 class TestPrometheusHttpMetrics:
@@ -37,48 +36,73 @@ class TestPrometheusHttpMetrics:
         adapter = PrometheusHttpMetrics()
         assert adapter._registry is not REGISTRY
 
-    def test_generate_returns_bytes(self):
-        adapter = PrometheusHttpMetrics()
-        result = adapter.generate()
-        assert isinstance(result, bytes)
-
-    def test_generate_contains_expected_families(self):
-        adapter = PrometheusHttpMetrics()
-        adapter.observe_request("GET", "/test", "200", 0.01)
-
-        output = adapter.generate().decode()
-        assert "airweave_http_requests_total" in output
-        assert "airweave_http_request_duration_seconds" in output
-        assert "airweave_http_requests_in_progress" in output
-        assert "airweave_http_response_size_bytes" in output
-
     def test_observe_request_increments_counter(self):
-        adapter = PrometheusHttpMetrics()
+        from prometheus_client import CollectorRegistry, generate_latest
+
+        registry = CollectorRegistry()
+        adapter = PrometheusHttpMetrics(registry=registry)
         adapter.observe_request("POST", "/api/v1/items", "201", 0.05)
         adapter.observe_request("POST", "/api/v1/items", "201", 0.03)
 
-        output = adapter.generate().decode()
+        output = generate_latest(registry).decode()
         assert 'airweave_http_requests_total{endpoint="/api/v1/items",method="POST",status_code="201"} 2.0' in output
 
     def test_in_progress_gauge(self):
-        adapter = PrometheusHttpMetrics()
+        from prometheus_client import CollectorRegistry, generate_latest
+
+        registry = CollectorRegistry()
+        adapter = PrometheusHttpMetrics(registry=registry)
         adapter.inc_in_progress("GET")
         adapter.inc_in_progress("GET")
         adapter.dec_in_progress("GET")
 
-        output = adapter.generate().decode()
+        output = generate_latest(registry).decode()
         assert 'airweave_http_requests_in_progress{method="GET"} 1.0' in output
 
-    def test_content_type_is_prometheus_format(self):
-        adapter = PrometheusHttpMetrics()
-        assert adapter.content_type == "text/plain; version=0.0.4; charset=utf-8"
-
     def test_observe_response_size(self):
-        adapter = PrometheusHttpMetrics()
+        from prometheus_client import CollectorRegistry, generate_latest
+
+        registry = CollectorRegistry()
+        adapter = PrometheusHttpMetrics(registry=registry)
         adapter.observe_response_size("GET", "/api/v1/items", 1234)
 
-        output = adapter.generate().decode()
+        output = generate_latest(registry).decode()
         assert "airweave_http_response_size_bytes" in output
+
+
+class TestPrometheusMetricsRenderer:
+    """Tests for the PrometheusMetricsRenderer."""
+
+    def test_generate_returns_bytes(self):
+        from prometheus_client import CollectorRegistry
+
+        from airweave.adapters.metrics_renderer import PrometheusMetricsRenderer
+
+        registry = CollectorRegistry()
+        renderer = PrometheusMetricsRenderer(registry=registry)
+        assert isinstance(renderer.generate(), bytes)
+
+    def test_content_type_is_prometheus_format(self):
+        from prometheus_client import CollectorRegistry
+
+        from airweave.adapters.metrics_renderer import PrometheusMetricsRenderer
+
+        registry = CollectorRegistry()
+        renderer = PrometheusMetricsRenderer(registry=registry)
+        assert renderer.content_type == "text/plain; version=0.0.4; charset=utf-8"
+
+    def test_renders_metrics_from_shared_registry(self):
+        from prometheus_client import CollectorRegistry
+
+        from airweave.adapters.metrics_renderer import PrometheusMetricsRenderer
+
+        registry = CollectorRegistry()
+        http = PrometheusHttpMetrics(registry=registry)
+        renderer = PrometheusMetricsRenderer(registry=registry)
+
+        http.observe_request("GET", "/test", "200", 0.01)
+        output = renderer.generate().decode()
+        assert "airweave_http_requests_total" in output
 
 
 class TestHttpMetricsMiddleware:
@@ -105,11 +129,15 @@ class TestHttpMetricsMiddleware:
         return factory
 
     @pytest.mark.asyncio
-    async def test_skips_health_endpoint(self, _make_request, fake_metrics):
-        """Middleware should pass through /health without recording metrics."""
+    @pytest.mark.parametrize(
+        "path",
+        ["/health", "/metrics", "/docs", "/openapi.json", "/favicon.ico", "/redoc"],
+    )
+    async def test_skips_metrics_exempt_path(self, _make_request, fake_metrics, path):
+        """Middleware should pass through every _METRICS_SKIP_PATHS entry without recording."""
         from airweave.api.middleware import http_metrics_middleware
 
-        request = _make_request(path="/health")
+        request = _make_request(path=path)
         sentinel = MagicMock()
         call_next = AsyncMock(return_value=sentinel)
 
@@ -387,6 +415,29 @@ class TestHttpMetricsMiddlewareStreaming:
         assert fake_metrics.in_progress.get("PUT", 0) == 0
 
     @pytest.mark.asyncio
+    async def test_streaming_double_close_is_idempotent(
+        self, _make_streaming_request, fake_metrics
+    ):
+        """Calling aclose() twice must not record metrics a second time."""
+        from airweave.api.middleware import http_metrics_middleware
+
+        request, call_next, _ = _make_streaming_request()
+
+        result = await http_metrics_middleware(request, call_next)
+
+        # Consume the full stream (triggers first aclose via StopAsyncIteration)
+        async for _ in result.body_iterator:
+            pass
+
+        assert len(fake_metrics.requests) == 1
+
+        # Explicitly call aclose again — should be a no-op
+        await result.body_iterator.aclose()
+
+        assert len(fake_metrics.requests) == 1
+        assert fake_metrics.in_progress.get("GET", 0) == 0
+
+    @pytest.mark.asyncio
     async def test_nonstreaming_still_records_immediately(
         self, fake_metrics
     ):
@@ -419,12 +470,12 @@ class TestApiMetricsServer:
 
     @pytest.mark.asyncio
     async def test_handle_metrics_returns_fake_body_and_content_type(self):
-        """Handler should delegate to HttpMetrics.generate() and content_type."""
+        """Handler should delegate to MetricsRenderer.generate() and content_type."""
         from aiohttp.test_utils import make_mocked_request
 
         from airweave.api.metrics_server import ApiMetricsServer
 
-        fake = FakeHttpMetrics()
+        fake = FakeMetricsRenderer()
         server = ApiMetricsServer(fake, port=0)
 
         request = make_mocked_request("GET", "/metrics")
@@ -441,7 +492,7 @@ class TestApiMetricsServer:
 
         from airweave.api.metrics_server import ApiMetricsServer
 
-        fake = FakeHttpMetrics()
+        fake = FakeMetricsRenderer()
         server = ApiMetricsServer(fake, port=0)
         await server.start()
 
@@ -464,6 +515,6 @@ class TestApiMetricsServer:
         """Calling stop() before start() must not raise."""
         from airweave.api.metrics_server import ApiMetricsServer
 
-        fake = FakeHttpMetrics()
+        fake = FakeMetricsRenderer()
         server = ApiMetricsServer(fake, port=0)
         await server.stop()  # Should be a no-op

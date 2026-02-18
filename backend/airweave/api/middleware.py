@@ -3,12 +3,14 @@
 This module contains middleware that process requests and responses.
 """
 
+from __future__ import annotations
+
 import asyncio
 import time
 import traceback
 import uuid
-from collections.abc import Callable
-from typing import List, Union
+from collections.abc import AsyncIterator, Callable
+from typing import TYPE_CHECKING
 
 from fastapi import Request, Response
 from fastapi.exceptions import RequestValidationError
@@ -17,6 +19,10 @@ from pydantic import ValidationError
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from airweave.api.context import ApiContext
+
+if TYPE_CHECKING:
+    from airweave.core.protocols import HttpMetrics
+
 from airweave.core.config import settings
 from airweave.core.exceptions import (
     AirweaveException,
@@ -231,7 +237,7 @@ class DynamicCORSMiddleware(BaseHTTPMiddleware):
     Simple CORS handling that permits OPTIONS preflight requests and adds appropriate headers.
     """
 
-    def __init__(self, app, default_origins: List[str]):
+    def __init__(self, app, default_origins: list[str]):
         """Initialize the middleware.
 
         Args:
@@ -298,7 +304,7 @@ class DynamicCORSMiddleware(BaseHTTPMiddleware):
 
 # Exception handlers
 async def validation_exception_handler(
-    request: Request, exc: Union[RequestValidationError, ValidationError]
+    request: Request, exc: RequestValidationError | ValidationError
 ) -> JSONResponse:
     """Exception handler for validation errors that occur during request processing.
 
@@ -310,7 +316,7 @@ async def validation_exception_handler(
     Args:
     ----
         request (Request): The incoming request that triggered the exception.
-        exc (Union[RequestValidationError, ValidationError]): The exception object that was raised.
+        exc (RequestValidationError | ValidationError): The exception object that was raised.
             This can either be a RequestValidationError for request body/schema validation issues,
             or a ValidationError for other data model validations within FastAPI.
 
@@ -514,7 +520,16 @@ async def rate_limit_exception_handler(
     )
 
 
-_METRICS_SKIP_PATHS = frozenset({"/health"})
+_METRICS_SKIP_PATHS = frozenset(
+    {
+        "/health",
+        "/metrics",
+        "/docs",
+        "/openapi.json",
+        "/favicon.ico",
+        "/redoc",
+    }
+)
 
 
 async def http_metrics_middleware(request: Request, call_next: Callable) -> Response:
@@ -594,14 +609,14 @@ class _StreamingMetricsIterator:
 
     def __init__(
         self,
-        body_iterator,
+        body_iterator: AsyncIterator[bytes | str],
         *,
-        metrics,
+        metrics: HttpMetrics,
         method: str,
         endpoint: str,
         status_code: str,
         start: float,
-    ):
+    ) -> None:
         self._body_iterator = body_iterator
         self._inner_iter = body_iterator.__aiter__()
         self._metrics = metrics

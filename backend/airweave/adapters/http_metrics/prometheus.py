@@ -5,12 +5,10 @@ the default global registry and from the Temporal worker metrics.
 """
 
 from prometheus_client import (
-    CONTENT_TYPE_LATEST,
     CollectorRegistry,
     Counter,
     Gauge,
     Histogram,
-    generate_latest,
 )
 
 _RESPONSE_SIZE_BUCKETS = (
@@ -63,10 +61,6 @@ class PrometheusHttpMetrics:
 
     # -- HttpMetrics protocol methods --
 
-    @property
-    def content_type(self) -> str:
-        return CONTENT_TYPE_LATEST
-
     def inc_in_progress(self, method: str) -> None:
         self._in_progress.labels(method=method).inc()
 
@@ -89,7 +83,3 @@ class PrometheusHttpMetrics:
 
     def observe_response_size(self, method: str, endpoint: str, size: int) -> None:
         self._response_size.labels(method=method, endpoint=endpoint).observe(size)
-
-    def generate(self) -> bytes:
-        """Serialize all metrics in Prometheus text exposition format."""
-        return generate_latest(self._registry)

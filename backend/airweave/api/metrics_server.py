@@ -10,15 +10,15 @@ Follows the same aiohttp pattern as the Temporal worker control server
 from aiohttp import web
 
 from airweave.core.logging import logger
-from airweave.core.protocols.http_metrics import HttpMetrics
+from airweave.core.protocols.metrics_renderer import MetricsRenderer
 
 
 class ApiMetricsServer:
     """Lightweight aiohttp server serving /metrics for Prometheus scraping."""
 
-    def __init__(self, http_metrics: HttpMetrics, port: int, host: str = "0.0.0.0") -> None:
+    def __init__(self, renderer: MetricsRenderer, port: int, host: str = "0.0.0.0") -> None:
         """Initialize the metrics server on the given host and port."""
-        self._http_metrics = http_metrics
+        self._renderer = renderer
         self._port = port
         self._host = host
         self._runner: web.AppRunner | None = None
@@ -31,7 +31,7 @@ class ApiMetricsServer:
         await self._runner.setup()
         site = web.TCPSite(self._runner, self._host, self._port)
         await site.start()
-        logger.info(f"API metrics server started on {self._host}:{self._port}")
+        logger.info("API metrics server started on %s:%s", self._host, self._port)
 
     async def stop(self) -> None:
         """Stop the metrics server."""
@@ -41,6 +41,6 @@ class ApiMetricsServer:
     async def _handle_metrics(self, request: web.Request) -> web.Response:
         """Return Prometheus metrics in text exposition format."""
         return web.Response(
-            body=self._http_metrics.generate(),
-            content_type=self._http_metrics.content_type,
+            body=self._renderer.generate(),
+            content_type=self._renderer.content_type,
         )

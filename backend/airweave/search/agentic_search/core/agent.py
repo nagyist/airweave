@@ -103,7 +103,13 @@ class AgenticSearchAgent:
             return response
         except Exception as e:
             if self._metrics is not None:
-                self._metrics.inc_search_errors(request.mode.value, is_streaming)
+                try:
+                    self._metrics.inc_search_errors(request.mode.value, is_streaming)
+                except Exception:
+                    self.ctx.logger.debug(
+                        "[AgenticSearchAgent] Failed to record error metric",
+                        exc_info=True,
+                    )
             duration_ms = int((time.monotonic() - start_time) * 1000)
             await self.emitter.emit(AgenticSearchErrorEvent(message=str(e)))
             try:
@@ -124,14 +130,20 @@ class AgenticSearchAgent:
             raise
         finally:
             if self._metrics is not None:
-                self._metrics.inc_search_requests(
-                    request.mode.value,
-                    is_streaming,
-                )
-                self._metrics.observe_duration(
-                    request.mode.value,
-                    time.monotonic() - start_time,
-                )
+                try:
+                    self._metrics.inc_search_requests(
+                        request.mode.value,
+                        is_streaming,
+                    )
+                    self._metrics.observe_duration(
+                        request.mode.value,
+                        time.monotonic() - start_time,
+                    )
+                except Exception:
+                    self.ctx.logger.debug(
+                        "[AgenticSearchAgent] Failed to record metric",
+                        exc_info=True,
+                    )
 
     async def _run(
         self,
@@ -143,6 +155,10 @@ class AgenticSearchAgent:
         timings: list[tuple[str, int]] = []
         total_start = time.monotonic()
         t = total_start
+        # Stays 0 until the loop completes successfully, so the finally
+        # block records iteration_count=0 for both "failed before entering
+        # the loop" and "failed during the first iteration" — both mean
+        # no iteration produced usable results.
         iteration_number = 0
         result_count = 0
 

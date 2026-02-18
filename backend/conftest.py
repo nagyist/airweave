@@ -134,6 +134,14 @@ def fake_health_service():
 
 
 @pytest.fixture
+def fake_source_connection_service():
+    """Fake SourceConnectionService."""
+    from airweave.domains.source_connections.fakes.service import FakeSourceConnectionService
+
+    return FakeSourceConnectionService()
+
+
+@pytest.fixture
 def fake_source_lifecycle_service():
     """Fake SourceLifecycleService for testing lifecycle consumers."""
     from airweave.domains.sources.fakes.lifecycle import FakeSourceLifecycleService
@@ -155,6 +163,14 @@ def fake_conn_repo():
     from airweave.domains.connections.fakes.repository import FakeConnectionRepository
 
     return FakeConnectionRepository()
+
+
+@pytest.fixture
+def fake_collection_repo():
+    """Fake CollectionRepository."""
+    from airweave.domains.collections.fakes.repository import FakeCollectionRepository
+
+    return FakeCollectionRepository()
 
 
 @pytest.fixture
@@ -187,9 +203,11 @@ def test_container(
     fake_source_registry,
     fake_auth_provider_registry,
     fake_sc_repo,
+    fake_collection_repo,
     fake_conn_repo,
     fake_cred_repo,
     fake_oauth2_service,
+    fake_source_connection_service,
     fake_source_lifecycle_service,
 ):
     """A Container with all dependencies replaced by fakes.
@@ -215,8 +233,10 @@ def test_container(
         source_registry=fake_source_registry,
         auth_provider_registry=fake_auth_provider_registry,
         sc_repo=fake_sc_repo,
+        collection_repo=fake_collection_repo,
         conn_repo=fake_conn_repo,
         cred_repo=fake_cred_repo,
         oauth2_service=fake_oauth2_service,
+        source_connection_service=fake_source_connection_service,
         source_lifecycle_service=fake_source_lifecycle_service,
     )

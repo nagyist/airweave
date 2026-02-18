@@ -9,7 +9,7 @@ Covers:
 Uses table-driven tests wherever possible.
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from types import SimpleNamespace
 from typing import Any, Dict, List, Optional
@@ -250,7 +250,7 @@ async def test_build_response_minimal_authenticated():
 
 @pytest.mark.asyncio
 async def test_build_response_config_fields_passthrough():
-    """Config fields on ORM → passed through; missing attribute → None."""
+    """Config fields on ORM → passed through; None → None."""
     f = _fixture()
     f.source_registry.seed(_make_registry_entry("slack"))
 
@@ -258,8 +258,7 @@ async def test_build_response_config_fields_passthrough():
     result_with = await f.builder.build_response(None, sc_with, _make_ctx())
     assert result_with.config == {"repo": "org/repo"}
 
-    sc_without = _make_source_conn()
-    del sc_without.config_fields
+    sc_without = _make_source_conn(config_fields=None)
     result_without = await f.builder.build_response(None, sc_without, _make_ctx())
     assert result_without.config is None
 
@@ -280,10 +279,14 @@ class AuthMethodViaCredentialCase:
 
 AUTH_CREDENTIAL_CASES = [
     AuthMethodViaCredentialCase("oauth_token", "oauth_token", AuthenticationMethod.OAUTH_TOKEN),
-    AuthMethodViaCredentialCase("oauth_browser", "oauth_browser", AuthenticationMethod.OAUTH_BROWSER),
+    AuthMethodViaCredentialCase(
+        "oauth_browser", "oauth_browser", AuthenticationMethod.OAUTH_BROWSER
+    ),
     AuthMethodViaCredentialCase("oauth_byoc", "oauth_byoc", AuthenticationMethod.OAUTH_BYOC),
     AuthMethodViaCredentialCase("direct", "direct", AuthenticationMethod.DIRECT),
-    AuthMethodViaCredentialCase("auth_provider", "auth_provider", AuthenticationMethod.AUTH_PROVIDER),
+    AuthMethodViaCredentialCase(
+        "auth_provider", "auth_provider", AuthenticationMethod.AUTH_PROVIDER
+    ),
 ]
 
 
@@ -480,12 +483,28 @@ class StatusCase:
 
 
 STATUS_CASES = [
-    StatusCase("unauthenticated → PENDING_AUTH", False, True, None, SourceConnectionStatus.PENDING_AUTH),
-    StatusCase("inactive → INACTIVE", True, False, SyncJobStatus.COMPLETED, SourceConnectionStatus.INACTIVE),
-    StatusCase("running job → SYNCING", True, True, SyncJobStatus.RUNNING, SourceConnectionStatus.SYNCING),
-    StatusCase("cancelling job → SYNCING", True, True, SyncJobStatus.CANCELLING, SourceConnectionStatus.SYNCING),
-    StatusCase("failed job → ERROR", True, True, SyncJobStatus.FAILED, SourceConnectionStatus.ERROR),
-    StatusCase("completed job → ACTIVE", True, True, SyncJobStatus.COMPLETED, SourceConnectionStatus.ACTIVE),
+    StatusCase(
+        "unauthenticated → PENDING_AUTH", False, True, None, SourceConnectionStatus.PENDING_AUTH
+    ),
+    StatusCase(
+        "inactive → INACTIVE", True, False, SyncJobStatus.COMPLETED, SourceConnectionStatus.INACTIVE
+    ),
+    StatusCase(
+        "running job → SYNCING", True, True, SyncJobStatus.RUNNING, SourceConnectionStatus.SYNCING
+    ),
+    StatusCase(
+        "cancelling job → SYNCING",
+        True,
+        True,
+        SyncJobStatus.CANCELLING,
+        SourceConnectionStatus.SYNCING,
+    ),
+    StatusCase(
+        "failed job → ERROR", True, True, SyncJobStatus.FAILED, SourceConnectionStatus.ERROR
+    ),
+    StatusCase(
+        "completed job → ACTIVE", True, True, SyncJobStatus.COMPLETED, SourceConnectionStatus.ACTIVE
+    ),
     StatusCase("no job → ACTIVE", True, True, None, SourceConnectionStatus.ACTIVE),
 ]
 
@@ -885,14 +904,72 @@ class ListItemCase:
 
 
 LIST_ITEM_CASES = [
-    ListItemCase("authenticated active", True, True, SyncJobStatus.COMPLETED, 42, "direct", False, SourceConnectionStatus.ACTIVE),
-    ListItemCase("unauthenticated → PENDING_AUTH", False, True, None, 0, None, False, SourceConnectionStatus.PENDING_AUTH),
-    ListItemCase("running → SYNCING", True, True, SyncJobStatus.RUNNING, 0, None, False, SourceConnectionStatus.SYNCING),
-    ListItemCase("cancelling → SYNCING", True, True, SyncJobStatus.CANCELLING, 0, None, False, SourceConnectionStatus.SYNCING),
-    ListItemCase("failed → ERROR", True, True, SyncJobStatus.FAILED, 0, None, False, SourceConnectionStatus.ERROR),
-    ListItemCase("inactive → INACTIVE", True, False, None, 0, None, False, SourceConnectionStatus.INACTIVE),
-    ListItemCase("no job → ACTIVE", True, True, None, 0, None, False, SourceConnectionStatus.ACTIVE),
-    ListItemCase("federated_search=True passes through", True, True, None, 0, None, True, SourceConnectionStatus.ACTIVE),
+    ListItemCase(
+        "authenticated active",
+        True,
+        True,
+        SyncJobStatus.COMPLETED,
+        42,
+        "direct",
+        False,
+        SourceConnectionStatus.ACTIVE,
+    ),
+    ListItemCase(
+        "unauthenticated → PENDING_AUTH",
+        False,
+        True,
+        None,
+        0,
+        None,
+        False,
+        SourceConnectionStatus.PENDING_AUTH,
+    ),
+    ListItemCase(
+        "running → SYNCING",
+        True,
+        True,
+        SyncJobStatus.RUNNING,
+        0,
+        None,
+        False,
+        SourceConnectionStatus.SYNCING,
+    ),
+    ListItemCase(
+        "cancelling → SYNCING",
+        True,
+        True,
+        SyncJobStatus.CANCELLING,
+        0,
+        None,
+        False,
+        SourceConnectionStatus.SYNCING,
+    ),
+    ListItemCase(
+        "failed → ERROR",
+        True,
+        True,
+        SyncJobStatus.FAILED,
+        0,
+        None,
+        False,
+        SourceConnectionStatus.ERROR,
+    ),
+    ListItemCase(
+        "inactive → INACTIVE", True, False, None, 0, None, False, SourceConnectionStatus.INACTIVE
+    ),
+    ListItemCase(
+        "no job → ACTIVE", True, True, None, 0, None, False, SourceConnectionStatus.ACTIVE
+    ),
+    ListItemCase(
+        "federated_search=True passes through",
+        True,
+        True,
+        None,
+        0,
+        None,
+        True,
+        SourceConnectionStatus.ACTIVE,
+    ),
 ]
 
 
@@ -964,51 +1041,47 @@ class MapJobCase:
     desc: str
     started_at: Optional[datetime]
     completed_at: Optional[datetime]
-    has_entity_attrs: bool
-    has_error_attr: bool
+    entities_inserted: int
+    entities_updated: int
+    entities_deleted: int
+    entities_skipped: int
     error: Optional[str]
     expect_duration: Optional[float]
-    expect_entities_zero: bool  # whether all entity counts should be 0
 
 
 MAP_JOB_CASES = [
-    MapJobCase("completed with duration", T0, T1, True, True, None, 330.0, False),
-    MapJobCase("running, no duration", T0, None, True, True, None, None, False),
-    MapJobCase("pending, no duration", None, None, True, True, None, None, False),
-    MapJobCase("missing entity attrs → 0", T0, T0, False, True, None, 0.0, True),
-    MapJobCase("missing error attr → None", T0, T0, True, False, None, 0.0, False),
-    MapJobCase("with error string", T0, T1, True, True, "Rate limit 429", 330.0, False),
+    MapJobCase("completed with duration", T0, T1, 10, 5, 2, 1, None, 330.0),
+    MapJobCase("running, no duration", T0, None, 10, 5, 2, 1, None, None),
+    MapJobCase("pending, no duration", None, None, 0, 0, 0, 0, None, None),
+    MapJobCase("zero entity counts", T0, T0, 0, 0, 0, 0, None, 0.0),
+    MapJobCase("with error string", T0, T1, 10, 5, 2, 1, "Rate limit 429", 330.0),
 ]
 
 
 @pytest.mark.parametrize("case", MAP_JOB_CASES, ids=lambda c: c.desc)
 def test_map_sync_job(case: MapJobCase):
     sc_id = uuid4()
-    attrs: Dict[str, Any] = {
-        "id": uuid4(),
-        "status": SyncJobStatus.COMPLETED,
-        "started_at": case.started_at,
-        "completed_at": case.completed_at,
-    }
-    if case.has_entity_attrs:
-        attrs.update(entities_inserted=10, entities_updated=5, entities_deleted=2, entities_failed=1)
-    if case.has_error_attr:
-        attrs["error"] = case.error
-    job = SimpleNamespace(**attrs)
+    job = SimpleNamespace(
+        id=uuid4(),
+        status=SyncJobStatus.COMPLETED,
+        started_at=case.started_at,
+        completed_at=case.completed_at,
+        entities_inserted=case.entities_inserted,
+        entities_updated=case.entities_updated,
+        entities_deleted=case.entities_deleted,
+        entities_skipped=case.entities_skipped,
+        error=case.error,
+    )
 
     result = _fixture().builder.map_sync_job(job, sc_id)
 
     assert result.source_connection_id == sc_id
     assert result.duration_seconds == case.expect_duration
-    if case.expect_entities_zero:
-        assert result.entities_inserted == 0
-        assert result.entities_updated == 0
-        assert result.entities_deleted == 0
-        assert result.entities_failed == 0
-    if case.has_error_attr:
-        assert result.error == case.error
-    else:
-        assert result.error is None
+    assert result.entities_inserted == case.entities_inserted
+    assert result.entities_updated == case.entities_updated
+    assert result.entities_deleted == case.entities_deleted
+    assert result.entities_failed == case.entities_skipped
+    assert result.error == case.error
 
 
 def test_map_sync_job_preserves_all_fields():
@@ -1022,7 +1095,7 @@ def test_map_sync_job_preserves_all_fields():
         entities_inserted=100,
         entities_updated=50,
         entities_deleted=25,
-        entities_failed=10,
+        entities_skipped=10,
         error="Connection refused",
     )
     result = _fixture().builder.map_sync_job(job, sc_id)

@@ -6,7 +6,9 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave.api.context import ApiContext
+from airweave.domains.source_connections.types import SourceConnectionStats
 from airweave.models.source_connection import SourceConnection
+from airweave.models.sync_job import SyncJob
 from airweave.schemas.source_connection import (
     SourceConnection as SourceConnectionSchema,
 )
@@ -42,10 +44,10 @@ class ResponseBuilderProtocol(Protocol):
         """Build full SourceConnection response from ORM object."""
         ...
 
-    def build_list_item(self, data: Dict[str, Any]) -> SourceConnectionListItem:
-        """Build a SourceConnectionListItem from a stats dict."""
+    def build_list_item(self, stats: SourceConnectionStats) -> SourceConnectionListItem:
+        """Build a SourceConnectionListItem from a typed stats object."""
         ...
 
-    def map_sync_job(self, job: Any, source_connection_id: UUID) -> SourceConnectionJob:
+    def map_sync_job(self, job: SyncJob, source_connection_id: UUID) -> SourceConnectionJob:
         """Convert sync job to SourceConnectionJob schema."""
         ...

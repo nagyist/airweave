@@ -21,12 +21,12 @@ from airweave.api.middleware import (
     airweave_exception_handler,
     analytics_middleware,
     exception_logging_middleware,
+    http_metrics_middleware,
     invalid_state_exception_handler,
     log_requests,
     not_found_exception_handler,
     payment_required_exception_handler,
     permission_exception_handler,
-    http_metrics_middleware,
     rate_limit_exception_handler,
     rate_limit_headers_middleware,
     request_body_size_middleware,
@@ -127,9 +127,21 @@ async def lifespan(app: FastAPI):
         settings.API_METRICS_HOST,
     )
     await metrics_server.start()
+
+    # Start background sampler that pushes DB pool gauges into Prometheus.
+    from airweave.core.db_pool_sampler import DbPoolSampler
+    from airweave.db.session import async_engine
+
+    pool_sampler = DbPoolSampler(
+        pool=async_engine.pool,
+        metrics=container_mod.container.db_pool_metrics,
+    )
+    await pool_sampler.start()
+
     try:
         yield
     finally:
+        await pool_sampler.stop()
         await metrics_server.stop()
 
     container_mod.container.health.shutting_down = True

@@ -16,6 +16,7 @@ from airweave.adapters.agentic_search_metrics import PrometheusAgenticSearchMetr
 from airweave.adapters.analytics.posthog import PostHogTracker
 from airweave.adapters.analytics.subscriber import AnalyticsEventSubscriber
 from airweave.adapters.circuit_breaker import InMemoryCircuitBreaker
+from airweave.adapters.db_pool_metrics import PrometheusDbPoolMetrics
 from airweave.adapters.encryption.fernet import FernetCredentialEncryptor
 from airweave.adapters.event_bus.in_memory import InMemoryEventBus
 from airweave.adapters.health import PostgresHealthProbe, RedisHealthProbe, TemporalHealthProbe
@@ -125,9 +126,14 @@ def create_container(settings: Settings) -> Container:
     # -----------------------------------------------------------------
     from prometheus_client import CollectorRegistry
 
+    from airweave.db.session import MAX_OVERFLOW
+
     metrics_registry = CollectorRegistry()
     http_metrics = PrometheusHttpMetrics(registry=metrics_registry)
     agentic_search_metrics = PrometheusAgenticSearchMetrics(registry=metrics_registry)
+    db_pool_metrics = PrometheusDbPoolMetrics(
+        registry=metrics_registry, max_overflow=MAX_OVERFLOW,
+    )
     metrics_renderer = PrometheusMetricsRenderer(registry=metrics_registry)
 
     # Source Service + Source Lifecycle Service
@@ -146,6 +152,7 @@ def create_container(settings: Settings) -> Container:
         ocr_provider=ocr_provider,
         http_metrics=http_metrics,
         agentic_search_metrics=agentic_search_metrics,
+        db_pool_metrics=db_pool_metrics,
         metrics_renderer=metrics_renderer,
         source_service=source_deps["source_service"],
         source_registry=source_deps["source_registry"],

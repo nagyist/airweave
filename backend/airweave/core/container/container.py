@@ -16,6 +16,7 @@ from typing import Any
 from airweave.core.protocols import (
     AgenticSearchMetrics,
     CircuitBreaker,
+    DbPoolMetrics,
     EndpointVerifier,
     EventBus,
     HealthServiceProtocol,
@@ -57,6 +58,7 @@ class Container:
         from airweave.adapters.ocr import FakeOcrProvider
         from airweave.adapters.http_metrics import FakeHttpMetrics
         from airweave.adapters.agentic_search_metrics import FakeAgenticSearchMetrics
+        from airweave.adapters.db_pool_metrics import FakeDbPoolMetrics
         from airweave.adapters.metrics_renderer import FakeMetricsRenderer
         test_container = Container(
             event_bus=FakeEventBus(),
@@ -68,6 +70,7 @@ class Container:
             webhook_service=FakeWebhookService(),
             http_metrics=FakeHttpMetrics(),
             agentic_search_metrics=FakeAgenticSearchMetrics(),
+            db_pool_metrics=FakeDbPoolMetrics(),
             metrics_renderer=FakeMetricsRenderer(),
         )
 
@@ -100,6 +103,9 @@ class Container:
 
     # Agentic search metrics (iterations, step durations, result counts)
     agentic_search_metrics: AgenticSearchMetrics
+
+    # DB pool metrics (pool size, checked out/in, overflow)
+    db_pool_metrics: DbPoolMetrics
 
     # Metrics renderer (serializes the shared registry for /metrics)
     metrics_renderer: MetricsRenderer

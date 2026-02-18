@@ -113,6 +113,14 @@ def fake_metrics_renderer():
 
 
 @pytest.fixture
+def fake_db_pool_metrics():
+    """Fake DbPoolMetrics that records the latest update in memory."""
+    from airweave.adapters.db_pool_metrics.fake import FakeDbPoolMetrics
+
+    return FakeDbPoolMetrics()
+
+
+@pytest.fixture
 def fake_source_service():
     """Fake SourceService that returns canned source schemas."""
     from airweave.domains.sources.fakes.service import FakeSourceService
@@ -231,6 +239,7 @@ def test_container(
     fake_ocr_provider,
     fake_http_metrics,
     fake_agentic_search_metrics,
+    fake_db_pool_metrics,
     fake_metrics_renderer,
     fake_source_service,
     fake_endpoint_verifier,
@@ -267,6 +276,7 @@ def test_container(
         ocr_provider=fake_ocr_provider,
         http_metrics=fake_http_metrics,
         agentic_search_metrics=fake_agentic_search_metrics,
+        db_pool_metrics=fake_db_pool_metrics,
         metrics_renderer=fake_metrics_renderer,
         source_service=fake_source_service,
         source_registry=fake_source_registry,

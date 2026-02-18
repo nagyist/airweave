@@ -8,6 +8,7 @@ infrastructure protocols only.
 from airweave.core.health.protocols import HealthProbe, HealthServiceProtocol
 from airweave.core.protocols.agentic_search_metrics import AgenticSearchMetrics
 from airweave.core.protocols.circuit_breaker import CircuitBreaker
+from airweave.core.protocols.db_pool_metrics import DbPoolMetrics
 from airweave.core.protocols.encryption import CredentialEncryptor
 from airweave.core.protocols.event_bus import DomainEvent, EventBus, EventHandler
 from airweave.core.protocols.http_metrics import HttpMetrics
@@ -24,6 +25,7 @@ __all__ = [
     "AgenticSearchMetrics",
     "CircuitBreaker",
     "CredentialEncryptor",
+    "DbPoolMetrics",
     "DomainEvent",
     "EndpointVerifier",
     "EventBus",

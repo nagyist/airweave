@@ -120,6 +120,7 @@ class ResponseBuilder:
             entity_count=stats.entity_count,
             is_active=stats.is_active,
             last_job_status=last_job_status,
+            federated_search=stats.federated_search,
         )
 
     def map_sync_job(self, job: Any, source_connection_id: UUID) -> SourceConnectionJob:

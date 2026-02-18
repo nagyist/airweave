@@ -880,17 +880,19 @@ class ListItemCase:
     last_job_status: Optional[SyncJobStatus]
     entity_count: int
     authentication_method: Optional[str]
+    federated_search: bool
     expect_status: SourceConnectionStatus
 
 
 LIST_ITEM_CASES = [
-    ListItemCase("authenticated active", True, True, SyncJobStatus.COMPLETED, 42, "direct", SourceConnectionStatus.ACTIVE),
-    ListItemCase("unauthenticated → PENDING_AUTH", False, True, None, 0, None, SourceConnectionStatus.PENDING_AUTH),
-    ListItemCase("running → SYNCING", True, True, SyncJobStatus.RUNNING, 0, None, SourceConnectionStatus.SYNCING),
-    ListItemCase("cancelling → SYNCING", True, True, SyncJobStatus.CANCELLING, 0, None, SourceConnectionStatus.SYNCING),
-    ListItemCase("failed → ERROR", True, True, SyncJobStatus.FAILED, 0, None, SourceConnectionStatus.ERROR),
-    ListItemCase("inactive → INACTIVE", True, False, None, 0, None, SourceConnectionStatus.INACTIVE),
-    ListItemCase("no job → ACTIVE", True, True, None, 0, None, SourceConnectionStatus.ACTIVE),
+    ListItemCase("authenticated active", True, True, SyncJobStatus.COMPLETED, 42, "direct", False, SourceConnectionStatus.ACTIVE),
+    ListItemCase("unauthenticated → PENDING_AUTH", False, True, None, 0, None, False, SourceConnectionStatus.PENDING_AUTH),
+    ListItemCase("running → SYNCING", True, True, SyncJobStatus.RUNNING, 0, None, False, SourceConnectionStatus.SYNCING),
+    ListItemCase("cancelling → SYNCING", True, True, SyncJobStatus.CANCELLING, 0, None, False, SourceConnectionStatus.SYNCING),
+    ListItemCase("failed → ERROR", True, True, SyncJobStatus.FAILED, 0, None, False, SourceConnectionStatus.ERROR),
+    ListItemCase("inactive → INACTIVE", True, False, None, 0, None, False, SourceConnectionStatus.INACTIVE),
+    ListItemCase("no job → ACTIVE", True, True, None, 0, None, False, SourceConnectionStatus.ACTIVE),
+    ListItemCase("federated_search=True passes through", True, True, None, 0, None, True, SourceConnectionStatus.ACTIVE),
 ]
 
 
@@ -902,6 +904,7 @@ def test_build_list_item(case: ListItemCase):
         last_job_status=case.last_job_status,
         entity_count=case.entity_count,
         authentication_method=case.authentication_method,
+        federated_search=case.federated_search,
     )
     item = _fixture().builder.build_list_item(stats)
 
@@ -909,6 +912,7 @@ def test_build_list_item(case: ListItemCase):
     assert item.short_name == stats.short_name
     assert item.entity_count == case.entity_count
     assert item.authentication_method == case.authentication_method
+    assert item.federated_search is case.federated_search
     if case.last_job_status:
         assert item.last_job_status == case.last_job_status
     else:
@@ -923,6 +927,7 @@ def test_build_list_item_preserves_all_fields():
         last_job_status=SyncJobStatus.COMPLETED,
         entity_count=99,
         authentication_method="direct",
+        federated_search=True,
     )
     item = _fixture().builder.build_list_item(stats)
 
@@ -935,6 +940,7 @@ def test_build_list_item_preserves_all_fields():
     assert item.is_authenticated is True
     assert item.is_active is True
     assert item.authentication_method == "direct"
+    assert item.federated_search is True
 
 
 @pytest.mark.parametrize(

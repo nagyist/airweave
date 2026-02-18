@@ -17,7 +17,10 @@ from airweave.core.shared_models import SyncJobStatus
 from airweave.domains.connections.protocols import ConnectionRepositoryProtocol
 from airweave.domains.credentials.protocols import IntegrationCredentialRepositoryProtocol
 from airweave.domains.entities.protocols import EntityCountRepositoryProtocol
-from airweave.domains.source_connections.protocols import SourceConnectionRepositoryProtocol
+from airweave.domains.source_connections.protocols import (
+    ResponseBuilderProtocol,
+    SourceConnectionRepositoryProtocol,
+)
 from airweave.domains.source_connections.types import SourceConnectionStats
 from airweave.domains.sources.protocols import SourceRegistryProtocol
 from airweave.domains.syncs.protocols import SyncJobRepositoryProtocol
@@ -36,7 +39,7 @@ from airweave.schemas.source_connection import (
 )
 
 
-class ResponseBuilder:
+class ResponseBuilder(ResponseBuilderProtocol):
     """Builds API response schemas for source connections."""
 
     def __init__(

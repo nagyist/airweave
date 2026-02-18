@@ -88,7 +88,7 @@ services:
       svix:
         condition: service_healthy
     healthcheck:
-      test: [ "CMD", "curl", "-f", "http://localhost:8001/health" ]
+      test: [ "CMD", "curl", "-f", "http://localhost:8001/health/ready" ]
       interval: 10s
       timeout: 30s
       retries: 10

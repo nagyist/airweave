@@ -88,7 +88,9 @@ class ODBCAuthConfig(AuthConfig):
     database: str = Field(title="Database", description="The name of the ODBC database")
     username: str = Field(title="Username", description="The username for the ODBC database")
     password: str = Field(title="Password", description="The password for the ODBC database")
-    db_schema: str = Field(alias="schema", title="Schema", description="The schema of the ODBC database")
+    db_schema: str = Field(
+        alias="schema", title="Schema", description="The schema of the ODBC database"
+    )
     tables: str = Field(title="Tables", description="The tables of the ODBC database")
 
 

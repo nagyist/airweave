@@ -16,7 +16,9 @@ class VespaDocument(BaseModel):
 
     model_config = ConfigDict(populate_by_name=True)
 
-    schema_name: str = Field(..., alias="schema", description="Vespa schema name (e.g., 'base_entity')")
+    schema_name: str = Field(
+        ..., alias="schema", description="Vespa schema name (e.g., 'base_entity')"
+    )
     id: str = Field(..., description="Document ID (e.g., 'EntityType_entity_id')")
     fields: Dict[str, Any] = Field(..., description="Document fields for Vespa")
 
@@ -37,7 +39,9 @@ class DeleteResult(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
     deleted_count: int = Field(default=0, description="Number of deleted documents")
-    schema_name: str = Field(..., alias="schema", description="Schema the deletion was performed on")
+    schema_name: str = Field(
+        ..., alias="schema", description="Schema the deletion was performed on"
+    )
 
 
 class VespaQueryResponse(BaseModel):

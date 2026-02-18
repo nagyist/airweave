@@ -29,8 +29,8 @@ _RESPONSE_SIZE_BUCKETS = (
 class PrometheusHttpMetrics:
     """Prometheus-backed HTTP metrics collection."""
 
-    def __init__(self) -> None:
-        self._registry = CollectorRegistry()
+    def __init__(self, registry: CollectorRegistry | None = None) -> None:
+        self._registry = registry or CollectorRegistry()
 
         self._requests_total = Counter(
             "airweave_http_requests_total",

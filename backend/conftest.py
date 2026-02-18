@@ -97,6 +97,14 @@ def fake_http_metrics():
 
 
 @pytest.fixture
+def fake_agentic_search_metrics():
+    """Fake AgenticSearchMetrics that records calls in memory."""
+    from airweave.adapters.agentic_search_metrics.fake import FakeAgenticSearchMetrics
+
+    return FakeAgenticSearchMetrics()
+
+
+@pytest.fixture
 def fake_source_service():
     """Fake SourceService that returns canned source schemas."""
     from airweave.domains.sources.fakes.service import FakeSourceService
@@ -214,6 +222,7 @@ def test_container(
     fake_circuit_breaker,
     fake_ocr_provider,
     fake_http_metrics,
+    fake_agentic_search_metrics,
     fake_source_service,
     fake_endpoint_verifier,
     fake_webhook_service,
@@ -248,6 +257,7 @@ def test_container(
         circuit_breaker=fake_circuit_breaker,
         ocr_provider=fake_ocr_provider,
         http_metrics=fake_http_metrics,
+        agentic_search_metrics=fake_agentic_search_metrics,
         source_service=fake_source_service,
         source_registry=fake_source_registry,
         auth_provider_registry=fake_auth_provider_registry,

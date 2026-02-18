@@ -14,6 +14,7 @@ from dataclasses import dataclass, replace
 from typing import Any
 
 from airweave.core.protocols import (
+    AgenticSearchMetrics,
     CircuitBreaker,
     EndpointVerifier,
     EventBus,
@@ -62,6 +63,7 @@ class Container:
             endpoint_verifier=FakeEndpointVerifier(),
             webhook_service=FakeWebhookService(),
             http_metrics=FakeHttpMetrics(),
+            agentic_search_metrics=FakeAgenticSearchMetrics(),
         )
 
         # FastAPI endpoints: use Inject() to pull individual protocols
@@ -90,6 +92,9 @@ class Container:
 
     # HTTP metrics (request count, latency, in-flight, response size)
     http_metrics: HttpMetrics
+
+    # Agentic search metrics (iterations, step durations, result counts)
+    agentic_search_metrics: AgenticSearchMetrics
 
     # Source service — API-facing source operations
     source_service: SourceServiceProtocol

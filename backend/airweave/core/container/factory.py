@@ -10,6 +10,9 @@ Design principles:
 - Testable: can unit test factory logic with mock settings
 """
 
+from __future__ import annotations
+
+from airweave.adapters.agentic_search_metrics import PrometheusAgenticSearchMetrics
 from airweave.adapters.analytics.posthog import PostHogTracker
 from airweave.adapters.analytics.subscriber import AnalyticsEventSubscriber
 from airweave.adapters.circuit_breaker import InMemoryCircuitBreaker
@@ -117,9 +120,13 @@ def create_container(settings: Settings) -> Container:
     health = _create_health_service(settings)
 
     # -----------------------------------------------------------------
-    # HTTP metrics (Prometheus adapter)
+    # Metrics (Prometheus adapters, shared registry)
     # -----------------------------------------------------------------
-    http_metrics = PrometheusHttpMetrics()
+    from prometheus_client import CollectorRegistry
+
+    metrics_registry = CollectorRegistry()
+    http_metrics = PrometheusHttpMetrics(registry=metrics_registry)
+    agentic_search_metrics = PrometheusAgenticSearchMetrics(registry=metrics_registry)
 
     # Source Service + Source Lifecycle Service
     # Auth provider registry is built first, then passed to the source
@@ -136,6 +143,7 @@ def create_container(settings: Settings) -> Container:
         circuit_breaker=circuit_breaker,
         ocr_provider=ocr_provider,
         http_metrics=http_metrics,
+        agentic_search_metrics=agentic_search_metrics,
         source_service=source_deps["source_service"],
         source_registry=source_deps["source_registry"],
         auth_provider_registry=source_deps["auth_provider_registry"],

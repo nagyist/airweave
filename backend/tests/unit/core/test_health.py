@@ -5,73 +5,14 @@ import errno
 
 import pytest
 
+from airweave.core.health.fakes import (
+    FakeFailingProbe,
+    FakeProbe,
+    FakeSkippedProbe,
+    FakeSlowProbe,
+)
 from airweave.core.health.service import HealthService
-from airweave.schemas.health import CheckStatus, DependencyCheck
-
-# ---------------------------------------------------------------------------
-# Stub probes
-# ---------------------------------------------------------------------------
-
-
-class _StubProbe:
-    """Configurable stub that satisfies the HealthProbe protocol."""
-
-    def __init__(self, name: str, *, latency_ms: float = 1.0):
-        self._name = name
-        self._latency_ms = latency_ms
-
-    @property
-    def name(self) -> str:
-        return self._name
-
-    async def check(self) -> DependencyCheck:
-        return DependencyCheck(status=CheckStatus.up, latency_ms=self._latency_ms)
-
-
-class _FailingProbe:
-    """Probe that always raises."""
-
-    def __init__(self, name: str, exc: Exception):
-        self._name = name
-        self._exc = exc
-
-    @property
-    def name(self) -> str:
-        return self._name
-
-    async def check(self) -> DependencyCheck:
-        raise self._exc
-
-
-class _SlowProbe:
-    """Probe that blocks longer than the orchestrator timeout."""
-
-    def __init__(self, name: str, delay: float = 10.0):
-        self._name = name
-        self._delay = delay
-
-    @property
-    def name(self) -> str:
-        return self._name
-
-    async def check(self) -> DependencyCheck:
-        await asyncio.sleep(self._delay)
-        return DependencyCheck(status=CheckStatus.up)
-
-
-class _SkippedProbe:
-    """Probe that returns skipped (e.g. Temporal not yet connected)."""
-
-    def __init__(self, name: str):
-        self._name = name
-
-    @property
-    def name(self) -> str:
-        return self._name
-
-    async def check(self) -> DependencyCheck:
-        return DependencyCheck(status=CheckStatus.skipped)
-
+from airweave.schemas.health import CheckStatus
 
 # ---------------------------------------------------------------------------
 # check_readiness
@@ -84,8 +25,8 @@ class TestCheckReadiness:
     @pytest.mark.asyncio
     async def test_all_up(self):
         svc = HealthService(
-            critical=[_StubProbe("postgres")],
-            informational=[_StubProbe("redis"), _StubProbe("temporal")],
+            critical=[FakeProbe("postgres")],
+            informational=[FakeProbe("redis"), FakeProbe("temporal")],
         )
         result = await svc.check_readiness(debug=False)
 
@@ -97,8 +38,8 @@ class TestCheckReadiness:
     @pytest.mark.asyncio
     async def test_critical_down_means_not_ready(self):
         svc = HealthService(
-            critical=[_FailingProbe("postgres", ConnectionRefusedError())],
-            informational=[_StubProbe("redis")],
+            critical=[FakeFailingProbe("postgres", ConnectionRefusedError())],
+            informational=[FakeProbe("redis")],
         )
         result = await svc.check_readiness(debug=False)
 
@@ -109,8 +50,8 @@ class TestCheckReadiness:
     @pytest.mark.asyncio
     async def test_informational_down_still_ready(self):
         svc = HealthService(
-            critical=[_StubProbe("postgres")],
-            informational=[_FailingProbe("redis", ConnectionError("gone"))],
+            critical=[FakeProbe("postgres")],
+            informational=[FakeFailingProbe("redis", ConnectionError("gone"))],
         )
         result = await svc.check_readiness(debug=False)
 
@@ -121,7 +62,7 @@ class TestCheckReadiness:
     @pytest.mark.asyncio
     async def test_timeout_reported_as_down(self):
         svc = HealthService(
-            critical=[_SlowProbe("postgres", delay=10.0)],
+            critical=[FakeSlowProbe("postgres", delay=10.0)],
             informational=[],
         )
         result = await svc.check_readiness(debug=False)
@@ -133,8 +74,8 @@ class TestCheckReadiness:
     @pytest.mark.asyncio
     async def test_shutting_down_skips_all(self):
         svc = HealthService(
-            critical=[_StubProbe("postgres")],
-            informational=[_StubProbe("redis")],
+            critical=[FakeProbe("postgres")],
+            informational=[FakeProbe("redis")],
         )
         svc.shutting_down = True
         result = await svc.check_readiness(debug=False)
@@ -154,8 +95,8 @@ class TestCheckReadiness:
     @pytest.mark.asyncio
     async def test_skipped_probe_does_not_gate_readiness(self):
         svc = HealthService(
-            critical=[_StubProbe("postgres")],
-            informational=[_SkippedProbe("temporal")],
+            critical=[FakeProbe("postgres")],
+            informational=[FakeSkippedProbe("temporal")],
         )
         result = await svc.check_readiness(debug=False)
 
@@ -165,7 +106,7 @@ class TestCheckReadiness:
     @pytest.mark.asyncio
     async def test_latency_reported(self):
         svc = HealthService(
-            critical=[_StubProbe("postgres", latency_ms=2.5)],
+            critical=[FakeProbe("postgres", latency_ms=2.5)],
             informational=[],
         )
         result = await svc.check_readiness(debug=False)

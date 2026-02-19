@@ -12,9 +12,6 @@ from collections.abc import Sequence
 from airweave.core.health.protocols import HealthProbe, HealthServiceProtocol
 from airweave.schemas.health import CheckStatus, DependencyCheck, ReadinessResponse
 
-# Timeout applied to each individual dependency check.
-_CHECK_TIMEOUT: float = 5.0
-
 
 class HealthService(HealthServiceProtocol):
     """Concrete ``HealthServiceProtocol`` implementation.
@@ -28,10 +25,12 @@ class HealthService(HealthServiceProtocol):
         *,
         critical: Sequence[HealthProbe],
         informational: Sequence[HealthProbe],
+        timeout: float = 5.0,
     ) -> None:
         """Initialise with critical and informational probe sequences."""
         self._critical = critical
         self._informational = informational
+        self._timeout = timeout
         self._shutting_down = False
 
     # -- shutdown flag -------------------------------------------------------
@@ -96,11 +95,10 @@ class HealthService(HealthServiceProtocol):
 
     # -- helpers -------------------------------------------------------------
 
-    @staticmethod
-    async def _run_probe(probe: HealthProbe) -> tuple[str, DependencyCheck | Exception]:
+    async def _run_probe(self, probe: HealthProbe) -> tuple[str, DependencyCheck | Exception]:
         """Execute a single probe with a timeout."""
         try:
-            result = await asyncio.wait_for(probe.check(), timeout=_CHECK_TIMEOUT)
+            result = await asyncio.wait_for(probe.check(), timeout=self._timeout)
         except Exception as exc:
             return probe.name, exc
         return probe.name, result

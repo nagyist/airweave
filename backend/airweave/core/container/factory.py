@@ -98,7 +98,7 @@ def create_container(settings: Settings) -> Container:
     # Health service
     # Owns shutdown flag and orchestrates readiness probes.
     # -----------------------------------------------------------------
-    health = _create_health_service()
+    health = _create_health_service(settings)
 
     # Source Service + Source Lifecycle Service
     # Auth provider registry is built first, then passed to the source
@@ -132,22 +132,43 @@ def create_container(settings: Settings) -> Container:
 # ---------------------------------------------------------------------------
 
 
-def _create_health_service() -> HealthService:
+def _create_health_service(settings: Settings) -> HealthService:
     """Create the health service with infrastructure probes.
 
-    Postgres is critical (gates HTTP 503).  Redis and Temporal are
-    informational — reported for observability but do not affect status.
+    Probe registration is driven by existing infra flags (Temporal is
+    only registered when ``TEMPORAL_ENABLED``).  The critical-vs-
+    informational split comes from ``settings.health_critical_probes``.
     """
     from airweave.core.redis_client import redis_client
     from airweave.db.session import health_check_engine
-    from airweave.platform.temporal.client import TemporalClient
 
-    critical = [PostgresHealthProbe(health_check_engine)]
-    informational = [
-        RedisHealthProbe(redis_client.client),
-        TemporalHealthProbe(lambda: TemporalClient._client),
-    ]
-    return HealthService(critical=critical, informational=informational)
+    critical_names = settings.health_critical_probes
+
+    probes = {
+        "postgres": PostgresHealthProbe(health_check_engine),
+        "redis": RedisHealthProbe(redis_client.client),
+    }
+
+    if settings.TEMPORAL_ENABLED:
+        from airweave.platform.temporal.client import TemporalClient
+
+        probes["temporal"] = TemporalHealthProbe(lambda: TemporalClient._client)
+
+    unknown = critical_names - probes.keys()
+    if unknown:
+        logger.warning(
+            "HEALTH_CRITICAL_PROBES references unknown probes: %s",
+            ", ".join(sorted(unknown)),
+        )
+
+    critical = [p for name, p in probes.items() if name in critical_names]
+    informational = [p for name, p in probes.items() if name not in critical_names]
+
+    return HealthService(
+        critical=critical,
+        informational=informational,
+        timeout=settings.HEALTH_CHECK_TIMEOUT,
+    )
 
 
 def _create_event_bus(webhook_publisher: WebhookPublisher, settings: Settings) -> EventBus:

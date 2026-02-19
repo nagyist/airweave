@@ -64,6 +64,7 @@ class TestCheckReadiness:
         svc = HealthService(
             critical=[FakeSlowProbe("postgres", delay=10.0)],
             informational=[],
+            timeout=0.05,
         )
         result = await svc.check_readiness(debug=False)
 
@@ -162,3 +163,37 @@ class TestSanitizeError:
         outer = RuntimeError("wrapper")
         outer.__cause__ = inner
         assert HealthService._sanitize_error(outer, debug=False) == "connection_refused"
+
+
+# ---------------------------------------------------------------------------
+# custom timeout
+# ---------------------------------------------------------------------------
+
+
+class TestCustomTimeout:
+    """Tests that the per-probe timeout is configurable."""
+
+    @pytest.mark.asyncio
+    async def test_probe_slower_than_timeout_is_down(self):
+        svc = HealthService(
+            critical=[FakeSlowProbe("postgres", delay=1.0)],
+            informational=[],
+            timeout=0.05,
+        )
+        result = await svc.check_readiness(debug=False)
+
+        assert result.status == "not_ready"
+        assert result.checks["postgres"].status == CheckStatus.down
+        assert result.checks["postgres"].error == "timeout"
+
+    @pytest.mark.asyncio
+    async def test_probe_within_timeout_succeeds(self):
+        svc = HealthService(
+            critical=[FakeProbe("postgres")],
+            informational=[],
+            timeout=5.0,
+        )
+        result = await svc.check_readiness(debug=False)
+
+        assert result.status == "ready"
+        assert result.checks["postgres"].status == CheckStatus.up

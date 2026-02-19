@@ -15,7 +15,7 @@ from airweave.core.protocols.metrics_renderer import MetricsRenderer
 from airweave.search.agentic_search.protocols import AgenticSearchMetrics
 
 if TYPE_CHECKING:
-    from airweave.api.metrics_server import ApiMetricsServer
+    from airweave.api.metrics import MetricsServer
     from airweave.core.db_pool_sampler import DbPoolSampler
 
 
@@ -47,15 +47,15 @@ class PrometheusMetricsService:
         self.agentic_search = agentic_search
         self.db_pool = db_pool
         self._renderer = renderer
-        self._server: ApiMetricsServer | None = None
+        self._server: MetricsServer | None = None
         self._sampler: DbPoolSampler | None = None
 
     async def start(self, *, pool: Any, host: str, port: int) -> None:
         """Start the sidecar metrics server and the DB pool sampler."""
-        from airweave.api.metrics_server import ApiMetricsServer
+        from airweave.api.metrics import MetricsServer
         from airweave.core.db_pool_sampler import DbPoolSampler
 
-        self._server = ApiMetricsServer(self._renderer, port, host)
+        self._server = MetricsServer(self._renderer, port, host)
         await self._server.start()
         self._sampler = DbPoolSampler(pool=pool, metrics=self.db_pool)
         await self._sampler.start()

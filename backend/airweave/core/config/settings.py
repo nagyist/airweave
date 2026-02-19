@@ -187,8 +187,8 @@ class Settings(BaseSettings):
     # Temporal worker graceful shutdown configuration
     TEMPORAL_GRACEFUL_SHUTDOWN_TIMEOUT: int = 7200  # 2 hours in seconds
     WORKER_METRICS_PORT: int = 8888  # Port for /drain and /health endpoints
-    API_METRICS_PORT: int = 9090  # Port for API Prometheus metrics endpoint
-    API_METRICS_HOST: str = "0.0.0.0"  # Bind address for API metrics server
+    METRICS_PORT: int = 9090  # Port for Prometheus metrics endpoint
+    METRICS_HOST: str = "0.0.0.0"  # Bind address for metrics server
 
     # Stripe billing settings
     STRIPE_ENABLED: bool = False

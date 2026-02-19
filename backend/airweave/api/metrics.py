@@ -13,7 +13,7 @@ from airweave.core.logging import logger
 from airweave.core.protocols.metrics_renderer import MetricsRenderer
 
 
-class ApiMetricsServer:
+class MetricsServer:
     """Lightweight aiohttp server serving /metrics for Prometheus scraping."""
 
     def __init__(self, renderer: MetricsRenderer, port: int, host: str = "0.0.0.0") -> None:
@@ -31,7 +31,7 @@ class ApiMetricsServer:
         await self._runner.setup()
         site = web.TCPSite(self._runner, self._host, self._port)
         await site.start()
-        logger.info("API metrics server started on %s:%s", self._host, self._port)
+        logger.info("Metrics server started on %s:%s", self._host, self._port)
 
     async def stop(self) -> None:
         """Stop the metrics server."""

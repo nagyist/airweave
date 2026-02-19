@@ -45,7 +45,10 @@ class TestPrometheusHttpMetrics:
         adapter.observe_request("POST", "/api/v1/items", "201", 0.03)
 
         output = generate_latest(registry).decode()
-        assert 'airweave_http_requests_total{endpoint="/api/v1/items",method="POST",status_code="201"} 2.0' in output
+        assert (
+            'airweave_http_requests_total{endpoint="/api/v1/items",method="POST",status_code="201"} 2.0'
+            in output
+        )
 
     def test_in_progress_gauge(self):
         from prometheus_client import CollectorRegistry, generate_latest
@@ -290,9 +293,7 @@ class TestHttpMetricsMiddlewareStreaming:
         assert fake_metrics.in_progress.get("GET", 0) == 0  # Decremented
 
     @pytest.mark.asyncio
-    async def test_streaming_records_total_bytes(
-        self, _make_streaming_request, fake_metrics
-    ):
+    async def test_streaming_records_total_bytes(self, _make_streaming_request, fake_metrics):
         """Streaming wrapper should accumulate and record total response bytes."""
         from airweave.api.middleware import http_metrics_middleware
 
@@ -307,9 +308,7 @@ class TestHttpMetricsMiddlewareStreaming:
         assert fake_metrics.response_sizes[0].size == 11  # len("hello world")
 
     @pytest.mark.asyncio
-    async def test_streaming_handles_str_chunks(
-        self, _make_streaming_request, fake_metrics
-    ):
+    async def test_streaming_handles_str_chunks(self, _make_streaming_request, fake_metrics):
         """SSE responses yield str chunks; bytes should be counted via UTF-8 encoding."""
         from airweave.api.middleware import http_metrics_middleware
 
@@ -379,9 +378,7 @@ class TestHttpMetricsMiddlewareStreaming:
         assert fake_metrics.in_progress.get("POST", 0) == 0
 
     @pytest.mark.asyncio
-    async def test_streaming_records_on_task_cancellation(
-        self, fake_metrics
-    ):
+    async def test_streaming_records_on_task_cancellation(self, fake_metrics):
         """Metrics should be recorded when asyncio.CancelledError interrupts iteration."""
         from airweave.api.middleware import http_metrics_middleware
 
@@ -438,9 +435,7 @@ class TestHttpMetricsMiddlewareStreaming:
         assert fake_metrics.in_progress.get("GET", 0) == 0
 
     @pytest.mark.asyncio
-    async def test_nonstreaming_still_records_immediately(
-        self, fake_metrics
-    ):
+    async def test_nonstreaming_still_records_immediately(self, fake_metrics):
         """Non-streaming (content-length present) should record immediately as before."""
         from airweave.api.middleware import http_metrics_middleware
 
@@ -465,18 +460,18 @@ class TestHttpMetricsMiddlewareStreaming:
         assert fake_metrics.response_sizes[0].size == 42
 
 
-class TestApiMetricsServer:
-    """Tests for the ApiMetricsServer handler."""
+class TestMetricsServer:
+    """Tests for the MetricsServer handler."""
 
     @pytest.mark.asyncio
     async def test_handle_metrics_returns_fake_body_and_content_type(self):
         """Handler should delegate to MetricsRenderer.generate() and content_type."""
         from aiohttp.test_utils import make_mocked_request
 
-        from airweave.api.metrics_server import ApiMetricsServer
+        from airweave.api.metrics import MetricsServer
 
         fake = FakeMetricsRenderer()
-        server = ApiMetricsServer(fake, port=0)
+        server = MetricsServer(fake, port=0)
 
         request = make_mocked_request("GET", "/metrics")
         response = await server._handle_metrics(request)
@@ -490,10 +485,10 @@ class TestApiMetricsServer:
         """A started server should respond with metrics on /metrics."""
         import aiohttp
 
-        from airweave.api.metrics_server import ApiMetricsServer
+        from airweave.api.metrics import MetricsServer
 
         fake = FakeMetricsRenderer()
-        server = ApiMetricsServer(fake, port=0)
+        server = MetricsServer(fake, port=0)
         await server.start()
 
         try:
@@ -513,8 +508,8 @@ class TestApiMetricsServer:
     @pytest.mark.asyncio
     async def test_stop_is_safe_when_not_started(self):
         """Calling stop() before start() must not raise."""
-        from airweave.api.metrics_server import ApiMetricsServer
+        from airweave.api.metrics import MetricsServer
 
         fake = FakeMetricsRenderer()
-        server = ApiMetricsServer(fake, port=0)
+        server = MetricsServer(fake, port=0)
         await server.stop()  # Should be a no-op

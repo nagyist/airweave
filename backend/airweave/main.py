@@ -121,8 +121,8 @@ async def lifespan(app: FastAPI):
 
     await container_mod.container.metrics.start(
         pool=async_engine.pool,
-        host=settings.API_METRICS_HOST,
-        port=settings.API_METRICS_PORT,
+        host=settings.METRICS_HOST,
+        port=settings.METRICS_PORT,
     )
 
     try:

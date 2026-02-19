@@ -89,23 +89,6 @@ async def lifespan(app: FastAPI):
     # Validate embedding stack configuration (raises if misconfigured)
     validate_and_raise()
 
-    app.state.shutting_down = False
-
-    # --- Build health probes ---
-    from airweave.adapters.health import PostgresHealthProbe, RedisHealthProbe, TemporalHealthProbe
-    from airweave.core.redis_client import redis_client
-    from airweave.db.session import health_check_engine
-
-    app.state.health_probes_critical = [PostgresHealthProbe(health_check_engine)]
-    informational: list = [RedisHealthProbe(redis_client.client)]
-
-    if settings.TEMPORAL_ENABLED:
-        from airweave.platform.temporal.client import TemporalClient
-
-        informational.append(TemporalHealthProbe(lambda: TemporalClient._client))
-
-    app.state.health_probes_informational = informational
-
     # Initialize cleanup schedule for stuck sync jobs (if Temporal is enabled)
     if settings.TEMPORAL_ENABLED:
         try:
@@ -132,7 +115,7 @@ async def lifespan(app: FastAPI):
 
     yield
 
-    app.state.shutting_down = True
+    container_mod.container.health.shutting_down = True
 
     # Clean up health check engine connections
     from airweave.db.session import health_check_engine

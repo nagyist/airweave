@@ -17,6 +17,7 @@ from airweave.core.protocols import (
     CircuitBreaker,
     EndpointVerifier,
     EventBus,
+    HealthServiceProtocol,
     OcrProvider,
     WebhookAdmin,
     WebhookPublisher,
@@ -62,6 +63,9 @@ class Container:
         async def my_endpoint(event_bus: EventBus = Inject(EventBus)):
             await event_bus.publish(...)
     """
+
+    # Health service — readiness check facade
+    health: HealthServiceProtocol
 
     # Event bus for domain event fan-out
     event_bus: EventBus

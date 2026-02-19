@@ -1,10 +1,11 @@
 """Health check endpoints."""
 
-from fastapi import Request, Response
+from fastapi import Response
 
+from airweave.api.deps import Inject
 from airweave.api.router import TrailingSlashRouter
 from airweave.core.config import settings
-from airweave.core.health import check_readiness
+from airweave.core.protocols import HealthServiceProtocol
 from airweave.schemas.health import LivenessResponse, ReadinessResponse
 
 router = TrailingSlashRouter()
@@ -32,19 +33,17 @@ async def liveness() -> LivenessResponse:
     response_model=ReadinessResponse,
     responses={503: {"model": ReadinessResponse}},
 )
-async def readiness(request: Request, response: Response) -> ReadinessResponse:
+async def readiness(
+    response: Response,
+    health: HealthServiceProtocol = Inject(HealthServiceProtocol),
+) -> ReadinessResponse:
     """Readiness probe — checks critical dependencies.
 
     Only critical probes (Postgres) gate the HTTP status code.  Informational
     probes (Redis, Temporal) are reported for observability but do not cause
     a 503.
     """
-    result = await check_readiness(
-        critical=getattr(request.app.state, "health_probes_critical", []),
-        informational=getattr(request.app.state, "health_probes_informational", []),
-        shutting_down=getattr(request.app.state, "shutting_down", False),
-        debug=settings.DEBUG,
-    )
+    result = await health.check_readiness(debug=settings.DEBUG)
 
     if result.status != "ready":
         response.status_code = 503

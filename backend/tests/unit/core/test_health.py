@@ -5,7 +5,7 @@ import errno
 
 import pytest
 
-from airweave.core.health import _sanitize_error, check_readiness
+from airweave.core.health_service import HealthService
 from airweave.schemas.health import CheckStatus, DependencyCheck
 
 
@@ -84,12 +84,11 @@ class TestCheckReadiness:
 
     @pytest.mark.asyncio
     async def test_all_up(self):
-        result = await check_readiness(
+        svc = HealthService(
             critical=[_StubProbe("postgres")],
             informational=[_StubProbe("redis"), _StubProbe("temporal")],
-            shutting_down=False,
-            debug=False,
         )
+        result = await svc.check_readiness(debug=False)
 
         assert result.status == "ready"
         assert result.checks["postgres"].status == CheckStatus.up
@@ -98,12 +97,11 @@ class TestCheckReadiness:
 
     @pytest.mark.asyncio
     async def test_critical_down_means_not_ready(self):
-        result = await check_readiness(
+        svc = HealthService(
             critical=[_FailingProbe("postgres", ConnectionRefusedError())],
             informational=[_StubProbe("redis")],
-            shutting_down=False,
-            debug=False,
         )
+        result = await svc.check_readiness(debug=False)
 
         assert result.status == "not_ready"
         assert result.checks["postgres"].status == CheckStatus.down
@@ -111,12 +109,11 @@ class TestCheckReadiness:
 
     @pytest.mark.asyncio
     async def test_informational_down_still_ready(self):
-        result = await check_readiness(
+        svc = HealthService(
             critical=[_StubProbe("postgres")],
             informational=[_FailingProbe("redis", ConnectionError("gone"))],
-            shutting_down=False,
-            debug=False,
         )
+        result = await svc.check_readiness(debug=False)
 
         assert result.status == "ready"
         assert result.checks["postgres"].status == CheckStatus.up
@@ -124,12 +121,11 @@ class TestCheckReadiness:
 
     @pytest.mark.asyncio
     async def test_timeout_reported_as_down(self):
-        result = await check_readiness(
+        svc = HealthService(
             critical=[_SlowProbe("postgres", delay=10.0)],
             informational=[],
-            shutting_down=False,
-            debug=False,
         )
+        result = await svc.check_readiness(debug=False)
 
         assert result.status == "not_ready"
         assert result.checks["postgres"].status == CheckStatus.down
@@ -137,12 +133,12 @@ class TestCheckReadiness:
 
     @pytest.mark.asyncio
     async def test_shutting_down_skips_all(self):
-        result = await check_readiness(
+        svc = HealthService(
             critical=[_StubProbe("postgres")],
             informational=[_StubProbe("redis")],
-            shutting_down=True,
-            debug=False,
         )
+        svc.shutting_down = True
+        result = await svc.check_readiness(debug=False)
 
         assert result.status == "not_ready"
         assert result.checks["postgres"].status == CheckStatus.skipped
@@ -150,38 +146,50 @@ class TestCheckReadiness:
 
     @pytest.mark.asyncio
     async def test_no_probes(self):
-        result = await check_readiness(
-            critical=[],
-            informational=[],
-            shutting_down=False,
-            debug=False,
-        )
+        svc = HealthService(critical=[], informational=[])
+        result = await svc.check_readiness(debug=False)
 
         assert result.status == "ready"
         assert result.checks == {}
 
     @pytest.mark.asyncio
     async def test_skipped_probe_does_not_gate_readiness(self):
-        result = await check_readiness(
+        svc = HealthService(
             critical=[_StubProbe("postgres")],
             informational=[_SkippedProbe("temporal")],
-            shutting_down=False,
-            debug=False,
         )
+        result = await svc.check_readiness(debug=False)
 
         assert result.status == "ready"
         assert result.checks["temporal"].status == CheckStatus.skipped
 
     @pytest.mark.asyncio
     async def test_latency_reported(self):
-        result = await check_readiness(
+        svc = HealthService(
             critical=[_StubProbe("postgres", latency_ms=2.5)],
             informational=[],
-            shutting_down=False,
-            debug=False,
         )
+        result = await svc.check_readiness(debug=False)
 
         assert result.checks["postgres"].latency_ms == 2.5
+
+
+# ---------------------------------------------------------------------------
+# shutting_down property
+# ---------------------------------------------------------------------------
+
+
+class TestShuttingDown:
+    """Tests for the shutting_down property."""
+
+    def test_default_is_false(self):
+        svc = HealthService(critical=[], informational=[])
+        assert svc.shutting_down is False
+
+    def test_setter(self):
+        svc = HealthService(critical=[], informational=[])
+        svc.shutting_down = True
+        assert svc.shutting_down is True
 
 
 # ---------------------------------------------------------------------------
@@ -194,23 +202,23 @@ class TestSanitizeError:
 
     def test_debug_shows_full_message(self):
         err = RuntimeError("host=db.internal port=5432 connection refused")
-        assert "db.internal" in _sanitize_error(err, debug=True)
+        assert "db.internal" in HealthService._sanitize_error(err, debug=True)
 
     def test_production_hides_details(self):
         err = RuntimeError("host=db.internal port=5432 connection refused")
-        sanitized = _sanitize_error(err, debug=False)
+        sanitized = HealthService._sanitize_error(err, debug=False)
         assert "db.internal" not in sanitized
         assert sanitized == "unavailable"
 
     def test_timeout(self):
-        assert _sanitize_error(asyncio.TimeoutError(), debug=False) == "timeout"
+        assert HealthService._sanitize_error(asyncio.TimeoutError(), debug=False) == "timeout"
 
     def test_connection_refused(self):
         err = OSError(errno.ECONNREFUSED, "Connection refused")
-        assert _sanitize_error(err, debug=False) == "connection_refused"
+        assert HealthService._sanitize_error(err, debug=False) == "connection_refused"
 
     def test_connection_refused_on_cause(self):
         inner = OSError(errno.ECONNREFUSED, "Connection refused")
         outer = RuntimeError("wrapper")
         outer.__cause__ = inner
-        assert _sanitize_error(outer, debug=False) == "connection_refused"
+        assert HealthService._sanitize_error(outer, debug=False) == "connection_refused"

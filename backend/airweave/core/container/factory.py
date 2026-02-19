@@ -14,6 +14,7 @@ from airweave.adapters.analytics.posthog import PostHogTracker
 from airweave.adapters.analytics.subscriber import AnalyticsEventSubscriber
 from airweave.adapters.circuit_breaker import InMemoryCircuitBreaker
 from airweave.adapters.event_bus.in_memory import InMemoryEventBus
+from airweave.adapters.health import PostgresHealthProbe, RedisHealthProbe, TemporalHealthProbe
 from airweave.adapters.ocr.docling import DoclingOcrAdapter
 from airweave.adapters.ocr.fallback import FallbackOcrProvider
 from airweave.adapters.ocr.mistral import MistralOcrAdapter
@@ -21,6 +22,7 @@ from airweave.adapters.webhooks.endpoint_verifier import HttpEndpointVerifier
 from airweave.adapters.webhooks.svix import SvixAdapter
 from airweave.core.config import Settings
 from airweave.core.container.container import Container
+from airweave.core.health_service import HealthService
 from airweave.core.logging import logger
 from airweave.core.protocols import CircuitBreaker, OcrProvider
 from airweave.core.protocols.event_bus import EventBus
@@ -92,6 +94,12 @@ def create_container(settings: Settings) -> Container:
     circuit_breaker = _create_circuit_breaker()
     ocr_provider = _create_ocr_provider(circuit_breaker, settings)
 
+    # -----------------------------------------------------------------
+    # Health service
+    # Owns shutdown flag and orchestrates readiness probes.
+    # -----------------------------------------------------------------
+    health = _create_health_service(settings)
+
     # Source Service + Source Lifecycle Service
     # Auth provider registry is built first, then passed to the source
     # registry so it can compute supported_auth_providers per source.
@@ -100,6 +108,7 @@ def create_container(settings: Settings) -> Container:
     source_deps = _create_source_services(settings)
 
     return Container(
+        health=health,
         event_bus=event_bus,
         webhook_publisher=svix_adapter,
         webhook_admin=svix_adapter,
@@ -121,6 +130,26 @@ def create_container(settings: Settings) -> Container:
 # ---------------------------------------------------------------------------
 # Private factory functions for each dependency
 # ---------------------------------------------------------------------------
+
+
+def _create_health_service(settings: Settings) -> HealthService:
+    """Create the health service with infrastructure probes.
+
+    Postgres is critical (gates HTTP 503).  Redis and Temporal are
+    informational — reported for observability but do not affect status.
+    """
+    from airweave.core.redis_client import redis_client
+    from airweave.db.session import health_check_engine
+
+    critical = [PostgresHealthProbe(health_check_engine)]
+    informational: list = [RedisHealthProbe(redis_client.client)]
+
+    if settings.TEMPORAL_ENABLED:
+        from airweave.platform.temporal.client import TemporalClient
+
+        informational.append(TemporalHealthProbe(lambda: TemporalClient._client))
+
+    return HealthService(critical=critical, informational=informational)
 
 
 def _create_event_bus(webhook_publisher: WebhookPublisher, settings: Settings) -> EventBus:

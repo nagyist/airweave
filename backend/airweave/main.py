@@ -89,29 +89,28 @@ async def lifespan(app: FastAPI):
     # Validate embedding stack configuration (raises if misconfigured)
     validate_and_raise()
 
-    # Initialize cleanup schedule for stuck sync jobs (if Temporal is enabled)
-    if settings.TEMPORAL_ENABLED:
-        try:
-            from airweave.platform.temporal.schedule_service import temporal_schedule_service
+    # Initialize cleanup schedule for stuck sync jobs
+    try:
+        from airweave.platform.temporal.schedule_service import temporal_schedule_service
 
-            logger.info("Initializing cleanup schedule for stuck sync jobs...")
-            await temporal_schedule_service.create_cleanup_schedule()
-            logger.info("Cleanup schedule initialized successfully")
-        except Exception as e:
-            logger.warning(
-                f"Failed to initialize cleanup schedule (Temporal may not be available): {e}"
-            )
+        logger.info("Initializing cleanup schedule for stuck sync jobs...")
+        await temporal_schedule_service.create_cleanup_schedule()
+        logger.info("Cleanup schedule initialized successfully")
+    except Exception as e:
+        logger.warning(
+            f"Failed to initialize cleanup schedule (Temporal may not be available): {e}"
+        )
 
-        # Initialize API key expiration notification schedule
-        try:
-            logger.info("Initializing API key expiration notification schedule...")
-            await temporal_schedule_service.create_api_key_notification_schedule()
-            logger.info("API key notification schedule initialized successfully")
-        except Exception as e:
-            logger.warning(
-                f"Failed to initialize API key notification schedule "
-                f"(Temporal may not be available): {e}"
-            )
+    # Initialize API key expiration notification schedule
+    try:
+        logger.info("Initializing API key expiration notification schedule...")
+        await temporal_schedule_service.create_api_key_notification_schedule()
+        logger.info("API key notification schedule initialized successfully")
+    except Exception as e:
+        logger.warning(
+            f"Failed to initialize API key notification schedule "
+            f"(Temporal may not be available): {e}"
+        )
 
     yield
 

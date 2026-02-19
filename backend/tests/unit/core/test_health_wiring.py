@@ -15,7 +15,6 @@ def _make_settings(**overrides) -> MagicMock:
     defaults = {
         "HEALTH_CHECK_TIMEOUT": 5.0,
         "HEALTH_CRITICAL_PROBES": "postgres",
-        "TEMPORAL_ENABLED": False,
     }
     defaults.update(overrides)
 
@@ -50,10 +49,10 @@ def _patches():
 
 
 class TestDefaultSettings:
-    """Default settings: postgres critical, redis informational, no Temporal."""
+    """Default settings: postgres critical, redis+temporal informational."""
 
     def test_probe_partitioning(self):
-        """Postgres is critical and redis is informational by default."""
+        """Postgres is critical; redis and temporal are informational."""
         p_engine, p_redis, p_temporal, engine, redis_mod, temporal_cls = _patches()
         with p_engine, p_redis, p_temporal:
             settings = _make_settings()
@@ -63,31 +62,7 @@ class TestDefaultSettings:
         info_names = {p.name for p in svc._informational}
 
         assert critical_names == {"postgres"}
-        assert info_names == {"redis"}
-
-    def test_temporal_absent_when_disabled(self):
-        """Temporal probe is not registered when TEMPORAL_ENABLED=False."""
-        p_engine, p_redis, p_temporal, engine, redis_mod, temporal_cls = _patches()
-        with p_engine, p_redis, p_temporal:
-            settings = _make_settings(TEMPORAL_ENABLED=False)
-            svc = _create_health_service(settings)
-
-        all_names = {p.name for p in [*svc._critical, *svc._informational]}
-        assert "temporal" not in all_names
-
-
-class TestTemporalEnabled:
-    """When ``TEMPORAL_ENABLED=True``, the Temporal probe appears."""
-
-    def test_temporal_is_informational(self):
-        """Temporal defaults to informational (not in critical set)."""
-        p_engine, p_redis, p_temporal, engine, redis_mod, temporal_cls = _patches()
-        with p_engine, p_redis, p_temporal:
-            settings = _make_settings(TEMPORAL_ENABLED=True)
-            svc = _create_health_service(settings)
-
-        info_names = {p.name for p in svc._informational}
-        assert "temporal" in info_names
+        assert info_names == {"redis", "temporal"}
 
 
 class TestCriticalOverride:
@@ -104,7 +79,7 @@ class TestCriticalOverride:
 
         critical_names = {p.name for p in svc._critical}
         assert critical_names == {"postgres", "redis"}
-        assert svc._informational == []
+        assert {p.name for p in svc._informational} == {"temporal"}
 
 
 class TestUnknownCriticalProbe:

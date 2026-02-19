@@ -50,7 +50,6 @@ class Settings(BaseSettings):
         TEMPORAL_PORT (int): The Temporal server port.
         TEMPORAL_NAMESPACE (str): The namespace of the Temporal server.
         TEMPORAL_TASK_QUEUE (str): The task queue for the Temporal server.
-        TEMPORAL_ENABLED (bool): Whether Temporal is enabled.
         SYNC_MAX_WORKERS (int): The maximum number of workers for sync tasks.
         SYNC_THREAD_POOL_SIZE (int): The size of the thread pool for sync tasks.
         WEB_FETCHER_MAX_CONCURRENT (int): Max concurrent web scraping requests
@@ -179,7 +178,6 @@ class Settings(BaseSettings):
     TEMPORAL_PORT: int = 7233
     TEMPORAL_NAMESPACE: str = "default"
     TEMPORAL_TASK_QUEUE: str = "airweave-sync-queue"
-    TEMPORAL_ENABLED: bool = False
     TEMPORAL_DISABLE_SANDBOX: bool = False
 
     # Health probe configuration

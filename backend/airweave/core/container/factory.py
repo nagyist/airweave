@@ -135,24 +135,21 @@ def create_container(settings: Settings) -> Container:
 def _create_health_service(settings: Settings) -> HealthService:
     """Create the health service with infrastructure probes.
 
-    Probe registration is driven by existing infra flags (Temporal is
-    only registered when ``TEMPORAL_ENABLED``).  The critical-vs-
-    informational split comes from ``settings.health_critical_probes``.
+    All known probes (postgres, redis, temporal) are always registered.
+    The critical-vs-informational split comes from
+    ``settings.health_critical_probes``.
     """
     from airweave.core.redis_client import redis_client
     from airweave.db.session import health_check_engine
+    from airweave.platform.temporal.client import TemporalClient
 
     critical_names = settings.health_critical_probes
 
     probes = {
         "postgres": PostgresHealthProbe(health_check_engine),
         "redis": RedisHealthProbe(redis_client.client),
+        "temporal": TemporalHealthProbe(lambda: TemporalClient._client),
     }
-
-    if settings.TEMPORAL_ENABLED:
-        from airweave.platform.temporal.client import TemporalClient
-
-        probes["temporal"] = TemporalHealthProbe(lambda: TemporalClient._client)
 
     unknown = critical_names - probes.keys()
     if unknown:

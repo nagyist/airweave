@@ -7,8 +7,10 @@ future metric families — into Prometheus text exposition format.
 
 from prometheus_client import CONTENT_TYPE_LATEST, CollectorRegistry, generate_latest
 
+from airweave.core.protocols.metrics_renderer import MetricsRenderer
 
-class PrometheusMetricsRenderer:
+
+class PrometheusMetricsRenderer(MetricsRenderer):
     """Render all metrics in a shared CollectorRegistry."""
 
     def __init__(self, registry: CollectorRegistry) -> None:

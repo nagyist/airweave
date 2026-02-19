@@ -19,7 +19,10 @@ from airweave.adapters.analytics.posthog import PostHogTracker
 from airweave.adapters.analytics.subscriber import AnalyticsEventSubscriber
 from airweave.adapters.circuit_breaker import InMemoryCircuitBreaker
 from airweave.adapters.db_pool_metrics import PrometheusDbPoolMetrics
+<<<<<<< HEAD
 from airweave.adapters.encryption.fernet import FernetCredentialEncryptor
+=======
+>>>>>>> 39643f2f (fix: explicit protocol bases, top-level imports)
 from airweave.adapters.event_bus.in_memory import InMemoryEventBus
 from airweave.adapters.health import PostgresHealthProbe, RedisHealthProbe, TemporalHealthProbe
 from airweave.adapters.http_metrics import PrometheusHttpMetrics

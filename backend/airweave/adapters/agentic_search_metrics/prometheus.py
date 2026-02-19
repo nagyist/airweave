@@ -6,13 +6,15 @@ alongside the HTTP metrics on the same ``/metrics`` endpoint.
 
 from prometheus_client import CollectorRegistry, Counter, Histogram
 
+from airweave.search.agentic_search.protocols import AgenticSearchMetrics
+
 _ITERATION_BUCKETS = (1, 2, 3, 4, 5, 7, 10)
 _STEP_DURATION_BUCKETS = (0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0)
 _RESULTS_BUCKETS = (0, 1, 5, 10, 25, 50, 100, 250)
 _DURATION_BUCKETS = (0.5, 1.0, 2.5, 5.0, 10.0, 25.0, 60.0, 120.0)
 
 
-class PrometheusAgenticSearchMetrics:
+class PrometheusAgenticSearchMetrics(AgenticSearchMetrics):
     """Prometheus-backed agentic search metrics collection."""
 
     def __init__(self, registry: CollectorRegistry | None = None) -> None:

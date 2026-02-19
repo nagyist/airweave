@@ -11,6 +11,8 @@ from prometheus_client import (
     Histogram,
 )
 
+from airweave.core.protocols.http_metrics import HttpMetrics
+
 _RESPONSE_SIZE_BUCKETS = (
     100,
     500,
@@ -24,7 +26,7 @@ _RESPONSE_SIZE_BUCKETS = (
 )
 
 
-class PrometheusHttpMetrics:
+class PrometheusHttpMetrics(HttpMetrics):
     """Prometheus-backed HTTP metrics collection."""
 
     def __init__(self, registry: CollectorRegistry | None = None) -> None:

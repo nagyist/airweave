@@ -4,8 +4,10 @@ Records the latest ``update()`` kwargs so tests can assert on pool gauge
 values without reaching into prometheus-client internals.
 """
 
+from airweave.core.protocols.db_pool_metrics import DbPoolMetrics
 
-class FakeDbPoolMetrics:
+
+class FakeDbPoolMetrics(DbPoolMetrics):
     """In-memory spy implementing the DbPoolMetrics protocol.
 
     Usage:

@@ -6,10 +6,11 @@ without depending on prometheus-client.
 
 from __future__ import annotations
 
+from airweave.core.protocols.worker_metrics import WorkerMetrics
 from airweave.platform.temporal.worker_metrics_snapshot import WorkerMetricsSnapshot
 
 
-class FakeWorkerMetrics:
+class FakeWorkerMetrics(WorkerMetrics):
     """In-memory spy implementing the WorkerMetrics protocol."""
 
     def __init__(self) -> None:

@@ -7,8 +7,10 @@ since it is a static engine configuration value.
 
 from prometheus_client import CollectorRegistry, Gauge
 
+from airweave.core.protocols.db_pool_metrics import DbPoolMetrics
 
-class PrometheusDbPoolMetrics:
+
+class PrometheusDbPoolMetrics(DbPoolMetrics):
     """Prometheus-backed DB connection pool metrics."""
 
     def __init__(

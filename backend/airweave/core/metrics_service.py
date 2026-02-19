@@ -7,19 +7,18 @@ deal with one object instead of four adapters + two background services.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
+from airweave.api.metrics import MetricsServer
+from airweave.core.db_pool_sampler import DbPoolSampler
 from airweave.core.protocols.db_pool_metrics import DbPoolMetrics
 from airweave.core.protocols.http_metrics import HttpMetrics
 from airweave.core.protocols.metrics_renderer import MetricsRenderer
+from airweave.core.protocols.metrics_service import MetricsService
 from airweave.search.agentic_search.protocols import AgenticSearchMetrics
 
-if TYPE_CHECKING:
-    from airweave.api.metrics import MetricsServer
-    from airweave.core.db_pool_sampler import DbPoolSampler
 
-
-class PrometheusMetricsService:
+class PrometheusMetricsService(MetricsService):
     """Prometheus-backed facade that owns all metrics adapters and background services.
 
     Satisfies the ``MetricsService`` protocol structurally.
@@ -52,9 +51,6 @@ class PrometheusMetricsService:
 
     async def start(self, *, pool: Any, host: str, port: int) -> None:
         """Start the sidecar metrics server and the DB pool sampler."""
-        from airweave.api.metrics import MetricsServer
-        from airweave.core.db_pool_sampler import DbPoolSampler
-
         self._server = MetricsServer(self._renderer, port, host)
         await self._server.start()
         self._sampler = DbPoolSampler(pool=pool, metrics=self.db_pool)

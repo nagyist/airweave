@@ -6,6 +6,8 @@ without reaching into prometheus-client internals.
 
 from dataclasses import dataclass
 
+from airweave.search.agentic_search.protocols import AgenticSearchMetrics
+
 
 @dataclass
 class StepDurationRecord:
@@ -15,7 +17,7 @@ class StepDurationRecord:
     duration: float
 
 
-class FakeAgenticSearchMetrics:
+class FakeAgenticSearchMetrics(AgenticSearchMetrics):
     """In-memory spy implementing the AgenticSearchMetrics protocol."""
 
     def __init__(self) -> None:

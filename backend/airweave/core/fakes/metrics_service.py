@@ -4,8 +4,10 @@ from __future__ import annotations
 
 from typing import Any
 
+from airweave.core.protocols.metrics_service import MetricsService
 
-class FakeMetricsService:
+
+class FakeMetricsService(MetricsService):
     """In-memory MetricsService stand-in for testing.
 
     Structurally satisfies the ``MetricsService`` protocol — matching

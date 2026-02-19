@@ -10,10 +10,11 @@ from __future__ import annotations
 
 from prometheus_client import CollectorRegistry, Gauge, Info, ProcessCollector
 
+from airweave.core.protocols.worker_metrics import WorkerMetrics
 from airweave.platform.temporal.worker_metrics_snapshot import WorkerMetricsSnapshot
 
 
-class PrometheusWorkerMetrics:
+class PrometheusWorkerMetrics(WorkerMetrics):
     """Prometheus-backed Temporal worker metrics."""
 
     def __init__(self, registry: CollectorRegistry) -> None:

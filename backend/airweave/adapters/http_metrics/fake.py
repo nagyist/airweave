@@ -6,6 +6,8 @@ without reaching into prometheus-client internals.
 
 from dataclasses import dataclass
 
+from airweave.core.protocols.http_metrics import HttpMetrics
+
 
 @dataclass
 class RequestRecord:
@@ -26,7 +28,7 @@ class ResponseSizeRecord:
     size: int
 
 
-class FakeHttpMetrics:
+class FakeHttpMetrics(HttpMetrics):
     """In-memory spy implementing the HttpMetrics protocol.
 
     Usage:

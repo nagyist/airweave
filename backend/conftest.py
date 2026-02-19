@@ -128,7 +128,7 @@ def fake_entity_definition_registry():
 @pytest.fixture
 def fake_health_service():
     """Fake HealthService with canned responses."""
-    from airweave.core.fakes.health_service import FakeHealthService
+    from airweave.core.health.fakes import FakeHealthService
 
     return FakeHealthService()
 

@@ -5,9 +5,8 @@ import errno
 
 import pytest
 
-from airweave.core.health_service import HealthService
+from airweave.core.health.service import HealthService
 from airweave.schemas.health import CheckStatus, DependencyCheck
-
 
 # ---------------------------------------------------------------------------
 # Stub probes

@@ -9,19 +9,18 @@ import asyncio
 import errno
 from collections.abc import Sequence
 
-from airweave.core.protocols.health import HealthProbe
+from airweave.core.health.protocols import HealthProbe, HealthServiceProtocol
 from airweave.schemas.health import CheckStatus, DependencyCheck, ReadinessResponse
 
 # Timeout applied to each individual dependency check.
 _CHECK_TIMEOUT: float = 5.0
 
 
-class HealthService:
+class HealthService(HealthServiceProtocol):
     """Concrete ``HealthServiceProtocol`` implementation.
 
     Constructed by the container factory with critical and informational
-    probe sequences.  Satisfies the ``HealthServiceProtocol`` protocol
-    structurally (no explicit subclass).
+    probe sequences.
     """
 
     def __init__(

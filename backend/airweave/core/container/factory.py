@@ -22,7 +22,7 @@ from airweave.adapters.webhooks.endpoint_verifier import HttpEndpointVerifier
 from airweave.adapters.webhooks.svix import SvixAdapter
 from airweave.core.config import Settings
 from airweave.core.container.container import Container
-from airweave.core.health_service import HealthService
+from airweave.core.health.service import HealthService
 from airweave.core.logging import logger
 from airweave.core.protocols import CircuitBreaker, OcrProvider
 from airweave.core.protocols.event_bus import EventBus
@@ -98,7 +98,7 @@ def create_container(settings: Settings) -> Container:
     # Health service
     # Owns shutdown flag and orchestrates readiness probes.
     # -----------------------------------------------------------------
-    health = _create_health_service(settings)
+    health = _create_health_service()
 
     # Source Service + Source Lifecycle Service
     # Auth provider registry is built first, then passed to the source
@@ -132,7 +132,7 @@ def create_container(settings: Settings) -> Container:
 # ---------------------------------------------------------------------------
 
 
-def _create_health_service(settings: Settings) -> HealthService:
+def _create_health_service() -> HealthService:
     """Create the health service with infrastructure probes.
 
     Postgres is critical (gates HTTP 503).  Redis and Temporal are
@@ -140,15 +140,13 @@ def _create_health_service(settings: Settings) -> HealthService:
     """
     from airweave.core.redis_client import redis_client
     from airweave.db.session import health_check_engine
+    from airweave.platform.temporal.client import TemporalClient
 
     critical = [PostgresHealthProbe(health_check_engine)]
-    informational: list = [RedisHealthProbe(redis_client.client)]
-
-    if settings.TEMPORAL_ENABLED:
-        from airweave.platform.temporal.client import TemporalClient
-
-        informational.append(TemporalHealthProbe(lambda: TemporalClient._client))
-
+    informational = [
+        RedisHealthProbe(redis_client.client),
+        TemporalHealthProbe(lambda: TemporalClient._client),
+    ]
     return HealthService(critical=critical, informational=informational)
 
 

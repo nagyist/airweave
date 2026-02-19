@@ -1,13 +1,12 @@
-"""HealthProbe protocol for dependency readiness checks.
+"""Health protocols for dependency injection.
 
-Each probe wraps a single infrastructure dependency (database, cache,
-message broker, etc.) and exposes a uniform ``check()`` coroutine that
-the readiness orchestrator can call without knowing the concrete type.
+Defines ``HealthProbe`` (individual infrastructure check) and
+``HealthServiceProtocol`` (readiness-check facade).
 """
 
 from typing import Protocol, runtime_checkable
 
-from airweave.schemas.health import DependencyCheck
+from airweave.schemas.health import DependencyCheck, ReadinessResponse
 
 
 @runtime_checkable
@@ -36,4 +35,21 @@ class HealthProbe(Protocol):
         Raises:
             Any exception on failure — the orchestrator will catch it.
         """
+        ...
+
+
+@runtime_checkable
+class HealthServiceProtocol(Protocol):
+    """Facade that orchestrates health probes and owns shutdown state."""
+
+    @property
+    def shutting_down(self) -> bool:
+        """Whether the application is shutting down."""
+        ...
+
+    @shutting_down.setter
+    def shutting_down(self, value: bool) -> None: ...
+
+    async def check_readiness(self, *, debug: bool) -> ReadinessResponse:
+        """Evaluate readiness by probing dependencies concurrently."""
         ...

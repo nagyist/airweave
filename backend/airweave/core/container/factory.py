@@ -12,6 +12,8 @@ Design principles:
 
 from __future__ import annotations
 
+from prometheus_client import CollectorRegistry
+
 from airweave.adapters.agentic_search_metrics import PrometheusAgenticSearchMetrics
 from airweave.adapters.analytics.posthog import PostHogTracker
 from airweave.adapters.analytics.subscriber import AnalyticsEventSubscriber
@@ -31,6 +33,7 @@ from airweave.core.config import Settings
 from airweave.core.container.container import Container
 from airweave.core.health.service import HealthService
 from airweave.core.logging import logger
+from airweave.core.metrics_service import PrometheusMetricsService
 from airweave.core.protocols import CircuitBreaker, OcrProvider
 from airweave.core.protocols.event_bus import EventBus
 from airweave.core.protocols.webhooks import WebhookPublisher
@@ -122,19 +125,9 @@ def create_container(settings: Settings) -> Container:
     health = _create_health_service(settings)
 
     # -----------------------------------------------------------------
-    # Metrics (Prometheus adapters, shared registry)
+    # Metrics (Prometheus adapters, shared registry, wrapped in service)
     # -----------------------------------------------------------------
-    from prometheus_client import CollectorRegistry
-
-    from airweave.db.session import MAX_OVERFLOW
-
-    metrics_registry = CollectorRegistry()
-    http_metrics = PrometheusHttpMetrics(registry=metrics_registry)
-    agentic_search_metrics = PrometheusAgenticSearchMetrics(registry=metrics_registry)
-    db_pool_metrics = PrometheusDbPoolMetrics(
-        registry=metrics_registry, max_overflow=MAX_OVERFLOW,
-    )
-    metrics_renderer = PrometheusMetricsRenderer(registry=metrics_registry)
+    metrics = _create_metrics_service(settings)
 
     # Source Service + Source Lifecycle Service
     # Auth provider registry is built first, then passed to the source
@@ -150,10 +143,7 @@ def create_container(settings: Settings) -> Container:
         webhook_admin=svix_adapter,
         circuit_breaker=circuit_breaker,
         ocr_provider=ocr_provider,
-        http_metrics=http_metrics,
-        agentic_search_metrics=agentic_search_metrics,
-        db_pool_metrics=db_pool_metrics,
-        metrics_renderer=metrics_renderer,
+        metrics=metrics,
         source_service=source_deps["source_service"],
         source_registry=source_deps["source_registry"],
         auth_provider_registry=source_deps["auth_provider_registry"],
@@ -204,6 +194,20 @@ def _create_health_service(settings: Settings) -> HealthService:
         critical=critical,
         informational=informational,
         timeout=settings.HEALTH_CHECK_TIMEOUT,
+    )
+
+
+def _create_metrics_service(settings: Settings) -> PrometheusMetricsService:
+    """Build the PrometheusMetricsService with Prometheus adapters and a shared registry."""
+    registry = CollectorRegistry()
+    return PrometheusMetricsService(
+        http=PrometheusHttpMetrics(registry=registry),
+        agentic_search=PrometheusAgenticSearchMetrics(registry=registry),
+        db_pool=PrometheusDbPoolMetrics(
+            registry=registry,
+            max_overflow=settings.db_pool_max_overflow,
+        ),
+        renderer=PrometheusMetricsRenderer(registry=registry),
     )
 
 

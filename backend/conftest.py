@@ -105,14 +105,6 @@ def fake_agentic_search_metrics():
 
 
 @pytest.fixture
-def fake_metrics_renderer():
-    """Fake MetricsRenderer that records calls in memory."""
-    from airweave.adapters.metrics_renderer.fake import FakeMetricsRenderer
-
-    return FakeMetricsRenderer()
-
-
-@pytest.fixture
 def fake_db_pool_metrics():
     """Fake DbPoolMetrics that records the latest update in memory."""
     from airweave.adapters.db_pool_metrics.fake import FakeDbPoolMetrics
@@ -150,6 +142,22 @@ def fake_entity_definition_registry():
     from airweave.domains.entities.fakes.registry import FakeEntityDefinitionRegistry
 
     return FakeEntityDefinitionRegistry()
+
+
+@pytest.fixture
+def fake_metrics_service(
+    fake_http_metrics,
+    fake_agentic_search_metrics,
+    fake_db_pool_metrics,
+):
+    """FakeMetricsService wrapping individual metric fakes."""
+    from airweave.core.fakes.metrics_service import FakeMetricsService
+
+    return FakeMetricsService(
+        http=fake_http_metrics,
+        agentic_search=fake_agentic_search_metrics,
+        db_pool=fake_db_pool_metrics,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -237,10 +245,7 @@ def test_container(
     fake_webhook_admin,
     fake_circuit_breaker,
     fake_ocr_provider,
-    fake_http_metrics,
-    fake_agentic_search_metrics,
-    fake_db_pool_metrics,
-    fake_metrics_renderer,
+    fake_metrics_service,
     fake_source_service,
     fake_endpoint_verifier,
     fake_webhook_service,
@@ -274,10 +279,7 @@ def test_container(
         webhook_service=fake_webhook_service,
         circuit_breaker=fake_circuit_breaker,
         ocr_provider=fake_ocr_provider,
-        http_metrics=fake_http_metrics,
-        agentic_search_metrics=fake_agentic_search_metrics,
-        db_pool_metrics=fake_db_pool_metrics,
-        metrics_renderer=fake_metrics_renderer,
+        metrics=fake_metrics_service,
         source_service=fake_source_service,
         source_registry=fake_source_registry,
         auth_provider_registry=fake_auth_provider_registry,

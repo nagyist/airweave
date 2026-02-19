@@ -14,14 +14,11 @@ from dataclasses import dataclass, replace
 from typing import Any
 
 from airweave.core.protocols import (
-    AgenticSearchMetrics,
     CircuitBreaker,
-    DbPoolMetrics,
     EndpointVerifier,
     EventBus,
     HealthServiceProtocol,
-    HttpMetrics,
-    MetricsRenderer,
+    MetricsService,
     OcrProvider,
     WebhookAdmin,
     WebhookPublisher,
@@ -52,27 +49,9 @@ class Container:
         from airweave.core.container import container
         await container.event_bus.publish(SyncLifecycleEvent(...))
 
-        # Testing: construct directly with fakes
-        from airweave.adapters.event_bus import FakeEventBus
-        from airweave.adapters.circuit_breaker import FakeCircuitBreaker
-        from airweave.adapters.ocr import FakeOcrProvider
-        from airweave.adapters.http_metrics import FakeHttpMetrics
-        from airweave.adapters.agentic_search_metrics import FakeAgenticSearchMetrics
-        from airweave.adapters.db_pool_metrics import FakeDbPoolMetrics
-        from airweave.adapters.metrics_renderer import FakeMetricsRenderer
-        test_container = Container(
-            event_bus=FakeEventBus(),
-            webhook_publisher=FakeWebhookPublisher(),
-            webhook_admin=FakeWebhookAdmin(),
-            circuit_breaker=FakeCircuitBreaker(),
-            ocr_provider=FakeOcrProvider(),
-            endpoint_verifier=FakeEndpointVerifier(),
-            webhook_service=FakeWebhookService(),
-            http_metrics=FakeHttpMetrics(),
-            agentic_search_metrics=FakeAgenticSearchMetrics(),
-            db_pool_metrics=FakeDbPoolMetrics(),
-            metrics_renderer=FakeMetricsRenderer(),
-        )
+        # Testing: construct directly with fakes (see backend/conftest.py
+        # for the full test_container fixture and Fake* definitions)
+        test_container = Container(event_bus=FakeEventBus(), ...)
 
         # FastAPI endpoints: use Inject() to pull individual protocols
         from airweave.api.deps import Inject
@@ -98,17 +77,8 @@ class Container:
     # OCR provider (with fallback chain + circuit breaking)
     ocr_provider: OcrProvider
 
-    # HTTP metrics (request count, latency, in-flight, response size)
-    http_metrics: HttpMetrics
-
-    # Agentic search metrics (iterations, step durations, result counts)
-    agentic_search_metrics: AgenticSearchMetrics
-
-    # DB pool metrics (pool size, checked out/in, overflow)
-    db_pool_metrics: DbPoolMetrics
-
-    # Metrics renderer (serializes the shared registry for /metrics)
-    metrics_renderer: MetricsRenderer
+    # Metrics (HTTP, agentic search, DB pool — via MetricsService facade)
+    metrics: MetricsService
 
     # Source service — API-facing source operations
     source_service: SourceServiceProtocol

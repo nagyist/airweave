@@ -488,6 +488,16 @@ class Settings(BaseSettings):
         return f"https://docs.{env_str}-airweave.com"
 
     @property
+    def db_pool_size(self) -> int:
+        """Base SQLAlchemy pool size derived from worker count."""
+        return min(100, max(20, self.SYNC_MAX_WORKERS))
+
+    @property
+    def db_pool_max_overflow(self) -> int:
+        """SQLAlchemy pool max overflow derived from worker count."""
+        return max(20, int(self.SYNC_MAX_WORKERS * 2))
+
+    @property
     def temporal_address(self) -> str:
         """The Temporal server address.
 

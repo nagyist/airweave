@@ -14,7 +14,6 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import HTMLResponse
 from pydantic import ValidationError
 
-from airweave.api.metrics_server import ApiMetricsServer
 from airweave.api.middleware import (
     DynamicCORSMiddleware,
     add_request_id,
@@ -115,34 +114,21 @@ async def lifespan(app: FastAPI):
         )
 
     # Expose the HTTP metrics adapter on app.state so the middleware can read it
-    app.state.http_metrics = container_mod.container.http_metrics
+    app.state.http_metrics = container_mod.container.metrics.http
 
-    # Start internal Prometheus metrics server on a separate port.
-    # Uses the shared MetricsRenderer (backed by the same CollectorRegistry
-    # as both HttpMetrics and AgenticSearchMetrics) so all metric families
-    # are served on a single /metrics endpoint.
-    metrics_server = ApiMetricsServer(
-        container_mod.container.metrics_renderer,
-        settings.API_METRICS_PORT,
-        settings.API_METRICS_HOST,
-    )
-    await metrics_server.start()
-
-    # Start background sampler that pushes DB pool gauges into Prometheus.
-    from airweave.core.db_pool_sampler import DbPoolSampler
+    # Start metrics sidecar server + DB pool sampler via MetricsService
     from airweave.db.session import async_engine
 
-    pool_sampler = DbPoolSampler(
+    await container_mod.container.metrics.start(
         pool=async_engine.pool,
-        metrics=container_mod.container.db_pool_metrics,
+        host=settings.API_METRICS_HOST,
+        port=settings.API_METRICS_PORT,
     )
-    await pool_sampler.start()
 
     try:
         yield
     finally:
-        await pool_sampler.stop()
-        await metrics_server.stop()
+        await container_mod.container.metrics.stop()
 
     container_mod.container.health.shutting_down = True
 

@@ -20,6 +20,8 @@ from airweave.core.protocols.webhooks import (
     WebhookPublisher,
     WebhookServiceProtocol,
 )
+from airweave.core.protocols.worker_metrics import WorkerMetrics
+from airweave.core.protocols.worker_metrics_registry import WorkerMetricsRegistryProtocol
 
 __all__ = [
     "CircuitBreaker",
@@ -38,4 +40,6 @@ __all__ = [
     "WebhookAdmin",
     "WebhookPublisher",
     "WebhookServiceProtocol",
+    "WorkerMetrics",
+    "WorkerMetricsRegistryProtocol",
 ]

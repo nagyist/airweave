@@ -2,10 +2,11 @@
 
 import asyncio
 
+from airweave.core.health.protocols import HealthProbe, HealthServiceProtocol
 from airweave.schemas.health import CheckStatus, DependencyCheck, ReadinessResponse
 
 
-class FakeHealthService:
+class FakeHealthService(HealthServiceProtocol):
     """In-memory fake satisfying the ``HealthService`` protocol.
 
     Records calls and supports canned responses via ``set_response()``.
@@ -50,7 +51,7 @@ class FakeHealthService:
 # ---------------------------------------------------------------------------
 
 
-class FakeProbe:
+class FakeProbe(HealthProbe):
     """Configurable probe that succeeds with a given latency."""
 
     def __init__(self, name: str, *, latency_ms: float = 1.0) -> None:
@@ -68,7 +69,7 @@ class FakeProbe:
         return DependencyCheck(status=CheckStatus.up, latency_ms=self._latency_ms)
 
 
-class FakeFailingProbe:
+class FakeFailingProbe(HealthProbe):
     """Probe that always raises the given exception."""
 
     def __init__(self, name: str, exc: Exception) -> None:
@@ -86,7 +87,7 @@ class FakeFailingProbe:
         raise self._exc
 
 
-class FakeSlowProbe:
+class FakeSlowProbe(HealthProbe):
     """Probe that blocks longer than the orchestrator timeout."""
 
     def __init__(self, name: str, delay: float = 10.0) -> None:
@@ -105,7 +106,7 @@ class FakeSlowProbe:
         return DependencyCheck(status=CheckStatus.up)
 
 
-class FakeSkippedProbe:
+class FakeSkippedProbe(HealthProbe):
     """Probe that returns ``CheckStatus.skipped``."""
 
     def __init__(self, name: str) -> None:

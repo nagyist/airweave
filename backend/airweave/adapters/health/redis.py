@@ -4,10 +4,11 @@ import time
 
 from redis.asyncio import Redis
 
+from airweave.core.health.protocols import HealthProbe
 from airweave.schemas.health import CheckStatus, DependencyCheck
 
 
-class RedisHealthProbe:
+class RedisHealthProbe(HealthProbe):
     """Probes Redis by sending a ``PING`` command."""
 
     def __init__(self, client: Redis) -> None:

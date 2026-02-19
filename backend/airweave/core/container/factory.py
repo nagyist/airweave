@@ -27,6 +27,8 @@ from airweave.core.logging import logger
 from airweave.core.protocols import CircuitBreaker, OcrProvider
 from airweave.core.protocols.event_bus import EventBus
 from airweave.core.protocols.webhooks import WebhookPublisher
+from airweave.core.redis_client import redis_client
+from airweave.db.session import health_check_engine
 from airweave.domains.auth_provider.registry import AuthProviderRegistry
 from airweave.domains.connections.repository import ConnectionRepository
 from airweave.domains.credentials.repository import IntegrationCredentialRepository
@@ -38,6 +40,7 @@ from airweave.domains.sources.registry import SourceRegistry
 from airweave.domains.sources.service import SourceService
 from airweave.domains.webhooks.service import WebhookServiceImpl
 from airweave.domains.webhooks.subscribers import WebhookEventSubscriber
+from airweave.platform.temporal.client import TemporalClient
 
 
 def create_container(settings: Settings) -> Container:
@@ -139,10 +142,6 @@ def _create_health_service(settings: Settings) -> HealthService:
     The critical-vs-informational split comes from
     ``settings.health_critical_probes``.
     """
-    from airweave.core.redis_client import redis_client
-    from airweave.db.session import health_check_engine
-    from airweave.platform.temporal.client import TemporalClient
-
     critical_names = settings.health_critical_probes
 
     probes = {

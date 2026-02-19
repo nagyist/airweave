@@ -5,10 +5,11 @@ import time
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine
 
+from airweave.core.health.protocols import HealthProbe
 from airweave.schemas.health import CheckStatus, DependencyCheck
 
 
-class PostgresHealthProbe:
+class PostgresHealthProbe(HealthProbe):
     """Probes Postgres by executing ``SELECT 1`` on a dedicated engine."""
 
     def __init__(self, engine: AsyncEngine) -> None:

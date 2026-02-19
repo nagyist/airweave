@@ -7,10 +7,11 @@ from collections.abc import Callable
 
 from temporalio.client import Client as TemporalClientType
 
+from airweave.core.health.protocols import HealthProbe
 from airweave.schemas.health import CheckStatus, DependencyCheck
 
 
-class TemporalHealthProbe:
+class TemporalHealthProbe(HealthProbe):
     """Probes Temporal via the gRPC health check on its service client."""
 
     def __init__(self, get_client: Callable[[], TemporalClientType | None]) -> None:

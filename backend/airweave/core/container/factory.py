@@ -30,14 +30,19 @@ from airweave.core.protocols.webhooks import WebhookPublisher
 from airweave.core.redis_client import redis_client
 from airweave.db.session import health_check_engine
 from airweave.domains.auth_provider.registry import AuthProviderRegistry
+from airweave.domains.collections.repository import CollectionRepository
 from airweave.domains.connections.repository import ConnectionRepository
 from airweave.domains.credentials.repository import IntegrationCredentialRepository
+from airweave.domains.entities.entity_count_repository import EntityCountRepository
 from airweave.domains.entities.registry import EntityDefinitionRegistry
 from airweave.domains.oauth.oauth2_service import OAuth2Service
 from airweave.domains.source_connections.repository import SourceConnectionRepository
+from airweave.domains.source_connections.response import ResponseBuilder
+from airweave.domains.source_connections.service import SourceConnectionService
 from airweave.domains.sources.lifecycle import SourceLifecycleService
 from airweave.domains.sources.registry import SourceRegistry
 from airweave.domains.sources.service import SourceService
+from airweave.domains.syncs.sync_job_repository import SyncJobRepository
 from airweave.domains.webhooks.service import WebhookServiceImpl
 from airweave.domains.webhooks.subscribers import WebhookEventSubscriber
 from airweave.platform.temporal.client import TemporalClient
@@ -121,9 +126,11 @@ def create_container(settings: Settings) -> Container:
         source_registry=source_deps["source_registry"],
         auth_provider_registry=source_deps["auth_provider_registry"],
         sc_repo=source_deps["sc_repo"],
+        collection_repo=source_deps["collection_repo"],
         conn_repo=source_deps["conn_repo"],
         cred_repo=source_deps["cred_repo"],
         oauth2_service=source_deps["oauth2_service"],
+        source_connection_service=source_deps["source_connection_service"],
         source_lifecycle_service=source_deps["source_lifecycle_service"],
         endpoint_verifier=endpoint_verifier,
         webhook_service=webhook_service,
@@ -257,9 +264,30 @@ def _create_source_services(settings: Settings) -> dict:
 
     # Repository adapters
     sc_repo = SourceConnectionRepository()
+    collection_repo = CollectionRepository()
     conn_repo = ConnectionRepository()
     cred_repo = IntegrationCredentialRepository()
+    entity_count_repo = EntityCountRepository()
+    sync_job_repo = SyncJobRepository()
     oauth2_svc = OAuth2Service()
+
+    response_builder = ResponseBuilder(
+        sc_repo=sc_repo,
+        connection_repo=conn_repo,
+        credential_repo=cred_repo,
+        source_registry=source_registry,
+        entity_count_repo=entity_count_repo,
+        sync_job_repo=sync_job_repo,
+    )
+
+    source_connection_service = SourceConnectionService(
+        sc_repo=sc_repo,
+        collection_repo=collection_repo,
+        connection_repo=conn_repo,
+        source_registry=source_registry,
+        auth_provider_registry=auth_provider_registry,
+        response_builder=response_builder,
+    )
 
     source_service = SourceService(
         source_registry=source_registry,
@@ -279,8 +307,10 @@ def _create_source_services(settings: Settings) -> dict:
         "source_registry": source_registry,
         "auth_provider_registry": auth_provider_registry,
         "sc_repo": sc_repo,
+        "collection_repo": collection_repo,
         "conn_repo": conn_repo,
         "cred_repo": cred_repo,
         "oauth2_service": oauth2_svc,
+        "source_connection_service": source_connection_service,
         "source_lifecycle_service": source_lifecycle_service,
     }

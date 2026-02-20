@@ -52,6 +52,8 @@ from airweave.domains.sources.service import SourceService
 from airweave.domains.syncs.sync_cursor_repository import SyncCursorRepository
 from airweave.domains.syncs.sync_job_repository import SyncJobRepository
 from airweave.domains.syncs.sync_repository import SyncRepository
+from airweave.domains.temporal.schedule_service import TemporalScheduleService
+from airweave.domains.temporal.service import TemporalWorkflowService
 from airweave.domains.webhooks.service import WebhookServiceImpl
 from airweave.domains.webhooks.subscribers import WebhookEventSubscriber
 from airweave.platform.temporal.client import TemporalClient
@@ -124,6 +126,17 @@ def create_container(settings: Settings) -> Container:
     # -----------------------------------------------------------------
     source_deps = _create_source_services(settings)
 
+    # -----------------------------------------------------------------
+    # Temporal domain services
+    # -----------------------------------------------------------------
+    temporal_workflow_service = TemporalWorkflowService()
+    temporal_schedule_service = TemporalScheduleService(
+        sync_repo=source_deps["sync_repo"],
+        sc_repo=source_deps["sc_repo"],
+        collection_repo=source_deps["collection_repo"],
+        connection_repo=source_deps["conn_repo"],
+    )
+
     return Container(
         health=health,
         event_bus=event_bus,
@@ -147,6 +160,8 @@ def create_container(settings: Settings) -> Container:
         sync_job_repo=source_deps["sync_job_repo"],
         endpoint_verifier=endpoint_verifier,
         webhook_service=webhook_service,
+        temporal_workflow_service=temporal_workflow_service,
+        temporal_schedule_service=temporal_schedule_service,
     )
 
 

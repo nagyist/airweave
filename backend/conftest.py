@@ -198,6 +198,30 @@ def fake_oauth1_service():
 
 
 @pytest.fixture
+def fake_sync_repo():
+    """Fake SyncRepository."""
+    from airweave.domains.syncs.fakes.sync_repository import FakeSyncRepository
+
+    return FakeSyncRepository()
+
+
+@pytest.fixture
+def fake_sync_cursor_repo():
+    """Fake SyncCursorRepository."""
+    from airweave.domains.syncs.fakes.sync_cursor_repository import FakeSyncCursorRepository
+
+    return FakeSyncCursorRepository()
+
+
+@pytest.fixture
+def fake_sync_job_repo():
+    """Fake SyncJobRepository."""
+    from airweave.domains.syncs.fakes.sync_job_repository import FakeSyncJobRepository
+
+    return FakeSyncJobRepository()
+
+
+@pytest.fixture
 def test_container(
     fake_health_service,
     fake_event_bus,
@@ -218,6 +242,9 @@ def test_container(
     fake_oauth2_service,
     fake_source_connection_service,
     fake_source_lifecycle_service,
+    fake_sync_repo,
+    fake_sync_cursor_repo,
+    fake_sync_job_repo,
 ):
     """A Container with all dependencies replaced by fakes.
 
@@ -249,4 +276,7 @@ def test_container(
         oauth2_service=fake_oauth2_service,
         source_connection_service=fake_source_connection_service,
         source_lifecycle_service=fake_source_lifecycle_service,
+        sync_repo=fake_sync_repo,
+        sync_cursor_repo=fake_sync_cursor_repo,
+        sync_job_repo=fake_sync_job_repo,
     )

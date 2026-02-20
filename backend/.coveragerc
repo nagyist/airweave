@@ -4,6 +4,8 @@ omit =
     app/alembic/*
     app/tests/*
     app/local.py
+    **/fake*.py
+    **/fakes/**
 
 [report]
 exclude_lines =

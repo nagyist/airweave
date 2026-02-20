@@ -5,8 +5,6 @@ these metrics are served alongside the HTTP metrics on the same
 ``/metrics`` endpoint.
 """
 
-from __future__ import annotations
-
 from dataclasses import dataclass
 
 from prometheus_client import CollectorRegistry, Counter, Histogram

@@ -5,8 +5,6 @@ WorkerControlServer depends on, so the control server can accept any
 implementation (real registry, mock, or fake).
 """
 
-from __future__ import annotations
-
 from typing import Any, Protocol, runtime_checkable
 
 

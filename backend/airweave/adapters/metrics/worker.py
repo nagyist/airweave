@@ -4,8 +4,6 @@ Prometheus implementation owns all 11 gauges, the Info metric, and the
 ProcessCollector for Temporal worker instrumentation.
 """
 
-from __future__ import annotations
-
 from prometheus_client import CollectorRegistry, Gauge, Info, ProcessCollector
 
 from airweave.core.protocols.metrics import WorkerMetrics

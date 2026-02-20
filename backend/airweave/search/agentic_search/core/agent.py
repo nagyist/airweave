@@ -10,10 +10,7 @@ Flow:
   final state -> composer -> answer
 """
 
-from __future__ import annotations
-
 import time
-from typing import TYPE_CHECKING
 
 from airweave.analytics.agentic_search_analytics import (
     build_iteration_summaries,
@@ -58,8 +55,7 @@ from airweave.search.agentic_search.schemas.request import AgenticSearchMode
 from airweave.search.agentic_search.schemas.search_result import AgenticSearchResults
 from airweave.search.agentic_search.services import AgenticSearchServices
 
-if TYPE_CHECKING:
-    from airweave.core.protocols.metrics import AgenticSearchMetrics
+from airweave.core.protocols.metrics import AgenticSearchMetrics
 
 # Maps timing-label suffixes to canonical step names used in metrics.
 _STEP_LABEL_MAP: dict[str, str] = {

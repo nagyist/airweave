@@ -3,14 +3,11 @@
 This module contains middleware that process requests and responses.
 """
 
-from __future__ import annotations
-
 import asyncio
 import time
 import traceback
 import uuid
 from collections.abc import AsyncIterator, Callable
-from typing import TYPE_CHECKING
 
 from fastapi import Request, Response
 from fastapi.exceptions import RequestValidationError
@@ -19,10 +16,6 @@ from pydantic import ValidationError
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from airweave.api.context import ApiContext
-
-if TYPE_CHECKING:
-    from airweave.core.protocols import HttpMetrics
-
 from airweave.core.config import settings
 from airweave.core.exceptions import (
     AirweaveException,
@@ -36,6 +29,7 @@ from airweave.core.exceptions import (
     unpack_validation_error,
 )
 from airweave.core.logging import logger
+from airweave.core.protocols import HttpMetrics
 
 
 async def add_request_id(request: Request, call_next: callable) -> Response:
@@ -68,8 +62,6 @@ async def log_requests(request: Request, call_next: callable) -> Response:
         Response: The response to the incoming request.
 
     """
-    import time
-
     start_time = time.time()
     response = await call_next(request)
     duration = time.time() - start_time

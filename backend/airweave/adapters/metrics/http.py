@@ -4,8 +4,6 @@ Prometheus implementation creates a dedicated CollectorRegistry so API
 metrics are isolated from the default global registry.
 """
 
-from __future__ import annotations
-
 from dataclasses import dataclass
 
 from prometheus_client import (

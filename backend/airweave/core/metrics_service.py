@@ -5,8 +5,6 @@ sampler behind a single lifecycle API so callers (main.py, tests) only
 deal with one object instead of four adapters + two background services.
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 from airweave.api.metrics import MetricsServer

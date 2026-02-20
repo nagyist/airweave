@@ -5,8 +5,6 @@ can serialize all registered collectors into Prometheus text exposition
 format.
 """
 
-from __future__ import annotations
-
 from prometheus_client import CONTENT_TYPE_LATEST, CollectorRegistry, generate_latest
 
 from airweave.core.protocols.metrics import MetricsRenderer

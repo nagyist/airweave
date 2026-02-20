@@ -4,8 +4,6 @@ Prometheus implementation exposes five gauges on the shared
 CollectorRegistry for connection pool state.
 """
 
-from __future__ import annotations
-
 from prometheus_client import CollectorRegistry, Gauge
 
 from airweave.core.protocols.metrics import DbPoolMetrics

@@ -5,8 +5,6 @@ replacing the 11-parameter function signature of the old
 ``update_worker_metrics()`` call.
 """
 
-from __future__ import annotations
-
 from dataclasses import dataclass, field
 
 

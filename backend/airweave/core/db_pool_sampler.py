@@ -8,14 +8,11 @@ The loop tolerates transient pool errors (e.g. during shutdown) by
 logging a warning and continuing rather than killing the task.
 """
 
-from __future__ import annotations
-
 import asyncio
 import logging
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
-if TYPE_CHECKING:
-    from airweave.core.protocols.metrics import DbPoolMetrics
+from airweave.core.protocols.metrics import DbPoolMetrics
 
 logger = logging.getLogger(__name__)
 

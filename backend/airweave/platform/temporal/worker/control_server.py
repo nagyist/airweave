@@ -12,16 +12,19 @@ Security Notes:
     - Exposes operational metadata (job IDs, org IDs) but no user data
 """
 
-from __future__ import annotations
-
 import asyncio
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Callable, Coroutine
+from typing import Any, Callable, Coroutine
 
 from aiohttp import web
 
 from airweave.core.config import settings
 from airweave.core.logging import logger
+from airweave.core.protocols import (
+    MetricsRenderer,
+    WorkerMetrics,
+    WorkerMetricsRegistryProtocol,
+)
 from airweave.platform.sync.async_helpers import get_active_thread_count
 from airweave.platform.temporal.worker_metrics_snapshot import (
     ConnectorSnapshot,
@@ -29,13 +32,6 @@ from airweave.platform.temporal.worker_metrics_snapshot import (
 )
 
 from .config import WorkerConfig
-
-if TYPE_CHECKING:
-    from airweave.core.protocols import (
-        MetricsRenderer,
-        WorkerMetrics,
-        WorkerMetricsRegistryProtocol,
-    )
 
 # =============================================================================
 # Worker State

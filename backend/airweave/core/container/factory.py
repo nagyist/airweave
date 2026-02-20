@@ -10,8 +10,6 @@ Design principles:
 - Testable: can unit test factory logic with mock settings
 """
 
-from __future__ import annotations
-
 from prometheus_client import CollectorRegistry
 
 from airweave.adapters.analytics.posthog import PostHogTracker

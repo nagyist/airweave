@@ -61,6 +61,9 @@ from airweave.domains.sources.registry import SourceRegistry
 from airweave.domains.sources.service import SourceService
 from airweave.domains.syncs.sync_cursor_repository import SyncCursorRepository
 from airweave.domains.syncs.sync_job_repository import SyncJobRepository
+from airweave.domains.syncs.sync_job_service import SyncJobService
+from airweave.domains.syncs.sync_lifecycle_service import SyncLifecycleService
+from airweave.domains.syncs.sync_record_service import SyncRecordService
 from airweave.domains.syncs.sync_repository import SyncRepository
 from airweave.domains.temporal.schedule_service import TemporalScheduleService
 from airweave.domains.temporal.service import TemporalWorkflowService
@@ -142,14 +145,19 @@ def create_container(settings: Settings) -> Container:
     source_deps = _create_source_services(settings)
 
     # -----------------------------------------------------------------
-    # Temporal domain services
+    # Sync domain services
+    # Repos come from source_deps; services are built here.
     # -----------------------------------------------------------------
-    temporal_workflow_service = TemporalWorkflowService()
-    temporal_schedule_service = TemporalScheduleService(
-        sync_repo=source_deps["sync_repo"],
+    sync_deps = _create_sync_services(
+        event_bus=event_bus,
         sc_repo=source_deps["sc_repo"],
         collection_repo=source_deps["collection_repo"],
-        connection_repo=source_deps["conn_repo"],
+        conn_repo=source_deps["conn_repo"],
+        cred_repo=source_deps["cred_repo"],
+        source_registry=source_deps["source_registry"],
+        sync_repo=source_deps["sync_repo"],
+        sync_cursor_repo=source_deps["sync_cursor_repo"],
+        sync_job_repo=source_deps["sync_job_repo"],
     )
 
     # -----------------------------------------------------------------
@@ -178,14 +186,18 @@ def create_container(settings: Settings) -> Container:
         oauth2_service=source_deps["oauth2_service"],
         source_connection_service=source_deps["source_connection_service"],
         source_lifecycle_service=source_deps["source_lifecycle_service"],
+        endpoint_verifier=endpoint_verifier,
+        webhook_service=webhook_service,
+        response_builder=sync_deps["response_builder"],
         sync_repo=source_deps["sync_repo"],
         sync_cursor_repo=source_deps["sync_cursor_repo"],
         sync_job_repo=source_deps["sync_job_repo"],
-        endpoint_verifier=endpoint_verifier,
-        webhook_service=webhook_service,
-        temporal_workflow_service=temporal_workflow_service,
-        temporal_schedule_service=temporal_schedule_service,
         payment_gateway=billing_services["payment_gateway"],
+        sync_record_service=sync_deps["sync_record_service"],
+        sync_job_service=sync_deps["sync_job_service"],
+        sync_lifecycle=sync_deps["sync_lifecycle"],
+        temporal_workflow_service=sync_deps["temporal_workflow_service"],
+        temporal_schedule_service=sync_deps["temporal_schedule_service"],
     )
 
 
@@ -452,4 +464,75 @@ def _create_billing_services(settings: Settings) -> dict:
         "billing_service": billing_service,
         "billing_webhook": billing_webhook,
         "payment_gateway": payment_gateway,
+    }
+
+
+def _create_sync_services(
+    event_bus: EventBus,
+    sc_repo: SourceConnectionRepository,
+    collection_repo: CollectionRepository,
+    conn_repo: ConnectionRepository,
+    cred_repo: IntegrationCredentialRepository,
+    source_registry: SourceRegistry,
+    sync_repo: SyncRepository,
+    sync_cursor_repo: SyncCursorRepository,
+    sync_job_repo: SyncJobRepository,
+) -> dict:
+    """Create sync-domain services and orchestrator.
+
+    Repos are passed in from _create_source_services (single source of truth).
+
+    Build order:
+    1. Leaf services (SyncJobService, TemporalWorkflowService)
+    2. Composite services (SyncRecordService, ResponseBuilder)
+    3. TemporalScheduleService (needs repos)
+    4. SyncLifecycleService (needs everything above)
+    """
+    entity_count_repo = EntityCountRepository()
+
+    sync_job_service = SyncJobService(sync_job_repo=sync_job_repo)
+    temporal_workflow_service = TemporalWorkflowService()
+
+    sync_record_service = SyncRecordService(
+        sync_repo=sync_repo,
+        sync_job_repo=sync_job_repo,
+    )
+
+    response_builder = ResponseBuilder(
+        sc_repo=sc_repo,
+        connection_repo=conn_repo,
+        credential_repo=cred_repo,
+        source_registry=source_registry,
+        entity_count_repo=entity_count_repo,
+        sync_job_repo=sync_job_repo,
+    )
+
+    temporal_schedule_service = TemporalScheduleService(
+        sync_repo=sync_repo,
+        sc_repo=sc_repo,
+        collection_repo=collection_repo,
+        connection_repo=conn_repo,
+    )
+
+    sync_lifecycle = SyncLifecycleService(
+        sc_repo=sc_repo,
+        collection_repo=collection_repo,
+        connection_repo=conn_repo,
+        sync_cursor_repo=sync_cursor_repo,
+        sync_service=sync_record_service,
+        sync_job_service=sync_job_service,
+        sync_job_repo=sync_job_repo,
+        temporal_workflow_service=temporal_workflow_service,
+        temporal_schedule_service=temporal_schedule_service,
+        response_builder=response_builder,
+        event_bus=event_bus,
+    )
+
+    return {
+        "sync_record_service": sync_record_service,
+        "sync_job_service": sync_job_service,
+        "sync_lifecycle": sync_lifecycle,
+        "temporal_workflow_service": temporal_workflow_service,
+        "temporal_schedule_service": temporal_schedule_service,
+        "response_builder": response_builder,
     }

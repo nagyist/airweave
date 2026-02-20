@@ -30,6 +30,7 @@ from airweave.core.shared_models import ActionType
 from airweave.core.source_connection_service import source_connection_service
 from airweave.db.session import get_db
 from airweave.domains.source_connections.protocols import SourceConnectionServiceProtocol
+from airweave.domains.syncs.protocols import SyncLifecycleServiceProtocol
 from airweave.schemas.errors import (
     ConflictErrorResponse,
     NotFoundErrorResponse,
@@ -426,18 +427,17 @@ async def run(
         ),
         json_schema_extra={"example": False},
     ),
+    sync_lifecycle: SyncLifecycleServiceProtocol = Inject(SyncLifecycleServiceProtocol),
 ) -> schemas.SourceConnectionJob:
     """Trigger a sync run for a source connection."""
-    # Check if organization is allowed to process entities
     await guard_rail.is_allowed(ActionType.ENTITIES)
 
-    run = await source_connection_service.run(
+    return await sync_lifecycle.run(
         db,
         id=source_connection_id,
         ctx=ctx,
         force_full_sync=force_full_sync,
     )
-    return run
 
 
 @router.get(
@@ -483,9 +483,10 @@ async def get_source_connection_jobs(
         description="Maximum number of jobs to return (1-1000)",
         json_schema_extra={"example": 100},
     ),
+    sync_lifecycle: SyncLifecycleServiceProtocol = Inject(SyncLifecycleServiceProtocol),
 ) -> List[schemas.SourceConnectionJob]:
     """Get sync jobs for a source connection."""
-    return await source_connection_service.get_jobs(
+    return await sync_lifecycle.get_jobs(
         db,
         id=source_connection_id,
         ctx=ctx,
@@ -533,9 +534,10 @@ async def cancel_job(
         json_schema_extra={"example": "660e8400-e29b-41d4-a716-446655440001"},
     ),
     ctx: ApiContext = Depends(deps.get_context),
+    sync_lifecycle: SyncLifecycleServiceProtocol = Inject(SyncLifecycleServiceProtocol),
 ) -> schemas.SourceConnectionJob:
     """Cancel a running sync job."""
-    return await source_connection_service.cancel_job(
+    return await sync_lifecycle.cancel_job(
         db,
         source_connection_id=source_connection_id,
         job_id=job_id,

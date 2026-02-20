@@ -13,6 +13,7 @@ Design principles:
 from airweave.adapters.analytics.posthog import PostHogTracker
 from airweave.adapters.analytics.subscriber import AnalyticsEventSubscriber
 from airweave.adapters.circuit_breaker import InMemoryCircuitBreaker
+from airweave.adapters.encryption.fernet import FernetCredentialEncryptor
 from airweave.adapters.event_bus.in_memory import InMemoryEventBus
 from airweave.adapters.health import PostgresHealthProbe, RedisHealthProbe, TemporalHealthProbe
 from airweave.adapters.ocr.docling import DoclingOcrAdapter
@@ -35,7 +36,13 @@ from airweave.domains.connections.repository import ConnectionRepository
 from airweave.domains.credentials.repository import IntegrationCredentialRepository
 from airweave.domains.entities.entity_count_repository import EntityCountRepository
 from airweave.domains.entities.registry import EntityDefinitionRegistry
+from airweave.domains.oauth.oauth1_service import OAuth1Service
 from airweave.domains.oauth.oauth2_service import OAuth2Service
+from airweave.domains.oauth.repository import (
+    OAuthConnectionRepository,
+    OAuthCredentialRepository,
+    OAuthSourceRepository,
+)
 from airweave.domains.source_connections.repository import SourceConnectionRepository
 from airweave.domains.source_connections.response import ResponseBuilder
 from airweave.domains.source_connections.service import SourceConnectionService
@@ -129,6 +136,7 @@ def create_container(settings: Settings) -> Container:
         collection_repo=source_deps["collection_repo"],
         conn_repo=source_deps["conn_repo"],
         cred_repo=source_deps["cred_repo"],
+        oauth1_service=source_deps["oauth1_service"],
         oauth2_service=source_deps["oauth2_service"],
         source_connection_service=source_deps["source_connection_service"],
         source_lifecycle_service=source_deps["source_lifecycle_service"],
@@ -250,7 +258,7 @@ def _create_source_services(settings: Settings) -> dict:
     2. Entity definition registry (no dependencies)
     3. Source registry (depends on both)
     4. Repository adapters (thin wrappers around crud singletons)
-    5. OAuth2 adapter (thin wrapper around oauth2_service singleton)
+    5. OAuth2 service (with injected repos, encryptor, settings)
     6. SourceLifecycleService (depends on all of the above)
     """
     auth_provider_registry = AuthProviderRegistry()
@@ -269,7 +277,14 @@ def _create_source_services(settings: Settings) -> dict:
     cred_repo = IntegrationCredentialRepository()
     entity_count_repo = EntityCountRepository()
     sync_job_repo = SyncJobRepository()
-    oauth2_svc = OAuth2Service()
+    oauth1_svc = OAuth1Service()
+    oauth2_svc = OAuth2Service(
+        settings=settings,
+        conn_repo=OAuthConnectionRepository(),
+        cred_repo=OAuthCredentialRepository(),
+        encryptor=FernetCredentialEncryptor(settings.ENCRYPTION_KEY),
+        source_repo=OAuthSourceRepository(),
+    )
 
     response_builder = ResponseBuilder(
         sc_repo=sc_repo,
@@ -310,6 +325,7 @@ def _create_source_services(settings: Settings) -> dict:
         "collection_repo": collection_repo,
         "conn_repo": conn_repo,
         "cred_repo": cred_repo,
+        "oauth1_service": oauth1_svc,
         "oauth2_service": oauth2_svc,
         "source_connection_service": source_connection_service,
         "source_lifecycle_service": source_lifecycle_service,

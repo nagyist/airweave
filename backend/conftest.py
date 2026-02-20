@@ -4,9 +4,21 @@ This conftest is loaded before both testpaths (tests/ and airweave/domains/),
 making its fixtures available to centralized tests AND colocated domain tests.
 """
 
+from __future__ import annotations
+
 import os
+from typing import TYPE_CHECKING
 
 import pytest
+
+if TYPE_CHECKING:
+    from airweave.adapters.metrics import (
+        FakeAgenticSearchMetrics,
+        FakeDbPoolMetrics,
+        FakeHttpMetrics,
+    )
+    from airweave.core.fakes.metrics_service import FakeMetricsService
+    from airweave.core.health.fakes import FakeHealthService
 
 # Register pytest-asyncio plugin at the root level
 pytest_plugins = ("pytest_asyncio",)
@@ -89,6 +101,30 @@ def fake_ocr_provider():
 
 
 @pytest.fixture
+def fake_http_metrics() -> FakeHttpMetrics:
+    """Fake HttpMetrics that records calls in memory."""
+    from airweave.adapters.metrics import FakeHttpMetrics
+
+    return FakeHttpMetrics()
+
+
+@pytest.fixture
+def fake_agentic_search_metrics() -> FakeAgenticSearchMetrics:
+    """Fake AgenticSearchMetrics that records calls in memory."""
+    from airweave.adapters.metrics import FakeAgenticSearchMetrics
+
+    return FakeAgenticSearchMetrics()
+
+
+@pytest.fixture
+def fake_db_pool_metrics() -> FakeDbPoolMetrics:
+    """Fake DbPoolMetrics that records the latest update in memory."""
+    from airweave.adapters.metrics import FakeDbPoolMetrics
+
+    return FakeDbPoolMetrics()
+
+
+@pytest.fixture
 def fake_source_service():
     """Fake SourceService that returns canned source schemas."""
     from airweave.domains.sources.fakes.service import FakeSourceService
@@ -120,13 +156,29 @@ def fake_entity_definition_registry():
     return FakeEntityDefinitionRegistry()
 
 
+@pytest.fixture
+def fake_metrics_service(
+    fake_http_metrics,
+    fake_agentic_search_metrics,
+    fake_db_pool_metrics,
+) -> FakeMetricsService:
+    """FakeMetricsService wrapping individual metric fakes."""
+    from airweave.core.fakes.metrics_service import FakeMetricsService
+
+    return FakeMetricsService(
+        http=fake_http_metrics,
+        agentic_search=fake_agentic_search_metrics,
+        db_pool=fake_db_pool_metrics,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Test container — fully faked Container for injection
 # ---------------------------------------------------------------------------
 
 
 @pytest.fixture
-def fake_health_service():
+def fake_health_service() -> FakeHealthService:
     """Fake HealthService with canned responses."""
     from airweave.core.health.fakes import FakeHealthService
 
@@ -229,6 +281,7 @@ def test_container(
     fake_webhook_admin,
     fake_circuit_breaker,
     fake_ocr_provider,
+    fake_metrics_service,
     fake_source_service,
     fake_endpoint_verifier,
     fake_webhook_service,
@@ -265,6 +318,7 @@ def test_container(
         webhook_service=fake_webhook_service,
         circuit_breaker=fake_circuit_breaker,
         ocr_provider=fake_ocr_provider,
+        metrics=fake_metrics_service,
         source_service=fake_source_service,
         source_registry=fake_source_registry,
         auth_provider_registry=fake_auth_provider_registry,

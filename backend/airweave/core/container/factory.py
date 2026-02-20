@@ -10,12 +10,20 @@ Design principles:
 - Testable: can unit test factory logic with mock settings
 """
 
+from prometheus_client import CollectorRegistry
+
 from airweave.adapters.analytics.posthog import PostHogTracker
 from airweave.adapters.analytics.subscriber import AnalyticsEventSubscriber
 from airweave.adapters.circuit_breaker import InMemoryCircuitBreaker
 from airweave.adapters.encryption.fernet import FernetCredentialEncryptor
 from airweave.adapters.event_bus.in_memory import InMemoryEventBus
 from airweave.adapters.health import PostgresHealthProbe, RedisHealthProbe, TemporalHealthProbe
+from airweave.adapters.metrics import (
+    PrometheusAgenticSearchMetrics,
+    PrometheusDbPoolMetrics,
+    PrometheusHttpMetrics,
+    PrometheusMetricsRenderer,
+)
 from airweave.adapters.ocr.docling import DoclingOcrAdapter
 from airweave.adapters.ocr.fallback import FallbackOcrProvider
 from airweave.adapters.ocr.mistral import MistralOcrAdapter
@@ -25,6 +33,7 @@ from airweave.core.config import Settings
 from airweave.core.container.container import Container
 from airweave.core.health.service import HealthService
 from airweave.core.logging import logger
+from airweave.core.metrics_service import PrometheusMetricsService
 from airweave.core.protocols import CircuitBreaker, OcrProvider
 from airweave.core.protocols.event_bus import EventBus
 from airweave.core.protocols.webhooks import WebhookPublisher
@@ -117,6 +126,11 @@ def create_container(settings: Settings) -> Container:
     # -----------------------------------------------------------------
     health = _create_health_service(settings)
 
+    # -----------------------------------------------------------------
+    # Metrics (Prometheus adapters, shared registry, wrapped in service)
+    # -----------------------------------------------------------------
+    metrics = _create_metrics_service(settings)
+
     # Source Service + Source Lifecycle Service
     # Auth provider registry is built first, then passed to the source
     # registry so it can compute supported_auth_providers per source.
@@ -131,6 +145,7 @@ def create_container(settings: Settings) -> Container:
         webhook_admin=svix_adapter,
         circuit_breaker=circuit_breaker,
         ocr_provider=ocr_provider,
+        metrics=metrics,
         source_service=source_deps["source_service"],
         source_registry=source_deps["source_registry"],
         auth_provider_registry=source_deps["auth_provider_registry"],
@@ -184,6 +199,22 @@ def _create_health_service(settings: Settings) -> HealthService:
         critical=critical,
         informational=informational,
         timeout=settings.HEALTH_CHECK_TIMEOUT,
+    )
+
+
+def _create_metrics_service(settings: Settings) -> PrometheusMetricsService:
+    """Build the PrometheusMetricsService with Prometheus adapters and a shared registry."""
+    registry = CollectorRegistry()
+    return PrometheusMetricsService(
+        http=PrometheusHttpMetrics(registry=registry),
+        agentic_search=PrometheusAgenticSearchMetrics(registry=registry),
+        db_pool=PrometheusDbPoolMetrics(
+            registry=registry,
+            max_overflow=settings.db_pool_max_overflow,
+        ),
+        renderer=PrometheusMetricsRenderer(registry=registry),
+        host=settings.METRICS_HOST,
+        port=settings.METRICS_PORT,
     )
 
 

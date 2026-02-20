@@ -21,7 +21,7 @@ class FakeSourceConnectionRepository:
         self._schedule_info: dict[UUID, ScheduleInfo] = {}
         self._init_sessions: dict[UUID, ConnectionInitSession] = {}
         self._stats: List[SourceConnectionStats] = []
-        self._calls: list[tuple] = []
+        self._calls: list[tuple[Any, ...]] = []
 
     def seed(self, id: UUID, obj: SourceConnection) -> None:
         self._store[id] = obj

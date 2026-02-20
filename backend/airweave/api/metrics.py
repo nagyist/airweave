@@ -10,7 +10,7 @@ Follows the same aiohttp pattern as the Temporal worker control server
 from aiohttp import web
 
 from airweave.core.logging import logger
-from airweave.core.protocols.metrics_renderer import MetricsRenderer
+from airweave.core.protocols.metrics import MetricsRenderer
 
 
 class MetricsServer:

@@ -55,8 +55,7 @@ class TemporalWorker:
         """
         from prometheus_client import CollectorRegistry
 
-        from airweave.adapters.metrics_renderer import PrometheusMetricsRenderer
-        from airweave.adapters.worker_metrics import PrometheusWorkerMetrics
+        from airweave.adapters.metrics import PrometheusMetricsRenderer, PrometheusWorkerMetrics
         from airweave.platform.temporal.worker_metrics import worker_metrics as metrics_registry
 
         self._config = config

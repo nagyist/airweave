@@ -6,7 +6,7 @@ are fully isolated (no shared module-level gauges).
 
 from prometheus_client import CollectorRegistry, ProcessCollector
 
-from airweave.adapters.worker_metrics import PrometheusWorkerMetrics
+from airweave.adapters.metrics import PrometheusWorkerMetrics
 from airweave.platform.temporal.worker_metrics_snapshot import (
     ConnectorSnapshot,
     WorkerMetricsSnapshot,

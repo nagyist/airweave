@@ -1,6 +1,6 @@
 """Tests for FakeWorkerMetrics adapter."""
 
-from airweave.adapters.worker_metrics import FakeWorkerMetrics
+from airweave.adapters.metrics import FakeWorkerMetrics
 from airweave.platform.temporal.worker_metrics_snapshot import (
     ConnectorSnapshot,
     WorkerMetricsSnapshot,

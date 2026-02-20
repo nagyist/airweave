@@ -1,13 +1,14 @@
-"""Prometheus implementation of the DbPoolMetrics protocol.
+"""DB pool metrics adapters (Prometheus + Fake).
 
-Five gauges on the shared CollectorRegistry expose connection pool state
-for Prometheus scraping.  ``max_overflow`` is set once at construction
-since it is a static engine configuration value.
+Prometheus implementation exposes five gauges on the shared
+CollectorRegistry for connection pool state.
 """
+
+from __future__ import annotations
 
 from prometheus_client import CollectorRegistry, Gauge
 
-from airweave.core.protocols.db_pool_metrics import DbPoolMetrics
+from airweave.core.protocols.metrics import DbPoolMetrics
 
 
 class PrometheusDbPoolMetrics(DbPoolMetrics):
@@ -67,3 +68,43 @@ class PrometheusDbPoolMetrics(DbPoolMetrics):
         self._checked_out.set(checked_out)
         self._checked_in.set(checked_in)
         self._overflow.set(overflow)
+
+
+# ---------------------------------------------------------------------------
+# Fake
+# ---------------------------------------------------------------------------
+
+
+class FakeDbPoolMetrics(DbPoolMetrics):
+    """In-memory spy implementing the DbPoolMetrics protocol."""
+
+    def __init__(self) -> None:
+        self.pool_size: int | None = None
+        self.checked_out: int | None = None
+        self.checked_in: int | None = None
+        self.overflow: int | None = None
+        self.update_count: int = 0
+
+    def update(
+        self,
+        *,
+        pool_size: int,
+        checked_out: int,
+        checked_in: int,
+        overflow: int,
+    ) -> None:
+        self.pool_size = pool_size
+        self.checked_out = checked_out
+        self.checked_in = checked_in
+        self.overflow = overflow
+        self.update_count += 1
+
+    # -- test helpers --
+
+    def clear(self) -> None:
+        """Reset all recorded state."""
+        self.pool_size = None
+        self.checked_out = None
+        self.checked_in = None
+        self.overflow = None
+        self.update_count = 0

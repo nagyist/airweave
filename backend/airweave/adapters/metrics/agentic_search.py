@@ -1,12 +1,17 @@
-"""Prometheus implementation of the AgenticSearchMetrics protocol.
+"""Agentic search metrics adapters (Prometheus + Fake).
 
-Uses a caller-supplied CollectorRegistry so these metrics are served
-alongside the HTTP metrics on the same ``/metrics`` endpoint.
+Prometheus implementation uses a caller-supplied CollectorRegistry so
+these metrics are served alongside the HTTP metrics on the same
+``/metrics`` endpoint.
 """
+
+from __future__ import annotations
+
+from dataclasses import dataclass
 
 from prometheus_client import CollectorRegistry, Counter, Histogram
 
-from airweave.search.agentic_search.protocols import AgenticSearchMetrics
+from airweave.core.protocols.metrics import AgenticSearchMetrics
 
 _ITERATION_BUCKETS = (1, 2, 3, 4, 5, 7, 10)
 _STEP_DURATION_BUCKETS = (0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0)
@@ -84,3 +89,57 @@ class PrometheusAgenticSearchMetrics(AgenticSearchMetrics):
 
     def observe_duration(self, mode: str, duration: float) -> None:
         self._duration.labels(mode=mode).observe(duration)
+
+
+# ---------------------------------------------------------------------------
+# Fake
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class StepDurationRecord:
+    """Single observed step duration."""
+
+    step: str
+    duration: float
+
+
+class FakeAgenticSearchMetrics(AgenticSearchMetrics):
+    """In-memory spy implementing the AgenticSearchMetrics protocol."""
+
+    def __init__(self) -> None:
+        self.search_requests: list[tuple[str, bool]] = []
+        self.search_errors: list[tuple[str, bool]] = []
+        self.iterations: list[tuple[str, int]] = []
+        self.step_durations: list[StepDurationRecord] = []
+        self.results_counts: list[int] = []
+        self.durations: list[tuple[str, float]] = []
+
+    def inc_search_requests(self, mode: str, streaming: bool) -> None:
+        self.search_requests.append((mode, streaming))
+
+    def inc_search_errors(self, mode: str, streaming: bool) -> None:
+        self.search_errors.append((mode, streaming))
+
+    def observe_iterations(self, mode: str, count: int) -> None:
+        self.iterations.append((mode, count))
+
+    def observe_step_duration(self, step: str, duration: float) -> None:
+        self.step_durations.append(StepDurationRecord(step, duration))
+
+    def observe_results_per_search(self, count: int) -> None:
+        self.results_counts.append(count)
+
+    def observe_duration(self, mode: str, duration: float) -> None:
+        self.durations.append((mode, duration))
+
+    # -- test helpers --
+
+    def clear(self) -> None:
+        """Reset all recorded state."""
+        self.search_requests.clear()
+        self.search_errors.clear()
+        self.iterations.clear()
+        self.step_durations.clear()
+        self.results_counts.clear()
+        self.durations.clear()

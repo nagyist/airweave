@@ -15,8 +15,7 @@ from uuid import uuid4
 
 import pytest
 
-from airweave.adapters.metrics_renderer import FakeMetricsRenderer
-from airweave.adapters.worker_metrics import FakeWorkerMetrics
+from airweave.adapters.metrics import FakeMetricsRenderer, FakeWorkerMetrics
 from airweave.platform.temporal.worker import WorkerControlServer, WorkerState
 from airweave.platform.temporal.worker.config import WorkerConfig
 

@@ -91,7 +91,7 @@ def fake_ocr_provider():
 @pytest.fixture
 def fake_http_metrics():
     """Fake HttpMetrics that records calls in memory."""
-    from airweave.adapters.http_metrics.fake import FakeHttpMetrics
+    from airweave.adapters.metrics import FakeHttpMetrics
 
     return FakeHttpMetrics()
 
@@ -99,7 +99,7 @@ def fake_http_metrics():
 @pytest.fixture
 def fake_agentic_search_metrics():
     """Fake AgenticSearchMetrics that records calls in memory."""
-    from airweave.adapters.agentic_search_metrics.fake import FakeAgenticSearchMetrics
+    from airweave.adapters.metrics import FakeAgenticSearchMetrics
 
     return FakeAgenticSearchMetrics()
 
@@ -107,7 +107,7 @@ def fake_agentic_search_metrics():
 @pytest.fixture
 def fake_db_pool_metrics():
     """Fake DbPoolMetrics that records the latest update in memory."""
-    from airweave.adapters.db_pool_metrics.fake import FakeDbPoolMetrics
+    from airweave.adapters.metrics import FakeDbPoolMetrics
 
     return FakeDbPoolMetrics()
 

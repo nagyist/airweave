@@ -1,8 +1,12 @@
-"""Prometheus implementation of the HttpMetrics protocol.
+"""HTTP metrics adapters (Prometheus + Fake).
 
-Creates a dedicated CollectorRegistry so API metrics are isolated from
-the default global registry and from the Temporal worker metrics.
+Prometheus implementation creates a dedicated CollectorRegistry so API
+metrics are isolated from the default global registry.
 """
+
+from __future__ import annotations
+
+from dataclasses import dataclass
 
 from prometheus_client import (
     CollectorRegistry,
@@ -11,7 +15,7 @@ from prometheus_client import (
     Histogram,
 )
 
-from airweave.core.protocols.http_metrics import HttpMetrics
+from airweave.core.protocols.metrics import HttpMetrics
 
 _RESPONSE_SIZE_BUCKETS = (
     100,
@@ -85,3 +89,62 @@ class PrometheusHttpMetrics(HttpMetrics):
 
     def observe_response_size(self, method: str, endpoint: str, size: int) -> None:
         self._response_size.labels(method=method, endpoint=endpoint).observe(size)
+
+
+# ---------------------------------------------------------------------------
+# Fake
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class RequestRecord:
+    """Single observed request."""
+
+    method: str
+    endpoint: str
+    status_code: str
+    duration: float
+
+
+@dataclass
+class ResponseSizeRecord:
+    """Single observed response size."""
+
+    method: str
+    endpoint: str
+    size: int
+
+
+class FakeHttpMetrics(HttpMetrics):
+    """In-memory spy implementing the HttpMetrics protocol."""
+
+    def __init__(self) -> None:
+        self.in_progress: dict[str, int] = {}
+        self.requests: list[RequestRecord] = []
+        self.response_sizes: list[ResponseSizeRecord] = []
+
+    def inc_in_progress(self, method: str) -> None:
+        self.in_progress[method] = self.in_progress.get(method, 0) + 1
+
+    def dec_in_progress(self, method: str) -> None:
+        self.in_progress[method] = self.in_progress.get(method, 0) - 1
+
+    def observe_request(
+        self,
+        method: str,
+        endpoint: str,
+        status_code: str,
+        duration: float,
+    ) -> None:
+        self.requests.append(RequestRecord(method, endpoint, status_code, duration))
+
+    def observe_response_size(self, method: str, endpoint: str, size: int) -> None:
+        self.response_sizes.append(ResponseSizeRecord(method, endpoint, size))
+
+    # -- test helpers --
+
+    def clear(self) -> None:
+        """Reset all recorded state."""
+        self.in_progress.clear()
+        self.requests.clear()
+        self.response_sizes.clear()

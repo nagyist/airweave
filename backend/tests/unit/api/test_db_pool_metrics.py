@@ -4,7 +4,7 @@ import asyncio
 
 import pytest
 
-from airweave.adapters.db_pool_metrics import FakeDbPoolMetrics, PrometheusDbPoolMetrics
+from airweave.adapters.metrics import FakeDbPoolMetrics, PrometheusDbPoolMetrics
 from airweave.core.db_pool_sampler import DbPoolSampler
 
 # ---------------------------------------------------------------------------

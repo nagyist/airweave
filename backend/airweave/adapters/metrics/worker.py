@@ -1,16 +1,14 @@
-"""Prometheus implementation of the WorkerMetrics protocol.
+"""Worker metrics adapters (Prometheus + Fake).
 
-Owns all 11 gauges, the Info metric, and the ProcessCollector that were
-previously module-level globals in ``prometheus_metrics.py``.  Gauge names,
-labels, and help strings are identical to the old module to avoid any
-Grafana dashboard breakage.
+Prometheus implementation owns all 11 gauges, the Info metric, and the
+ProcessCollector for Temporal worker instrumentation.
 """
 
 from __future__ import annotations
 
 from prometheus_client import CollectorRegistry, Gauge, Info, ProcessCollector
 
-from airweave.core.protocols.worker_metrics import WorkerMetrics
+from airweave.core.protocols.metrics import WorkerMetrics
 from airweave.platform.temporal.worker_metrics_snapshot import WorkerMetricsSnapshot
 
 
@@ -167,3 +165,27 @@ class PrometheusWorkerMetrics(WorkerMetrics):
 
         # Thread pool active
         self._thread_pool_active.labels(worker_id=wid).set(snapshot.thread_pool_active)
+
+
+# ---------------------------------------------------------------------------
+# Fake
+# ---------------------------------------------------------------------------
+
+
+class FakeWorkerMetrics(WorkerMetrics):
+    """In-memory spy implementing the WorkerMetrics protocol."""
+
+    def __init__(self) -> None:
+        self.snapshots: list[WorkerMetricsSnapshot] = []
+
+    def update(self, snapshot: WorkerMetricsSnapshot) -> None:
+        self.snapshots.append(snapshot)
+
+    # -- test helpers --
+
+    @property
+    def last_snapshot(self) -> WorkerMetricsSnapshot | None:
+        return self.snapshots[-1] if self.snapshots else None
+
+    def clear(self) -> None:
+        self.snapshots.clear()

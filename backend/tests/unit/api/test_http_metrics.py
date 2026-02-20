@@ -5,8 +5,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from airweave.adapters.http_metrics import FakeHttpMetrics, PrometheusHttpMetrics
-from airweave.adapters.metrics_renderer import FakeMetricsRenderer
+from airweave.adapters.metrics import FakeHttpMetrics, FakeMetricsRenderer, PrometheusHttpMetrics
 
 
 class TestFakeHttpMetrics:
@@ -79,7 +78,7 @@ class TestPrometheusMetricsRenderer:
     def test_generate_returns_bytes(self):
         from prometheus_client import CollectorRegistry
 
-        from airweave.adapters.metrics_renderer import PrometheusMetricsRenderer
+        from airweave.adapters.metrics import PrometheusMetricsRenderer
 
         registry = CollectorRegistry()
         renderer = PrometheusMetricsRenderer(registry=registry)
@@ -88,7 +87,7 @@ class TestPrometheusMetricsRenderer:
     def test_content_type_is_prometheus_format(self):
         from prometheus_client import CollectorRegistry
 
-        from airweave.adapters.metrics_renderer import PrometheusMetricsRenderer
+        from airweave.adapters.metrics import PrometheusMetricsRenderer
 
         registry = CollectorRegistry()
         renderer = PrometheusMetricsRenderer(registry=registry)
@@ -97,7 +96,7 @@ class TestPrometheusMetricsRenderer:
     def test_renders_metrics_from_shared_registry(self):
         from prometheus_client import CollectorRegistry
 
-        from airweave.adapters.metrics_renderer import PrometheusMetricsRenderer
+        from airweave.adapters.metrics import PrometheusMetricsRenderer
 
         registry = CollectorRegistry()
         http = PrometheusHttpMetrics(registry=registry)

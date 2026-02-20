@@ -11,11 +11,13 @@ from typing import Any
 
 from airweave.api.metrics import MetricsServer
 from airweave.core.db_pool_sampler import DbPoolSampler
-from airweave.core.protocols.db_pool_metrics import DbPoolMetrics
-from airweave.core.protocols.http_metrics import HttpMetrics
-from airweave.core.protocols.metrics_renderer import MetricsRenderer
-from airweave.core.protocols.metrics_service import MetricsService
-from airweave.search.agentic_search.protocols import AgenticSearchMetrics
+from airweave.core.protocols.metrics import (
+    AgenticSearchMetrics,
+    DbPoolMetrics,
+    HttpMetrics,
+    MetricsRenderer,
+    MetricsService,
+)
 
 
 class PrometheusMetricsService(MetricsService):

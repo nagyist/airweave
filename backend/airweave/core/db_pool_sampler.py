@@ -15,7 +15,7 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from airweave.core.protocols.db_pool_metrics import DbPoolMetrics
+    from airweave.core.protocols.metrics import DbPoolMetrics
 
 logger = logging.getLogger(__name__)
 

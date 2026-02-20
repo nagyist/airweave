@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from airweave.adapters.agentic_search_metrics.fake import FakeAgenticSearchMetrics
+from airweave.adapters.metrics import FakeAgenticSearchMetrics
 from airweave.search.agentic_search.core.agent import (
     AgenticSearchAgent,
     _STEP_LABEL_MAP,

@@ -4,7 +4,12 @@ from __future__ import annotations
 
 from typing import Any
 
-from airweave.core.protocols.metrics_service import MetricsService
+from airweave.core.protocols.metrics import (
+    AgenticSearchMetrics,
+    DbPoolMetrics,
+    HttpMetrics,
+    MetricsService,
+)
 
 
 class FakeMetricsService(MetricsService):
@@ -14,7 +19,12 @@ class FakeMetricsService(MetricsService):
     every other fake in the codebase.
     """
 
-    def __init__(self, http: Any, agentic_search: Any, db_pool: Any) -> None:
+    def __init__(
+        self,
+        http: HttpMetrics,
+        agentic_search: AgenticSearchMetrics,
+        db_pool: DbPoolMetrics,
+    ) -> None:
         self.http = http
         self.agentic_search = agentic_search
         self.db_pool = db_pool

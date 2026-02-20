@@ -3,10 +3,7 @@
 import pytest
 from prometheus_client import generate_latest
 
-from airweave.adapters.agentic_search_metrics import (
-    FakeAgenticSearchMetrics,
-    PrometheusAgenticSearchMetrics,
-)
+from airweave.adapters.metrics import FakeAgenticSearchMetrics, PrometheusAgenticSearchMetrics
 
 
 class TestFakeAgenticSearchMetrics:
@@ -151,7 +148,7 @@ class TestPrometheusAgenticSearchMetrics:
         """Both HTTP and agentic search metrics appear in a shared registry."""
         from prometheus_client import CollectorRegistry
 
-        from airweave.adapters.http_metrics import PrometheusHttpMetrics
+        from airweave.adapters.metrics import PrometheusHttpMetrics
 
         registry = CollectorRegistry()
         http = PrometheusHttpMetrics(registry=registry)

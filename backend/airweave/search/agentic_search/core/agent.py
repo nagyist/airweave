@@ -59,7 +59,7 @@ from airweave.search.agentic_search.schemas.search_result import AgenticSearchRe
 from airweave.search.agentic_search.services import AgenticSearchServices
 
 if TYPE_CHECKING:
-    from airweave.search.agentic_search.protocols import AgenticSearchMetrics
+    from airweave.core.protocols.metrics import AgenticSearchMetrics
 
 # Maps timing-label suffixes to canonical step names used in metrics.
 _STEP_LABEL_MAP: dict[str, str] = {

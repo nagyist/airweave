@@ -14,19 +14,18 @@ from __future__ import annotations
 
 from prometheus_client import CollectorRegistry
 
-from airweave.adapters.agentic_search_metrics import PrometheusAgenticSearchMetrics
 from airweave.adapters.analytics.posthog import PostHogTracker
 from airweave.adapters.analytics.subscriber import AnalyticsEventSubscriber
 from airweave.adapters.circuit_breaker import InMemoryCircuitBreaker
-from airweave.adapters.db_pool_metrics import PrometheusDbPoolMetrics
-<<<<<<< HEAD
 from airweave.adapters.encryption.fernet import FernetCredentialEncryptor
-=======
->>>>>>> 39643f2f (fix: explicit protocol bases, top-level imports)
 from airweave.adapters.event_bus.in_memory import InMemoryEventBus
 from airweave.adapters.health import PostgresHealthProbe, RedisHealthProbe, TemporalHealthProbe
-from airweave.adapters.http_metrics import PrometheusHttpMetrics
-from airweave.adapters.metrics_renderer import PrometheusMetricsRenderer
+from airweave.adapters.metrics import (
+    PrometheusAgenticSearchMetrics,
+    PrometheusDbPoolMetrics,
+    PrometheusHttpMetrics,
+    PrometheusMetricsRenderer,
+)
 from airweave.adapters.ocr.docling import DoclingOcrAdapter
 from airweave.adapters.ocr.fallback import FallbackOcrProvider
 from airweave.adapters.ocr.mistral import MistralOcrAdapter

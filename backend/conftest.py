@@ -250,6 +250,22 @@ def fake_oauth1_service():
 
 
 @pytest.fixture
+def fake_temporal_workflow_service():
+    """Fake TemporalWorkflowService."""
+    from airweave.domains.temporal.fakes.service import FakeTemporalWorkflowService
+
+    return FakeTemporalWorkflowService()
+
+
+@pytest.fixture
+def fake_temporal_schedule_service():
+    """Fake TemporalScheduleService."""
+    from airweave.domains.temporal.fakes.schedule_service import FakeTemporalScheduleService
+
+    return FakeTemporalScheduleService()
+
+
+@pytest.fixture
 def fake_sync_repo():
     """Fake SyncRepository."""
     from airweave.domains.syncs.fakes.sync_repository import FakeSyncRepository
@@ -295,6 +311,8 @@ def test_container(
     fake_oauth2_service,
     fake_source_connection_service,
     fake_source_lifecycle_service,
+    fake_temporal_workflow_service,
+    fake_temporal_schedule_service,
     fake_sync_repo,
     fake_sync_cursor_repo,
     fake_sync_job_repo,
@@ -330,6 +348,8 @@ def test_container(
         oauth2_service=fake_oauth2_service,
         source_connection_service=fake_source_connection_service,
         source_lifecycle_service=fake_source_lifecycle_service,
+        temporal_workflow_service=fake_temporal_workflow_service,
+        temporal_schedule_service=fake_temporal_schedule_service,
         sync_repo=fake_sync_repo,
         sync_cursor_repo=fake_sync_cursor_repo,
         sync_job_repo=fake_sync_job_repo,

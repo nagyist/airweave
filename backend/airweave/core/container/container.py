@@ -43,6 +43,10 @@ from airweave.domains.syncs.protocols import (
     SyncJobRepositoryProtocol,
     SyncRepositoryProtocol,
 )
+from airweave.domains.temporal.protocols import (
+    TemporalScheduleServiceProtocol,
+    TemporalWorkflowServiceProtocol,
+)
 
 
 @dataclass(frozen=True)
@@ -112,6 +116,10 @@ class Container:
     sync_repo: SyncRepositoryProtocol
     sync_cursor_repo: SyncCursorRepositoryProtocol
     sync_job_repo: SyncJobRepositoryProtocol
+
+    # Temporal domain
+    temporal_workflow_service: TemporalWorkflowServiceProtocol
+    temporal_schedule_service: TemporalScheduleServiceProtocol
 
     # -----------------------------------------------------------------
     # Convenience methods

@@ -49,7 +49,9 @@ from airweave.domains.source_connections.service import SourceConnectionService
 from airweave.domains.sources.lifecycle import SourceLifecycleService
 from airweave.domains.sources.registry import SourceRegistry
 from airweave.domains.sources.service import SourceService
+from airweave.domains.syncs.sync_cursor_repository import SyncCursorRepository
 from airweave.domains.syncs.sync_job_repository import SyncJobRepository
+from airweave.domains.syncs.sync_repository import SyncRepository
 from airweave.domains.webhooks.service import WebhookServiceImpl
 from airweave.domains.webhooks.subscribers import WebhookEventSubscriber
 from airweave.platform.temporal.client import TemporalClient
@@ -140,6 +142,9 @@ def create_container(settings: Settings) -> Container:
         oauth2_service=source_deps["oauth2_service"],
         source_connection_service=source_deps["source_connection_service"],
         source_lifecycle_service=source_deps["source_lifecycle_service"],
+        sync_repo=source_deps["sync_repo"],
+        sync_cursor_repo=source_deps["sync_cursor_repo"],
+        sync_job_repo=source_deps["sync_job_repo"],
         endpoint_verifier=endpoint_verifier,
         webhook_service=webhook_service,
     )
@@ -276,6 +281,8 @@ def _create_source_services(settings: Settings) -> dict:
     conn_repo = ConnectionRepository()
     cred_repo = IntegrationCredentialRepository()
     entity_count_repo = EntityCountRepository()
+    sync_repo = SyncRepository()
+    sync_cursor_repo = SyncCursorRepository()
     sync_job_repo = SyncJobRepository()
     oauth1_svc = OAuth1Service()
     oauth2_svc = OAuth2Service(
@@ -329,4 +336,7 @@ def _create_source_services(settings: Settings) -> dict:
         "oauth2_service": oauth2_svc,
         "source_connection_service": source_connection_service,
         "source_lifecycle_service": source_lifecycle_service,
+        "sync_repo": sync_repo,
+        "sync_cursor_repo": sync_cursor_repo,
+        "sync_job_repo": sync_job_repo,
     }

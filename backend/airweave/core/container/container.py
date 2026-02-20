@@ -37,6 +37,11 @@ from airweave.domains.sources.protocols import (
     SourceRegistryProtocol,
     SourceServiceProtocol,
 )
+from airweave.domains.syncs.protocols import (
+    SyncCursorRepositoryProtocol,
+    SyncJobRepositoryProtocol,
+    SyncRepositoryProtocol,
+)
 
 
 @dataclass(frozen=True)
@@ -108,6 +113,11 @@ class Container:
 
     # Source lifecycle — creates/validates configured source instances
     source_lifecycle_service: SourceLifecycleServiceProtocol
+
+    # Sync domain repositories
+    sync_repo: SyncRepositoryProtocol
+    sync_cursor_repo: SyncCursorRepositoryProtocol
+    sync_job_repo: SyncJobRepositoryProtocol
 
     # -----------------------------------------------------------------
     # Convenience methods

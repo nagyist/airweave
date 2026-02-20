@@ -14,6 +14,7 @@ from airweave.adapters.analytics.posthog import PostHogTracker
 from airweave.adapters.analytics.subscriber import AnalyticsEventSubscriber
 from airweave.adapters.circuit_breaker import InMemoryCircuitBreaker
 from airweave.adapters.event_bus.in_memory import InMemoryEventBus
+from airweave.adapters.health import PostgresHealthProbe, RedisHealthProbe, TemporalHealthProbe
 from airweave.adapters.ocr.docling import DoclingOcrAdapter
 from airweave.adapters.ocr.fallback import FallbackOcrProvider
 from airweave.adapters.ocr.mistral import MistralOcrAdapter
@@ -21,10 +22,13 @@ from airweave.adapters.webhooks.endpoint_verifier import HttpEndpointVerifier
 from airweave.adapters.webhooks.svix import SvixAdapter
 from airweave.core.config import Settings
 from airweave.core.container.container import Container
+from airweave.core.health.service import HealthService
 from airweave.core.logging import logger
 from airweave.core.protocols import CircuitBreaker, OcrProvider
 from airweave.core.protocols.event_bus import EventBus
 from airweave.core.protocols.webhooks import WebhookPublisher
+from airweave.core.redis_client import redis_client
+from airweave.db.session import health_check_engine
 from airweave.domains.auth_provider.registry import AuthProviderRegistry
 from airweave.domains.connections.repository import ConnectionRepository
 from airweave.domains.credentials.repository import IntegrationCredentialRepository
@@ -36,6 +40,7 @@ from airweave.domains.sources.registry import SourceRegistry
 from airweave.domains.sources.service import SourceService
 from airweave.domains.webhooks.service import WebhookServiceImpl
 from airweave.domains.webhooks.subscribers import WebhookEventSubscriber
+from airweave.platform.temporal.client import TemporalClient
 
 
 def create_container(settings: Settings) -> Container:
@@ -92,6 +97,12 @@ def create_container(settings: Settings) -> Container:
     circuit_breaker = _create_circuit_breaker()
     ocr_provider = _create_ocr_provider(circuit_breaker, settings)
 
+    # -----------------------------------------------------------------
+    # Health service
+    # Owns shutdown flag and orchestrates readiness probes.
+    # -----------------------------------------------------------------
+    health = _create_health_service(settings)
+
     # Source Service + Source Lifecycle Service
     # Auth provider registry is built first, then passed to the source
     # registry so it can compute supported_auth_providers per source.
@@ -100,6 +111,7 @@ def create_container(settings: Settings) -> Container:
     source_deps = _create_source_services(settings)
 
     return Container(
+        health=health,
         event_bus=event_bus,
         webhook_publisher=svix_adapter,
         webhook_admin=svix_adapter,
@@ -121,6 +133,38 @@ def create_container(settings: Settings) -> Container:
 # ---------------------------------------------------------------------------
 # Private factory functions for each dependency
 # ---------------------------------------------------------------------------
+
+
+def _create_health_service(settings: Settings) -> HealthService:
+    """Create the health service with infrastructure probes.
+
+    All known probes (postgres, redis, temporal) are always registered.
+    The critical-vs-informational split comes from
+    ``settings.health_critical_probes``.
+    """
+    critical_names = settings.health_critical_probes
+
+    probes = {
+        "postgres": PostgresHealthProbe(health_check_engine),
+        "redis": RedisHealthProbe(redis_client.client),
+        "temporal": TemporalHealthProbe(lambda: TemporalClient._client),
+    }
+
+    unknown = critical_names - probes.keys()
+    if unknown:
+        logger.warning(
+            "HEALTH_CRITICAL_PROBES references unknown probes: %s",
+            ", ".join(sorted(unknown)),
+        )
+
+    critical = [p for name, p in probes.items() if name in critical_names]
+    informational = [p for name, p in probes.items() if name not in critical_names]
+
+    return HealthService(
+        critical=critical,
+        informational=informational,
+        timeout=settings.HEALTH_CHECK_TIMEOUT,
+    )
 
 
 def _create_event_bus(webhook_publisher: WebhookPublisher, settings: Settings) -> EventBus:

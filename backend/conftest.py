@@ -126,6 +126,14 @@ def fake_entity_definition_registry():
 
 
 @pytest.fixture
+def fake_health_service():
+    """Fake HealthService with canned responses."""
+    from airweave.core.health.fakes import FakeHealthService
+
+    return FakeHealthService()
+
+
+@pytest.fixture
 def fake_source_lifecycle_service():
     """Fake SourceLifecycleService for testing lifecycle consumers."""
     from airweave.domains.sources.fakes.lifecycle import FakeSourceLifecycleService
@@ -167,6 +175,7 @@ def fake_oauth2_service():
 
 @pytest.fixture
 def test_container(
+    fake_health_service,
     fake_event_bus,
     fake_webhook_publisher,
     fake_webhook_admin,
@@ -194,6 +203,7 @@ def test_container(
     from airweave.core.container import Container
 
     return Container(
+        health=fake_health_service,
         event_bus=fake_event_bus,
         webhook_publisher=fake_webhook_publisher,
         webhook_admin=fake_webhook_admin,

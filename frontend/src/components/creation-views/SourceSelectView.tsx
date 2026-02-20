@@ -41,6 +41,7 @@ const getSourceDescription = (shortName: string, fallbackDescription?: string): 
     'stripe': 'Connect to Stripe to sync balance, transactions, charges, customers, events, invoices, payment intents, payment methods, payouts, refunds, and subscriptions.',
     'freshdesk': 'Connect to Freshdesk to sync tickets, conversations, contacts, companies, and solution articles. Includes support ticket threads, customer and company data, and knowledge base content.',
     'dropbox': 'Connect to Dropbox to sync files, folders, sharing information, and cloud storage data. Includes file versions, collaboration features, storage metadata, and account information.',
+    'fireflies': 'Connect to Fireflies to sync meeting transcripts, summaries, and conversation content. Includes speaker attribution, action items, keywords, and searchable transcript text.',
     'asana': 'Connect to Asana to sync workspaces, projects, tasks, sections, comments, and file attachments. Includes project hierarchies, team assignments, progress tracking, and workflow management.',
     'outlook_calendar': 'Connect to Outlook Calendar to sync events, meetings, calendars, and scheduling data. Includes recurring appointments, attendees, calendar organization, and meeting details.',
     'outlook_mail': 'Connect to Outlook Mail to sync emails, folders, message data, and inbox organization. Includes email threads, attachments, mailbox structure, and message metadata.',

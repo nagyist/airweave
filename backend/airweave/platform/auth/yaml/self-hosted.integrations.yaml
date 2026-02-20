@@ -413,4 +413,5 @@ integrations:
 
   qdrant:
 
+  fireflies:
   freshdesk:

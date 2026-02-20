@@ -270,6 +270,9 @@ jobs:
           MONKE_SHOPIFY_CLIENT_SECRET: ${{ secrets.MONKE_SHOPIFY_CLIENT_SECRET }}
           MONKE_SHOPIFY_SHOP_DOMAIN: ${{ secrets.MONKE_SHOPIFY_SHOP_DOMAIN }}
 
+          # FireFlies API key & audio fixture URL
+          MONKE_FIREFLIES_API_KEY: ${{ secrets.MONKE_FIREFLIES_API_KEY }}
+          MONKE_FIREFLIES_AUDIO_URL: ${{ secrets.MONKE_FIREFLIES_AUDIO_URL }}
           # Freshdesk API key and domain
           MONKE_FRESHDESK_API_KEY: ${{ secrets.MONKE_FRESHDESK_API_KEY }}
           MONKE_FRESHDESK_DOMAIN: ${{ secrets.MONKE_FRESHDESK_DOMAIN }}

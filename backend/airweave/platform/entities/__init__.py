@@ -83,6 +83,9 @@ from .file_stub import (
     PptxFileStubEntity,
     ScannedPdfFileStubEntity,
 )
+from .fireflies import (
+    FirefliesTranscriptEntity,
+)
 from .freshdesk import (
     FreshdeskCompanyEntity,
     FreshdeskContactEntity,
@@ -375,6 +378,9 @@ ENTITIES_BY_SOURCE: dict[str, list[type]] = {
         PdfFileStubEntity,
         PptxFileStubEntity,
         ScannedPdfFileStubEntity,
+    ],
+    "fireflies": [
+        FirefliesTranscriptEntity,
     ],
     "freshdesk": [
         FreshdeskCompanyEntity,

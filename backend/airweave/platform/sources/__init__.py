@@ -11,6 +11,7 @@ from .confluence import ConfluenceSource
 from .ctti import CTTISource
 from .dropbox import DropboxSource
 from .file_stub import FileStubSource
+from .fireflies import FirefliesSource
 from .freshdesk import FreshdeskSource
 from .github import GitHubSource
 from .gitlab import GitLabSource
@@ -56,6 +57,7 @@ ALL_SOURCES: list[type] = [
     CTTISource,
     DropboxSource,
     FileStubSource,
+    FirefliesSource,
     FreshdeskSource,
     GitHubSource,
     GitLabSource,

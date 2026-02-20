@@ -58,6 +58,12 @@ from .clickup import (
     ClickUpTaskEntity,
     ClickUpWorkspaceEntity,
 )
+from .coda import (
+    CodaDocEntity,
+    CodaPageEntity,
+    CodaRowEntity,
+    CodaTableEntity,
+)
 from .confluence import (
     ConfluenceBlogPostEntity,
     ConfluenceCommentEntity,
@@ -356,6 +362,12 @@ ENTITIES_BY_SOURCE: dict[str, list[type]] = {
         ClickUpSubtaskEntity,
         ClickUpTaskEntity,
         ClickUpWorkspaceEntity,
+    ],
+    "coda": [
+        CodaDocEntity,
+        CodaPageEntity,
+        CodaRowEntity,
+        CodaTableEntity,
     ],
     "confluence": [
         ConfluenceBlogPostEntity,

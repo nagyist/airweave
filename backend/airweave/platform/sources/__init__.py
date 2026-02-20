@@ -1,6 +1,7 @@
 """All source connectors."""
 
 from .airtable import AirtableSource
+from .apollo import ApolloSource
 from .asana import AsanaSource
 from .attio import AttioSource
 from .bitbucket import BitbucketSource
@@ -45,6 +46,7 @@ from .zoho_crm import ZohoCRMSource
 
 ALL_SOURCES: list[type] = [
     AirtableSource,
+    ApolloSource,
     AsanaSource,
     AttioSource,
     BitbucketSource,

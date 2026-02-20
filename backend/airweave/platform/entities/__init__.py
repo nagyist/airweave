@@ -15,6 +15,12 @@ from .airtable import (
     AirtableTableEntity,
     AirtableUserEntity,
 )
+from .apollo import (
+    ApolloAccountEntity,
+    ApolloContactEntity,
+    ApolloEmailActivityEntity,
+    ApolloSequenceEntity,
+)
 from .asana import (
     AsanaCommentEntity,
     AsanaFileEntity,
@@ -292,6 +298,12 @@ from .zoho_crm import (
 )
 
 ENTITIES_BY_SOURCE: dict[str, list[type]] = {
+    "apollo": [
+        ApolloAccountEntity,
+        ApolloContactEntity,
+        ApolloEmailActivityEntity,
+        ApolloSequenceEntity,
+    ],
     "airtable": [
         AirtableAttachmentEntity,
         AirtableBaseEntity,

@@ -176,7 +176,7 @@ class WorkerControlServer:
         self._worker_metrics.update(snapshot)
         return self._renderer.generate()
 
-    async def _collect_json_status(self) -> dict:
+    async def _collect_json_status(self) -> dict[str, Any]:
         """Collect detailed JSON status for debugging."""
         metrics = await self._registry.get_metrics_summary()
         detailed_syncs = await self._registry.get_detailed_sync_metrics()

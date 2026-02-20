@@ -11,10 +11,24 @@ Consolidates all metrics-related protocols into a single module:
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
     from airweave.platform.temporal.worker_metrics_snapshot import WorkerMetricsSnapshot
+
+
+# ---------------------------------------------------------------------------
+# DbPool
+# ---------------------------------------------------------------------------
+
+
+class DbPool(Protocol):
+    """Structural protocol for a SQLAlchemy-style connection pool."""
+
+    def size(self) -> int: ...
+    def checkedout(self) -> int: ...
+    def checkedin(self) -> int: ...
+    def overflow(self) -> int: ...
 
 
 # ---------------------------------------------------------------------------
@@ -180,7 +194,7 @@ class MetricsService(Protocol):
     agentic_search: AgenticSearchMetrics
     db_pool: DbPoolMetrics
 
-    async def start(self, *, pool: Any) -> None:
+    async def start(self, *, pool: DbPool) -> None:
         """Start the metrics sidecar server and background samplers."""
         ...
 

@@ -4,9 +4,21 @@ This conftest is loaded before both testpaths (tests/ and airweave/domains/),
 making its fixtures available to centralized tests AND colocated domain tests.
 """
 
+from __future__ import annotations
+
 import os
+from typing import TYPE_CHECKING
 
 import pytest
+
+if TYPE_CHECKING:
+    from airweave.adapters.metrics import (
+        FakeAgenticSearchMetrics,
+        FakeDbPoolMetrics,
+        FakeHttpMetrics,
+    )
+    from airweave.core.fakes.metrics_service import FakeMetricsService
+    from airweave.core.health.fakes import FakeHealthService
 
 # Register pytest-asyncio plugin at the root level
 pytest_plugins = ("pytest_asyncio",)
@@ -89,7 +101,7 @@ def fake_ocr_provider():
 
 
 @pytest.fixture
-def fake_http_metrics():
+def fake_http_metrics() -> FakeHttpMetrics:
     """Fake HttpMetrics that records calls in memory."""
     from airweave.adapters.metrics import FakeHttpMetrics
 
@@ -97,7 +109,7 @@ def fake_http_metrics():
 
 
 @pytest.fixture
-def fake_agentic_search_metrics():
+def fake_agentic_search_metrics() -> FakeAgenticSearchMetrics:
     """Fake AgenticSearchMetrics that records calls in memory."""
     from airweave.adapters.metrics import FakeAgenticSearchMetrics
 
@@ -105,7 +117,7 @@ def fake_agentic_search_metrics():
 
 
 @pytest.fixture
-def fake_db_pool_metrics():
+def fake_db_pool_metrics() -> FakeDbPoolMetrics:
     """Fake DbPoolMetrics that records the latest update in memory."""
     from airweave.adapters.metrics import FakeDbPoolMetrics
 
@@ -149,7 +161,7 @@ def fake_metrics_service(
     fake_http_metrics,
     fake_agentic_search_metrics,
     fake_db_pool_metrics,
-):
+) -> FakeMetricsService:
     """FakeMetricsService wrapping individual metric fakes."""
     from airweave.core.fakes.metrics_service import FakeMetricsService
 
@@ -166,7 +178,7 @@ def fake_metrics_service(
 
 
 @pytest.fixture
-def fake_health_service():
+def fake_health_service() -> FakeHealthService:
     """Fake HealthService with canned responses."""
     from airweave.core.health.fakes import FakeHealthService
 

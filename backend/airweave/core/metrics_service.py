@@ -5,13 +5,16 @@ sampler behind a single lifecycle API so callers (main.py, tests) only
 deal with one object instead of four adapters + two background services.
 """
 
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-from typing import Any
+
+from fastapi import FastAPI
 
 from airweave.api.metrics import MetricsServer
 from airweave.core.db_pool_sampler import DbPoolSampler
 from airweave.core.protocols.metrics import (
     AgenticSearchMetrics,
+    DbPool,
     DbPoolMetrics,
     HttpMetrics,
     MetricsRenderer,
@@ -54,7 +57,7 @@ class PrometheusMetricsService(MetricsService):
         self._server: MetricsServer | None = None
         self._sampler: DbPoolSampler | None = None
 
-    async def start(self, *, pool: Any) -> None:
+    async def start(self, *, pool: DbPool) -> None:
         """Start the sidecar metrics server and the DB pool sampler."""
         self._server = MetricsServer(self._renderer, self._port, self._host)
         await self._server.start()
@@ -72,7 +75,11 @@ class PrometheusMetricsService(MetricsService):
 
 
 @asynccontextmanager
-async def metrics_lifespan(app, metrics, pool):
+async def metrics_lifespan(
+    app: FastAPI,
+    metrics: MetricsService,
+    pool: DbPool,
+) -> AsyncGenerator[None, None]:
     """Wire HTTP metrics onto ``app.state`` and manage the metrics lifecycle.
 
     Intended for use inside ``main.py``'s lifespan context manager so the

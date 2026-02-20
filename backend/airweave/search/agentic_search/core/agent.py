@@ -396,13 +396,13 @@ class AgenticSearchAgent:
                 result_count=result_count,
             )
 
-    def _lap(self, timings: list, label: str, start: float) -> float:
+    def _lap(self, timings: list[tuple[str, int]], label: str, start: float) -> float:
         """Record a timing and return the new start time."""
         now = time.monotonic()
         timings.append((label, int((now - start) * 1000)))
         return now
 
-    def _log_timings(self, timings: list, total_start: float) -> int:
+    def _log_timings(self, timings: list[tuple[str, int]], total_start: float) -> int:
         """Log all step timings in a single summary.
 
         Returns:

@@ -11,6 +11,7 @@ from airweave.core.protocols.encryption import CredentialEncryptor
 from airweave.core.protocols.event_bus import DomainEvent, EventBus, EventHandler
 from airweave.core.protocols.metrics import (
     AgenticSearchMetrics,
+    DbPool,
     DbPoolMetrics,
     HttpMetrics,
     MetricsRenderer,
@@ -30,6 +31,7 @@ __all__ = [
     "AgenticSearchMetrics",
     "CircuitBreaker",
     "CredentialEncryptor",
+    "DbPool",
     "DbPoolMetrics",
     "DomainEvent",
     "EndpointVerifier",

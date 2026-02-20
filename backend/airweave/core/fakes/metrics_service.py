@@ -1,9 +1,8 @@
 """Fake metrics service for testing."""
 
-from typing import Any
-
 from airweave.core.protocols.metrics import (
     AgenticSearchMetrics,
+    DbPool,
     DbPoolMetrics,
     HttpMetrics,
     MetricsService,
@@ -27,7 +26,7 @@ class FakeMetricsService(MetricsService):
         self.agentic_search = agentic_search
         self.db_pool = db_pool
 
-    async def start(self, *, pool: Any) -> None:
+    async def start(self, *, pool: DbPool) -> None:
         pass
 
     async def stop(self) -> None:

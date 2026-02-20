@@ -10,9 +10,8 @@ logging a warning and continuing rather than killing the task.
 
 import asyncio
 import logging
-from typing import Any
 
-from airweave.core.protocols.metrics import DbPoolMetrics
+from airweave.core.protocols.metrics import DbPool, DbPoolMetrics
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +28,7 @@ class DbPoolSampler:
 
     def __init__(
         self,
-        pool: Any,
+        pool: DbPool,
         metrics: DbPoolMetrics,
         interval: float = 5.0,
     ) -> None:

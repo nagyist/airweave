@@ -7,7 +7,7 @@ import asyncio
 import time
 import traceback
 import uuid
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
 
 from fastapi import Request, Response
 from fastapi.exceptions import RequestValidationError
@@ -524,7 +524,9 @@ _METRICS_SKIP_PATHS = frozenset(
 )
 
 
-async def http_metrics_middleware(request: Request, call_next: Callable) -> Response:
+async def http_metrics_middleware(
+    request: Request, call_next: Callable[[Request], Awaitable[Response]]
+) -> Response:
     """Middleware to record HTTP metrics (counts, latency, in-flight).
 
     Reads the ``HttpMetrics`` implementation from ``request.app.state.http_metrics``
@@ -619,10 +621,10 @@ class _StreamingMetricsIterator:
         self._total_bytes = 0
         self._closed = False
 
-    def __aiter__(self):
+    def __aiter__(self) -> "_StreamingMetricsIterator":
         return self
 
-    async def __anext__(self):
+    async def __anext__(self) -> bytes | str:
         try:
             chunk = await self._inner_iter.__anext__()
         except StopAsyncIteration:
@@ -641,7 +643,7 @@ class _StreamingMetricsIterator:
             self._total_bytes += len(chunk)
         return chunk
 
-    async def aclose(self):
+    async def aclose(self) -> None:
         if self._closed:
             return
         self._closed = True

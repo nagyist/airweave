@@ -27,7 +27,7 @@ class FakeMetricsService(MetricsService):
         self.agentic_search = agentic_search
         self.db_pool = db_pool
 
-    async def start(self, *, pool: Any, host: str, port: int) -> None:
+    async def start(self, *, pool: Any) -> None:
         pass
 
     async def stop(self) -> None:

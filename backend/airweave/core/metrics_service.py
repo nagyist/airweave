@@ -5,6 +5,7 @@ sampler behind a single lifecycle API so callers (main.py, tests) only
 deal with one object instead of four adapters + two background services.
 """
 
+from contextlib import asynccontextmanager
 from typing import Any
 
 from airweave.api.metrics import MetricsServer
@@ -41,17 +42,21 @@ class PrometheusMetricsService(MetricsService):
         agentic_search: AgenticSearchMetrics,
         db_pool: DbPoolMetrics,
         renderer: MetricsRenderer,
+        host: str,
+        port: int,
     ) -> None:
         self.http = http
         self.agentic_search = agentic_search
         self.db_pool = db_pool
         self._renderer = renderer
+        self._host = host
+        self._port = port
         self._server: MetricsServer | None = None
         self._sampler: DbPoolSampler | None = None
 
-    async def start(self, *, pool: Any, host: str, port: int) -> None:
+    async def start(self, *, pool: Any) -> None:
         """Start the sidecar metrics server and the DB pool sampler."""
-        self._server = MetricsServer(self._renderer, port, host)
+        self._server = MetricsServer(self._renderer, self._port, self._host)
         await self._server.start()
         self._sampler = DbPoolSampler(pool=pool, metrics=self.db_pool)
         await self._sampler.start()
@@ -64,3 +69,18 @@ class PrometheusMetricsService(MetricsService):
         finally:
             if self._server:
                 await self._server.stop()
+
+
+@asynccontextmanager
+async def metrics_lifespan(app, metrics, pool):
+    """Wire HTTP metrics onto ``app.state`` and manage the metrics lifecycle.
+
+    Intended for use inside ``main.py``'s lifespan context manager so the
+    FastAPI-specific wiring stays outside the ``MetricsService`` protocol.
+    """
+    app.state.http_metrics = metrics.http
+    await metrics.start(pool=pool)
+    try:
+        yield
+    finally:
+        await metrics.stop()

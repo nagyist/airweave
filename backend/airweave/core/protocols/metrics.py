@@ -180,7 +180,7 @@ class MetricsService(Protocol):
     agentic_search: AgenticSearchMetrics
     db_pool: DbPoolMetrics
 
-    async def start(self, *, pool: Any, host: str, port: int) -> None:
+    async def start(self, *, pool: Any) -> None:
         """Start the metrics sidecar server and background samplers."""
         ...
 

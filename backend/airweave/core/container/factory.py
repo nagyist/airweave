@@ -208,6 +208,8 @@ def _create_metrics_service(settings: Settings) -> PrometheusMetricsService:
             max_overflow=settings.db_pool_max_overflow,
         ),
         renderer=PrometheusMetricsRenderer(registry=registry),
+        host=settings.METRICS_HOST,
+        port=settings.METRICS_PORT,
     )
 
 

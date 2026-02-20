@@ -113,22 +113,12 @@ async def lifespan(app: FastAPI):
             f"(Temporal may not be available): {e}"
         )
 
-    # Expose the HTTP metrics adapter on app.state so the middleware can read it
-    app.state.http_metrics = container_mod.container.metrics.http
-
-    # Start metrics sidecar server + DB pool sampler via MetricsService
+    # Start metrics sidecar + DB pool sampler; wire app.state.http_metrics
+    from airweave.core.metrics_service import metrics_lifespan
     from airweave.db.session import async_engine
 
-    await container_mod.container.metrics.start(
-        pool=async_engine.pool,
-        host=settings.METRICS_HOST,
-        port=settings.METRICS_PORT,
-    )
-
-    try:
+    async with metrics_lifespan(app, container_mod.container.metrics, async_engine.pool):
         yield
-    finally:
-        await container_mod.container.metrics.stop()
 
     container_mod.container.health.shutting_down = True
 

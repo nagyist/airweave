@@ -5,7 +5,6 @@ from typing import List, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import schemas
-from airweave.analytics.service import analytics
 from airweave.api.context import ApiContext
 from airweave.core.config import Settings
 from airweave.core.events.collection import CollectionLifecycleEvent
@@ -22,6 +21,7 @@ from airweave.domains.collections.protocols import (
 from airweave.domains.source_connections.protocols import SourceConnectionRepositoryProtocol
 from airweave.domains.syncs.protocols import SyncLifecycleServiceProtocol
 from airweave.models.collection import Collection
+from airweave.platform.embedders.config import get_default_provider, get_embedding_model
 
 
 class CollectionService(CollectionServiceProtocol):
@@ -70,11 +70,6 @@ class CollectionService(CollectionServiceProtocol):
         ctx: ApiContext,
     ) -> schemas.Collection:
         """Create a new collection with embedding config."""
-        from airweave.platform.embedders.config import (
-            get_default_provider,
-            get_embedding_model,
-        )
-
         # Check for duplicate readable_id
         existing = await self._collection_repo.get_by_readable_id(
             db, collection_in.readable_id, ctx
@@ -98,16 +93,6 @@ class CollectionService(CollectionServiceProtocol):
             await uow.session.flush()
 
         result = schemas.Collection.model_validate(collection, from_attributes=True)
-
-        # Track analytics
-        analytics.track_event(
-            "collection_created",
-            {
-                "collection_id": str(result.id),
-                "collection_name": result.name,
-            },
-            ctx=ctx,
-        )
 
         # Publish event
         try:

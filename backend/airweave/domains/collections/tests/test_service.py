@@ -4,7 +4,7 @@ Uses fakes for all dependencies — no DB, no Temporal, no external services.
 """
 
 from datetime import datetime, timezone
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 from uuid import UUID, uuid4
 
 import pytest
@@ -202,16 +202,12 @@ async def test_create_happy_path():
 
     collection_in = schemas.CollectionCreate(name="New Collection", readable_id="new-collection")
 
-    _mod = "airweave.domains.collections.service"
-    with patch(f"{_mod}.analytics") as mock_analytics:
-        result = await svc.create(AsyncMock(), collection_in=collection_in, ctx=_ctx())
+    result = await svc.create(AsyncMock(), collection_in=collection_in, ctx=_ctx())
 
     assert result is not None
     # Verify event was published
     assert len(event_bus.events) == 1
     assert event_bus.events[0].event_type.value == "collection.created"
-    # Verify analytics was tracked
-    mock_analytics.track_event.assert_called_once()
 
 
 @pytest.mark.asyncio
@@ -241,9 +237,7 @@ async def test_create_sets_embedding_config():
 
     collection_in = schemas.CollectionCreate(name="Embedding Test", readable_id="embed-test")
 
-    _mod = "airweave.domains.collections.service"
-    with patch(f"{_mod}.analytics"):
-        await svc.create(AsyncMock(), collection_in=collection_in, ctx=_ctx())
+    await svc.create(AsyncMock(), collection_in=collection_in, ctx=_ctx())
 
     # Verify repo.create was called with embedding fields
     create_calls = [c for c in repo._calls if c[0] == "create"]

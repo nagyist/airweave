@@ -298,6 +298,27 @@ def fake_sync_job_repo():
 
 
 @pytest.fixture
+def fake_billing_service():
+    """Fake BillingService."""
+    from airweave.adapters.payment.fake import FakePaymentGateway
+    from airweave.domains.billing.fakes.operations import FakeBillingOperations
+    from airweave.domains.billing.fakes.repository import (
+        FakeBillingPeriodRepository,
+        FakeOrganizationBillingRepository,
+    )
+    from airweave.domains.billing.service import BillingService
+    from airweave.domains.organizations.fakes.repository import FakeOrganizationRepository
+
+    return BillingService(
+        payment_gateway=FakePaymentGateway(),
+        billing_repo=FakeOrganizationBillingRepository(),
+        period_repo=FakeBillingPeriodRepository(),
+        billing_ops=FakeBillingOperations(),
+        org_repo=FakeOrganizationRepository(),
+    )
+
+
+@pytest.fixture
 def fake_sync_record_service():
     """Fake SyncRecordService."""
     from airweave.domains.syncs.fakes.sync_record_service import FakeSyncRecordService
@@ -322,24 +343,29 @@ def fake_sync_lifecycle():
 
 
 @pytest.fixture
-def fake_billing_service():
-    """AsyncMock satisfying BillingServiceProtocol."""
-    from unittest.mock import AsyncMock
-
-    return AsyncMock()
-
-
-@pytest.fixture
 def fake_billing_webhook():
-    """AsyncMock satisfying BillingWebhookProtocol."""
-    from unittest.mock import AsyncMock
+    """Fake BillingWebhookProcessor."""
+    from airweave.adapters.payment.fake import FakePaymentGateway
+    from airweave.domains.billing.fakes.operations import FakeBillingOperations
+    from airweave.domains.billing.fakes.repository import (
+        FakeBillingPeriodRepository,
+        FakeOrganizationBillingRepository,
+    )
+    from airweave.domains.billing.webhook_processor import BillingWebhookProcessor
+    from airweave.domains.organizations.fakes.repository import FakeOrganizationRepository
 
-    return AsyncMock()
+    return BillingWebhookProcessor(
+        payment_gateway=FakePaymentGateway(),
+        billing_repo=FakeOrganizationBillingRepository(),
+        period_repo=FakeBillingPeriodRepository(),
+        billing_ops=FakeBillingOperations(),
+        org_repo=FakeOrganizationRepository(),
+    )
 
 
 @pytest.fixture
 def fake_payment_gateway():
-    """Fake PaymentGateway (in-memory, no Stripe calls)."""
+    """Fake PaymentGateway."""
     from airweave.adapters.payment.fake import FakePaymentGateway
 
     return FakePaymentGateway()

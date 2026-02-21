@@ -7,6 +7,9 @@ from uuid import UUID
 
 from airweave import schemas
 
+CONTINUOUS_SOURCE_DEFAULT_CRON = "*/5 * * * *"
+DAILY_CRON_TEMPLATE = "{minute} {hour} * * *"
+
 
 @dataclass(frozen=True)
 class SyncProvisionResult:

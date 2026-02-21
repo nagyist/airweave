@@ -29,7 +29,11 @@ from airweave.domains.syncs.protocols import (
     SyncLifecycleServiceProtocol,
     SyncRecordServiceProtocol,
 )
-from airweave.domains.syncs.types import SyncProvisionResult
+from airweave.domains.syncs.types import (
+    CONTINUOUS_SOURCE_DEFAULT_CRON,
+    DAILY_CRON_TEMPLATE,
+    SyncProvisionResult,
+)
 from airweave.domains.temporal.protocols import (
     TemporalScheduleServiceProtocol,
     TemporalWorkflowServiceProtocol,
@@ -336,10 +340,10 @@ class SyncLifecycleService(SyncLifecycleServiceProtocol):
 
         if source_entry.supports_continuous:
             ctx.logger.info("Continuous source, defaulting to 5-minute schedule")
-            return "*/5 * * * *"
+            return CONTINUOUS_SOURCE_DEFAULT_CRON
 
         now_utc = datetime.now(timezone.utc)
-        cron = f"{now_utc.minute} {now_utc.hour} * * *"
+        cron = DAILY_CRON_TEMPLATE.format(minute=now_utc.minute, hour=now_utc.hour)
         ctx.logger.info(f"Defaulting to daily at {now_utc.hour:02d}:{now_utc.minute:02d} UTC")
         return cron
 

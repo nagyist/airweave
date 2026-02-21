@@ -31,7 +31,7 @@ from airweave.domains.syncs.fakes.sync_job_repository import FakeSyncJobReposito
 from airweave.domains.syncs.fakes.sync_job_service import FakeSyncJobService
 from airweave.domains.syncs.fakes.sync_record_service import FakeSyncRecordService
 from airweave.domains.syncs.sync_lifecycle_service import SyncLifecycleService
-from airweave.domains.syncs.types import SyncProvisionResult
+from airweave.domains.syncs.types import CONTINUOUS_SOURCE_DEFAULT_CRON, SyncProvisionResult
 from airweave.domains.temporal.fakes.schedule_service import FakeTemporalScheduleService
 from airweave.domains.temporal.fakes.service import FakeTemporalWorkflowService
 from airweave.models.collection import Collection  # spec only
@@ -713,7 +713,7 @@ PROVISION_CASES = [
     ProvisionCase(
         name="default_continuous_schedule",
         source_entry=_source_entry(supports_continuous=True),
-        expected_cron="*/5 * * * *",
+        expected_cron=CONTINUOUS_SOURCE_DEFAULT_CRON,
         expect_schedule_call=True,
     ),
     ProvisionCase(

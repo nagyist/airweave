@@ -322,6 +322,30 @@ def fake_sync_lifecycle():
 
 
 @pytest.fixture
+def fake_billing_service():
+    """AsyncMock satisfying BillingServiceProtocol."""
+    from unittest.mock import AsyncMock
+
+    return AsyncMock()
+
+
+@pytest.fixture
+def fake_billing_webhook():
+    """AsyncMock satisfying BillingWebhookProtocol."""
+    from unittest.mock import AsyncMock
+
+    return AsyncMock()
+
+
+@pytest.fixture
+def fake_payment_gateway():
+    """Fake PaymentGateway (in-memory, no Stripe calls)."""
+    from airweave.adapters.payment.fake import FakePaymentGateway
+
+    return FakePaymentGateway()
+
+
+@pytest.fixture
 def test_container(
     fake_health_service,
     fake_event_bus,
@@ -352,6 +376,9 @@ def test_container(
     fake_sync_record_service,
     fake_sync_job_service,
     fake_sync_lifecycle,
+    fake_billing_service,
+    fake_billing_webhook,
+    fake_payment_gateway,
 ):
     """A Container with all dependencies replaced by fakes.
 
@@ -393,4 +420,7 @@ def test_container(
         sync_record_service=fake_sync_record_service,
         sync_job_service=fake_sync_job_service,
         sync_lifecycle=fake_sync_lifecycle,
+        billing_service=fake_billing_service,
+        billing_webhook=fake_billing_webhook,
+        payment_gateway=fake_payment_gateway,
     )

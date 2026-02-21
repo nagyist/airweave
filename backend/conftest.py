@@ -186,11 +186,11 @@ def fake_health_service() -> FakeHealthService:
 
 
 @pytest.fixture
-def fake_source_connection_service():
+def fake_source_connection_service(fake_sync_lifecycle):
     """Fake SourceConnectionService."""
     from airweave.domains.source_connections.fakes.service import FakeSourceConnectionService
 
-    return FakeSourceConnectionService()
+    return FakeSourceConnectionService(sync_lifecycle=fake_sync_lifecycle)
 
 
 @pytest.fixture
@@ -250,6 +250,14 @@ def fake_oauth1_service():
 
 
 @pytest.fixture
+def fake_response_builder():
+    """Fake ResponseBuilder."""
+    from airweave.domains.source_connections.fakes.response import FakeResponseBuilder
+
+    return FakeResponseBuilder()
+
+
+@pytest.fixture
 def fake_temporal_workflow_service():
     """Fake TemporalWorkflowService."""
     from airweave.domains.temporal.fakes.service import FakeTemporalWorkflowService
@@ -290,6 +298,54 @@ def fake_sync_job_repo():
 
 
 @pytest.fixture
+def fake_sync_record_service():
+    """Fake SyncRecordService."""
+    from airweave.domains.syncs.fakes.sync_record_service import FakeSyncRecordService
+
+    return FakeSyncRecordService()
+
+
+@pytest.fixture
+def fake_sync_job_service():
+    """Fake SyncJobService."""
+    from airweave.domains.syncs.fakes.sync_job_service import FakeSyncJobService
+
+    return FakeSyncJobService()
+
+
+@pytest.fixture
+def fake_sync_lifecycle():
+    """Fake SyncLifecycleService."""
+    from airweave.domains.syncs.fakes.sync_lifecycle_service import FakeSyncLifecycleService
+
+    return FakeSyncLifecycleService()
+
+
+@pytest.fixture
+def fake_billing_service():
+    """AsyncMock satisfying BillingServiceProtocol."""
+    from unittest.mock import AsyncMock
+
+    return AsyncMock()
+
+
+@pytest.fixture
+def fake_billing_webhook():
+    """AsyncMock satisfying BillingWebhookProtocol."""
+    from unittest.mock import AsyncMock
+
+    return AsyncMock()
+
+
+@pytest.fixture
+def fake_payment_gateway():
+    """Fake PaymentGateway (in-memory, no Stripe calls)."""
+    from airweave.adapters.payment.fake import FakePaymentGateway
+
+    return FakePaymentGateway()
+
+
+@pytest.fixture
 def test_container(
     fake_health_service,
     fake_event_bus,
@@ -311,11 +367,18 @@ def test_container(
     fake_oauth2_service,
     fake_source_connection_service,
     fake_source_lifecycle_service,
+    fake_response_builder,
     fake_temporal_workflow_service,
     fake_temporal_schedule_service,
     fake_sync_repo,
     fake_sync_cursor_repo,
     fake_sync_job_repo,
+    fake_sync_record_service,
+    fake_sync_job_service,
+    fake_sync_lifecycle,
+    fake_billing_service,
+    fake_billing_webhook,
+    fake_payment_gateway,
 ):
     """A Container with all dependencies replaced by fakes.
 
@@ -348,9 +411,16 @@ def test_container(
         oauth2_service=fake_oauth2_service,
         source_connection_service=fake_source_connection_service,
         source_lifecycle_service=fake_source_lifecycle_service,
+        response_builder=fake_response_builder,
         temporal_workflow_service=fake_temporal_workflow_service,
         temporal_schedule_service=fake_temporal_schedule_service,
         sync_repo=fake_sync_repo,
         sync_cursor_repo=fake_sync_cursor_repo,
         sync_job_repo=fake_sync_job_repo,
+        sync_record_service=fake_sync_record_service,
+        sync_job_service=fake_sync_job_service,
+        sync_lifecycle=fake_sync_lifecycle,
+        billing_service=fake_billing_service,
+        billing_webhook=fake_billing_webhook,
+        payment_gateway=fake_payment_gateway,
     )

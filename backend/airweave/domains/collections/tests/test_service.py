@@ -11,6 +11,7 @@ import pytest
 
 from airweave import schemas
 from airweave.api.context import ApiContext
+from airweave.core.config import Settings
 from airweave.core.logging import logger
 from airweave.core.shared_models import AuthMethod
 from airweave.domains.collections.exceptions import (
@@ -69,17 +70,26 @@ class _FakeEventBus:
         self.events.append(event)
 
 
+def _fake_settings(**overrides) -> MagicMock:
+    """Build a fake Settings with sensible defaults."""
+    s = MagicMock(spec=Settings)
+    s.EMBEDDING_DIMENSIONS = overrides.get("EMBEDDING_DIMENSIONS", 1536)
+    return s
+
+
 def _build_service(
     collection_repo=None,
     sc_repo=None,
     sync_lifecycle=None,
     event_bus=None,
+    settings=None,
 ) -> CollectionService:
     return CollectionService(
         collection_repo=collection_repo or FakeCollectionRepository(),
         sc_repo=sc_repo or FakeSourceConnectionRepository(),
         sync_lifecycle=sync_lifecycle or FakeSyncLifecycleService(),
         event_bus=event_bus or _FakeEventBus(),
+        settings=settings or _fake_settings(),
     )
 
 
@@ -184,17 +194,16 @@ async def test_create_happy_path():
     repo = FakeCollectionRepository()
     event_bus = _FakeEventBus()
 
-    svc = _build_service(collection_repo=repo, event_bus=event_bus)
+    svc = _build_service(
+        collection_repo=repo,
+        event_bus=event_bus,
+        settings=_fake_settings(EMBEDDING_DIMENSIONS=3072),
+    )
 
     collection_in = schemas.CollectionCreate(name="New Collection", readable_id="new-collection")
 
     _mod = "airweave.domains.collections.service"
-    with (
-        patch(f"{_mod}.settings") as mock_settings,
-        patch(f"{_mod}.analytics") as mock_analytics,
-    ):
-        mock_settings.EMBEDDING_DIMENSIONS = 3072
-
+    with patch(f"{_mod}.analytics") as mock_analytics:
         result = await svc.create(AsyncMock(), collection_in=collection_in, ctx=_ctx())
 
     assert result is not None
@@ -225,17 +234,15 @@ async def test_create_duplicate_raises():
 async def test_create_sets_embedding_config():
     """create() sets vector_size and embedding_model_name from config."""
     repo = FakeCollectionRepository()
-    svc = _build_service(collection_repo=repo)
+    svc = _build_service(
+        collection_repo=repo,
+        settings=_fake_settings(EMBEDDING_DIMENSIONS=1536),
+    )
 
     collection_in = schemas.CollectionCreate(name="Embedding Test", readable_id="embed-test")
 
     _mod = "airweave.domains.collections.service"
-    with (
-        patch(f"{_mod}.settings") as mock_settings,
-        patch(f"{_mod}.analytics"),
-    ):
-        mock_settings.EMBEDDING_DIMENSIONS = 1536
-
+    with patch(f"{_mod}.analytics"):
         await svc.create(AsyncMock(), collection_in=collection_in, ctx=_ctx())
 
     # Verify repo.create was called with embedding fields

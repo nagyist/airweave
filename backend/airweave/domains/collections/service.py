@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from airweave import schemas
 from airweave.analytics.service import analytics
 from airweave.api.context import ApiContext
-from airweave.core.config import settings
+from airweave.core.config import Settings
 from airweave.core.events.collection import CollectionLifecycleEvent
 from airweave.core.protocols.event_bus import EventBus
 from airweave.db.unit_of_work import UnitOfWork
@@ -33,12 +33,14 @@ class CollectionService(CollectionServiceProtocol):
         sc_repo: SourceConnectionRepositoryProtocol,
         sync_lifecycle: SyncLifecycleServiceProtocol,
         event_bus: EventBus,
+        settings: Settings,
     ) -> None:
         """Initialize with injected dependencies."""
         self._collection_repo = collection_repo
         self._sc_repo = sc_repo
         self._sync_lifecycle = sync_lifecycle
         self._event_bus = event_bus
+        self._settings = settings
 
     async def list(
         self,
@@ -81,7 +83,7 @@ class CollectionService(CollectionServiceProtocol):
             raise CollectionAlreadyExistsError(collection_in.readable_id)
 
         # Resolve embedding config
-        vector_size = settings.EMBEDDING_DIMENSIONS
+        vector_size = self._settings.EMBEDDING_DIMENSIONS
         embedding_provider = get_default_provider()
         embedding_model_name = get_embedding_model(embedding_provider)
 

@@ -183,6 +183,7 @@ def create_container(settings: Settings) -> Container:
         sc_repo=source_deps["sc_repo"],
         sync_lifecycle=sync_deps["sync_lifecycle"],
         event_bus=event_bus,
+        settings=settings,
     )
 
     # -----------------------------------------------------------------

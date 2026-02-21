@@ -186,11 +186,11 @@ def fake_health_service() -> FakeHealthService:
 
 
 @pytest.fixture
-def fake_source_connection_service():
+def fake_source_connection_service(fake_sync_lifecycle):
     """Fake SourceConnectionService."""
     from airweave.domains.source_connections.fakes.service import FakeSourceConnectionService
 
-    return FakeSourceConnectionService()
+    return FakeSourceConnectionService(sync_lifecycle=fake_sync_lifecycle)
 
 
 @pytest.fixture

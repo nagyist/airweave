@@ -160,6 +160,18 @@ def create_container(settings: Settings) -> Container:
         sync_job_repo=source_deps["sync_job_repo"],
     )
 
+    # SourceConnectionService is built here (not in _create_source_services)
+    # because it needs sync_lifecycle which is built in _create_sync_services.
+    source_connection_service = SourceConnectionService(
+        sc_repo=source_deps["sc_repo"],
+        collection_repo=source_deps["collection_repo"],
+        connection_repo=source_deps["conn_repo"],
+        source_registry=source_deps["source_registry"],
+        auth_provider_registry=source_deps["auth_provider_registry"],
+        response_builder=sync_deps["response_builder"],
+        sync_lifecycle=sync_deps["sync_lifecycle"],
+    )
+
     # -----------------------------------------------------------------
     # Billing services
     # -----------------------------------------------------------------
@@ -184,7 +196,7 @@ def create_container(settings: Settings) -> Container:
         cred_repo=source_deps["cred_repo"],
         oauth1_service=source_deps["oauth1_service"],
         oauth2_service=source_deps["oauth2_service"],
-        source_connection_service=source_deps["source_connection_service"],
+        source_connection_service=source_connection_service,
         source_lifecycle_service=source_deps["source_lifecycle_service"],
         endpoint_verifier=endpoint_verifier,
         webhook_service=webhook_service,
@@ -369,15 +381,6 @@ def _create_source_services(settings: Settings) -> dict:
         sync_job_repo=sync_job_repo,
     )
 
-    source_connection_service = SourceConnectionService(
-        sc_repo=sc_repo,
-        collection_repo=collection_repo,
-        connection_repo=conn_repo,
-        source_registry=source_registry,
-        auth_provider_registry=auth_provider_registry,
-        response_builder=response_builder,
-    )
-
     source_service = SourceService(
         source_registry=source_registry,
         settings=settings,
@@ -401,7 +404,6 @@ def _create_source_services(settings: Settings) -> dict:
         "cred_repo": cred_repo,
         "oauth1_service": oauth1_svc,
         "oauth2_service": oauth2_svc,
-        "source_connection_service": source_connection_service,
         "source_lifecycle_service": source_lifecycle_service,
         "sync_repo": sync_repo,
         "sync_cursor_repo": sync_cursor_repo,

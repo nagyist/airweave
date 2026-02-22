@@ -1,16 +1,14 @@
 """Unit tests for SourceConnectionDeletionService.
 
 Table-driven tests covering:
-- Happy path: no sync, with sync (no running jobs), with running job
-- Cancellation failures (swallowed)
-- Terminal-state timeout (proceeds anyway)
-- Collection not found
-- Source connection not found
-- Temporal cleanup failure (logged, not raised)
+- Happy paths: no sync, completed job, running/cancelling/pending jobs
+- Error paths: not found, collection not found, cancel failure, cleanup failure, timeout
 """
 
+from dataclasses import dataclass
 from datetime import datetime, timezone
-from unittest.mock import AsyncMock, MagicMock, patch
+from typing import Optional
+from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
 import pytest
@@ -49,14 +47,7 @@ def _make_ctx() -> ApiContext:
     )
 
 
-def _make_sc(
-    *,
-    id=None,
-    sync_id=None,
-    readable_collection_id="test-col",
-    name="Test SC",
-    short_name="github",
-) -> SourceConnection:
+def _make_sc(*, id=None, sync_id=None, readable_collection_id="test-col", name="Test SC", short_name="github"):
     sc = MagicMock(spec=SourceConnection)
     sc.id = id or uuid4()
     sc.sync_id = sync_id
@@ -71,7 +62,7 @@ def _make_sc(
     return sc
 
 
-def _make_collection(*, id=None, readable_id="test-col") -> Collection:
+def _make_collection(*, id=None, readable_id="test-col"):
     col = MagicMock(spec=Collection)
     col.id = id or COLLECTION_ID
     col.readable_id = readable_id
@@ -79,7 +70,7 @@ def _make_collection(*, id=None, readable_id="test-col") -> Collection:
     return col
 
 
-def _make_job(*, status=SyncJobStatus.COMPLETED, sync_id=None) -> SyncJob:
+def _make_job(*, status=SyncJobStatus.COMPLETED, sync_id=None):
     job = MagicMock(spec=SyncJob)
     job.id = uuid4()
     job.sync_id = sync_id or uuid4()
@@ -94,7 +85,7 @@ def _build_service(
     sync_lifecycle=None,
     response_builder=None,
     temporal_workflow_service=None,
-) -> SourceConnectionDeletionService:
+):
     return SourceConnectionDeletionService(
         sc_repo=sc_repo or FakeSourceConnectionRepository(),
         collection_repo=collection_repo or FakeCollectionRepository(),
@@ -106,30 +97,32 @@ def _build_service(
 
 
 # ---------------------------------------------------------------------------
-# Happy paths
+# Happy paths -- table-driven
 # ---------------------------------------------------------------------------
 
 
-async def test_delete_no_sync():
-    """SC with no sync_id: skip cancellation, just delete."""
-    sc = _make_sc(sync_id=None)
-    col = _make_collection()
-
-    sc_repo = FakeSourceConnectionRepository()
-    sc_repo.seed(sc.id, sc)
-    col_repo = FakeCollectionRepository()
-    col_repo.seed_readable(sc.readable_collection_id, col)
-
-    svc = _build_service(sc_repo=sc_repo, collection_repo=col_repo)
-    result = await svc.delete(AsyncMock(), id=sc.id, ctx=_make_ctx())
-
-    assert result.id == sc.id
-    assert sc_repo._store.get(sc.id) is None
+@dataclass
+class DeleteCase:
+    desc: str
+    has_sync: bool
+    job_status: Optional[SyncJobStatus]
+    expect_cancel: bool
+    expect_wait: bool
+    expect_cleanup: bool
 
 
-async def test_delete_with_sync_no_running_job():
-    """SC with sync_id but no active job: skip cancellation, trigger cleanup."""
-    sync_id = uuid4()
+DELETE_CASES = [
+    DeleteCase("no_sync", has_sync=False, job_status=None, expect_cancel=False, expect_wait=False, expect_cleanup=False),
+    DeleteCase("sync_no_running_job", has_sync=True, job_status=SyncJobStatus.COMPLETED, expect_cancel=False, expect_wait=False, expect_cleanup=True),
+    DeleteCase("running_job", has_sync=True, job_status=SyncJobStatus.RUNNING, expect_cancel=True, expect_wait=True, expect_cleanup=True),
+    DeleteCase("cancelling_job", has_sync=True, job_status=SyncJobStatus.CANCELLING, expect_cancel=False, expect_wait=True, expect_cleanup=True),
+    DeleteCase("pending_job", has_sync=True, job_status=SyncJobStatus.PENDING, expect_cancel=True, expect_wait=True, expect_cleanup=True),
+]
+
+
+@pytest.mark.parametrize("case", DELETE_CASES, ids=lambda c: c.desc)
+async def test_delete_happy_path(case: DeleteCase):
+    sync_id = uuid4() if case.has_sync else None
     sc = _make_sc(sync_id=sync_id)
     col = _make_collection()
 
@@ -139,43 +132,14 @@ async def test_delete_with_sync_no_running_job():
     col_repo.seed_readable(sc.readable_collection_id, col)
 
     job_repo = FakeSyncJobRepository()
-    completed_job = _make_job(status=SyncJobStatus.COMPLETED, sync_id=sync_id)
-    job_repo.seed_last_job(sync_id, completed_job)
+    if case.job_status is not None and sync_id:
+        job_repo.seed_last_job(sync_id, _make_job(status=case.job_status, sync_id=sync_id))
 
-    temporal = FakeTemporalWorkflowService()
-
-    svc = _build_service(
-        sc_repo=sc_repo,
-        collection_repo=col_repo,
-        sync_job_repo=job_repo,
-        temporal_workflow_service=temporal,
-    )
-    result = await svc.delete(AsyncMock(), id=sc.id, ctx=_make_ctx())
-
-    assert result.id == sc.id
-    assert sc_repo._store.get(sc.id) is None
-    assert any(c[0] == "start_cleanup_sync_data_workflow" for c in temporal._calls)
-
-
-async def test_delete_with_running_job():
-    """SC with a running job: cancel, wait, delete, cleanup."""
-    sync_id = uuid4()
-    sc = _make_sc(sync_id=sync_id)
-    col = _make_collection()
-
-    sc_repo = FakeSourceConnectionRepository()
-    sc_repo.seed(sc.id, sc)
-    col_repo = FakeCollectionRepository()
-    col_repo.seed_readable(sc.readable_collection_id, col)
-
-    running_job = _make_job(status=SyncJobStatus.RUNNING, sync_id=sync_id)
-    job_repo = FakeSyncJobRepository()
-    job_repo.seed_last_job(sync_id, running_job)
-
-    temporal = FakeTemporalWorkflowService()
-    cancel_result = MagicMock(spec=SourceConnectionJob)
     lifecycle = FakeSyncLifecycleService()
-    lifecycle.set_cancel_result(cancel_result)
+    if case.expect_cancel:
+        lifecycle.set_cancel_result(MagicMock(spec=SourceConnectionJob))
+
+    temporal = FakeTemporalWorkflowService()
 
     svc = _build_service(
         sc_repo=sc_repo,
@@ -184,34 +148,57 @@ async def test_delete_with_running_job():
         sync_lifecycle=lifecycle,
         temporal_workflow_service=temporal,
     )
-    # Patch the wait barrier to return True immediately
-    svc._wait_for_sync_job_terminal_state = AsyncMock(return_value=True)
+
+    if case.expect_wait:
+        svc._wait_for_sync_job_terminal_state = AsyncMock(return_value=True)
 
     result = await svc.delete(AsyncMock(), id=sc.id, ctx=_make_ctx())
+
     assert result.id == sc.id
-    svc._wait_for_sync_job_terminal_state.assert_awaited_once()
+    assert sc_repo._store.get(sc.id) is None
+
+    if case.expect_cancel:
+        assert any(c[0] == "cancel_job" for c in lifecycle._calls)
+    if case.expect_wait:
+        svc._wait_for_sync_job_terminal_state.assert_awaited_once()
+    if case.expect_cleanup:
+        assert any(c[0] == "start_cleanup_sync_data_workflow" for c in temporal._calls)
 
 
 # ---------------------------------------------------------------------------
-# Error paths
+# Error paths -- table-driven
 # ---------------------------------------------------------------------------
 
 
-async def test_delete_not_found():
-    """Raises NotFoundException when SC doesn't exist."""
-    svc = _build_service()
-    with pytest.raises(NotFoundException, match="Source connection not found"):
-        await svc.delete(AsyncMock(), id=uuid4(), ctx=_make_ctx())
+@dataclass
+class DeleteErrorCase:
+    desc: str
+    seed_sc: bool
+    seed_collection: bool
+    expect_exception: type
+    expect_match: str
 
 
-async def test_delete_collection_not_found():
-    """Raises NotFoundException when collection doesn't exist."""
-    sc = _make_sc(sync_id=None)
+DELETE_ERROR_CASES = [
+    DeleteErrorCase("not_found", seed_sc=False, seed_collection=False, expect_exception=NotFoundException, expect_match="Source connection not found"),
+    DeleteErrorCase("collection_not_found", seed_sc=True, seed_collection=False, expect_exception=NotFoundException, expect_match="Collection not found"),
+]
+
+
+@pytest.mark.parametrize("case", DELETE_ERROR_CASES, ids=lambda c: c.desc)
+async def test_delete_error(case: DeleteErrorCase):
+    sc = _make_sc()
     sc_repo = FakeSourceConnectionRepository()
-    sc_repo.seed(sc.id, sc)
+    col_repo = FakeCollectionRepository()
 
-    svc = _build_service(sc_repo=sc_repo)
-    with pytest.raises(NotFoundException, match="Collection not found"):
+    if case.seed_sc:
+        sc_repo.seed(sc.id, sc)
+    if case.seed_collection:
+        col_repo.seed_readable(sc.readable_collection_id, _make_collection())
+
+    svc = _build_service(sc_repo=sc_repo, collection_repo=col_repo)
+
+    with pytest.raises(case.expect_exception, match=case.expect_match):
         await svc.delete(AsyncMock(), id=sc.id, ctx=_make_ctx())
 
 
@@ -273,3 +260,36 @@ async def test_delete_temporal_cleanup_failure_is_logged():
     )
     result = await svc.delete(AsyncMock(), id=sc.id, ctx=_make_ctx())
     assert result.id == sc.id
+
+
+async def test_delete_wait_timeout_proceeds():
+    """If wait_for_terminal_state returns False, deletion still proceeds."""
+    sync_id = uuid4()
+    sc = _make_sc(sync_id=sync_id)
+    col = _make_collection()
+
+    sc_repo = FakeSourceConnectionRepository()
+    sc_repo.seed(sc.id, sc)
+    col_repo = FakeCollectionRepository()
+    col_repo.seed_readable(sc.readable_collection_id, col)
+
+    running_job = _make_job(status=SyncJobStatus.RUNNING, sync_id=sync_id)
+    job_repo = FakeSyncJobRepository()
+    job_repo.seed_last_job(sync_id, running_job)
+
+    lifecycle = FakeSyncLifecycleService()
+    lifecycle.set_cancel_result(MagicMock(spec=SourceConnectionJob))
+    temporal = FakeTemporalWorkflowService()
+
+    svc = _build_service(
+        sc_repo=sc_repo,
+        collection_repo=col_repo,
+        sync_job_repo=job_repo,
+        sync_lifecycle=lifecycle,
+        temporal_workflow_service=temporal,
+    )
+    svc._wait_for_sync_job_terminal_state = AsyncMock(return_value=False)
+
+    result = await svc.delete(AsyncMock(), id=sc.id, ctx=_make_ctx())
+    assert result.id == sc.id
+    assert sc_repo._store.get(sc.id) is None

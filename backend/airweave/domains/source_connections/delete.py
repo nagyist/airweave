@@ -11,6 +11,7 @@ from airweave.core.shared_models import SyncJobStatus
 from airweave.domains.collections.protocols import CollectionRepositoryProtocol
 from airweave.domains.source_connections.protocols import (
     ResponseBuilderProtocol,
+    SourceConnectionDeletionServiceProtocol,
     SourceConnectionRepositoryProtocol,
 )
 from airweave.domains.syncs.protocols import SyncJobRepositoryProtocol, SyncLifecycleServiceProtocol
@@ -18,7 +19,7 @@ from airweave.domains.temporal.protocols import TemporalWorkflowServiceProtocol
 from airweave.schemas.source_connection import SourceConnection as SourceConnectionSchema
 
 
-class SourceConnectionDeletionService:
+class SourceConnectionDeletionService(SourceConnectionDeletionServiceProtocol):
     """Deletes a source connection and all related data.
 
     The flow is:

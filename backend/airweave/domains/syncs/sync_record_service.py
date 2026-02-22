@@ -8,7 +8,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import schemas
 from airweave.api.context import ApiContext
-from airweave.core.shared_models import SyncJobStatus, SyncStatus
+from airweave.core.constants.reserved_ids import NATIVE_VESPA_UUID
+from airweave.core.shared_models import FeatureFlag, SyncJobStatus, SyncStatus
 from airweave.db.unit_of_work import UnitOfWork
 from airweave.domains.syncs.protocols import (
     SyncJobRepositoryProtocol,
@@ -30,6 +31,36 @@ class SyncRecordService(SyncRecordServiceProtocol):
         """Initialize with injected repositories."""
         self._sync_repo = sync_repo
         self._sync_job_repo = sync_job_repo
+
+    async def resolve_destination_ids(self, db: AsyncSession, ctx: ApiContext) -> List[UUID]:
+        """Resolve destination connection IDs based on feature flags."""
+        from sqlalchemy import and_, select
+
+        from airweave.models.connection import Connection
+
+        destination_ids: List[UUID] = [NATIVE_VESPA_UUID]
+
+        if ctx.has_feature(FeatureFlag.S3_DESTINATION):
+            stmt = select(Connection).where(
+                and_(
+                    Connection.organization_id == ctx.organization.id,
+                    Connection.short_name == "s3",
+                    Connection.integration_type == "DESTINATION",
+                )
+            )
+            result = await db.execute(stmt)
+            s3_connection = result.scalar_one_or_none()
+
+            if s3_connection:
+                destination_ids.append(s3_connection.id)
+                ctx.logger.info("S3 destination enabled for sync (feature flag active)")
+            else:
+                ctx.logger.warning(
+                    "S3_DESTINATION feature enabled but no S3 connection configured. "
+                    "Configure S3 in organization settings."
+                )
+
+        return destination_ids
 
     async def create_sync(
         self,

@@ -16,11 +16,11 @@ from airweave.platform.sources._base import BaseSource
 class SourceServiceProtocol(Protocol):
     """Protocol for source services."""
 
-    async def get(self, short_name: str) -> schemas.Source:
+    async def get(self, short_name: str, ctx: ApiContext) -> schemas.Source:
         """Get a source by short name."""
         ...
 
-    async def list(self) -> list[schemas.Source]:
+    async def list(self, ctx: ApiContext) -> list[schemas.Source]:
         """List all sources."""
         ...
 
@@ -29,6 +29,20 @@ class SourceRegistryProtocol(RegistryProtocol[SourceRegistryEntry], Protocol):
     """Source registry protocol."""
 
     pass
+
+
+class SourceValidationServiceProtocol(Protocol):
+    """Validates config and auth fields against registry-resolved Pydantic schemas."""
+
+    def validate_config(
+        self, short_name: str, config_fields: Any, ctx: ApiContext
+    ) -> Dict[str, Any]:
+        """Validate config against source's Pydantic schema. Strips feature-flagged fields."""
+        ...
+
+    def validate_auth(self, short_name: str, auth_fields: dict) -> BaseModel:
+        """Validate auth fields against source's auth config schema."""
+        ...
 
 
 class SourceLifecycleServiceProtocol(Protocol):

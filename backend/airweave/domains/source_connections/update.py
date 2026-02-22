@@ -7,11 +7,10 @@ from uuid import UUID
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from airweave import crud, schemas
+from airweave import schemas
 from airweave.api.context import ApiContext
-from airweave.core import credentials
 from airweave.core.exceptions import NotFoundException
-from airweave.core.source_connection_service_helpers import source_connection_helpers
+from airweave.core.protocols.encryption import CredentialEncryptor
 from airweave.db.unit_of_work import UnitOfWork
 from airweave.domains.collections.protocols import CollectionRepositoryProtocol
 from airweave.domains.connections.protocols import ConnectionRepositoryProtocol
@@ -19,8 +18,14 @@ from airweave.domains.credentials.protocols import IntegrationCredentialReposito
 from airweave.domains.source_connections.protocols import (
     ResponseBuilderProtocol,
     SourceConnectionRepositoryProtocol,
+    SourceConnectionUpdateServiceProtocol,
 )
-from airweave.domains.syncs.protocols import SyncRepositoryProtocol
+from airweave.domains.sources.exceptions import SourceNotFoundError
+from airweave.domains.sources.protocols import (
+    SourceServiceProtocol,
+    SourceValidationServiceProtocol,
+)
+from airweave.domains.syncs.protocols import SyncRecordServiceProtocol, SyncRepositoryProtocol
 from airweave.domains.temporal.protocols import TemporalScheduleServiceProtocol
 from airweave.schemas.source_connection import (
     SourceConnection as SourceConnectionSchema,
@@ -31,7 +36,7 @@ from airweave.schemas.source_connection import (
 )
 
 
-class SourceConnectionUpdateService:
+class SourceConnectionUpdateService(SourceConnectionUpdateServiceProtocol):
     """Updates a source connection.
 
     Handles:
@@ -47,6 +52,10 @@ class SourceConnectionUpdateService:
         connection_repo: ConnectionRepositoryProtocol,
         cred_repo: IntegrationCredentialRepositoryProtocol,
         sync_repo: SyncRepositoryProtocol,
+        sync_record_service: SyncRecordServiceProtocol,
+        source_service: SourceServiceProtocol,
+        source_validation: SourceValidationServiceProtocol,
+        credential_encryptor: CredentialEncryptor,
         response_builder: ResponseBuilderProtocol,
         temporal_schedule_service: TemporalScheduleServiceProtocol,
     ) -> None:
@@ -55,6 +64,10 @@ class SourceConnectionUpdateService:
         self._connection_repo = connection_repo
         self._cred_repo = cred_repo
         self._sync_repo = sync_repo
+        self._sync_record_service = sync_record_service
+        self._source_service = source_service
+        self._source_validation = source_validation
+        self._credential_encryptor = credential_encryptor
         self._response_builder = response_builder
         self._temporal_schedule_service = temporal_schedule_service
 
@@ -87,8 +100,8 @@ class SourceConnectionUpdateService:
 
             # Handle config update
             if "config" in update_data:
-                validated_config = await source_connection_helpers.validate_config_fields(
-                    uow.session, source_conn.short_name, update_data["config"], ctx
+                validated_config = self._source_validation.validate_config(
+                    source_conn.short_name, update_data["config"], ctx
                 )
                 update_data["config_fields"] = validated_config
                 del update_data["config"]
@@ -98,9 +111,7 @@ class SourceConnectionUpdateService:
 
             # Handle credential update (direct auth only)
             if "credentials" in update_data:
-                from airweave.schemas.source_connection import determine_auth_method
-
-                auth_method = determine_auth_method(source_conn)
+                auth_method = self._determine_auth_method(source_conn)
                 if auth_method != AuthenticationMethod.DIRECT:
                     raise HTTPException(
                         status_code=400,
@@ -159,7 +170,7 @@ class SourceConnectionUpdateService:
             # Update existing sync's schedule
             if new_cron:
                 # Get the source to validate schedule
-                source = await self._get_and_validate_source(uow.session, source_conn.short_name)
+                source = await self._get_and_validate_source(source_conn.short_name, ctx)
                 self._validate_cron_schedule_for_source(new_cron, source, ctx)
             await self._update_sync_schedule(
                 uow.session,
@@ -171,7 +182,7 @@ class SourceConnectionUpdateService:
         elif new_cron:
             # No sync exists but we're adding a schedule - create a new sync
             # Get the source to validate schedule
-            source = await self._get_and_validate_source(uow.session, source_conn.short_name)
+            source = await self._get_and_validate_source(source_conn.short_name, ctx)
             self._validate_cron_schedule_for_source(new_cron, source, ctx)
 
             # Check if connection_id exists (might be None for OAuth flows)
@@ -190,17 +201,19 @@ class SourceConnectionUpdateService:
             if not collection:
                 raise NotFoundException("Collection not found")
 
+            # Resolve destination IDs
+            dest_ids = await self._sync_record_service.resolve_destination_ids(uow.session, ctx)
+
             # Create a new sync with the schedule
-            sync, _ = await source_connection_helpers.create_sync_without_schedule(
+            sync, _ = await self._sync_record_service.create_sync(
                 uow.session,
-                source_conn.name,
-                source_conn.connection_id,
-                collection.id,
-                collection.readable_id,
-                new_cron,
-                False,  # Don't run immediately on update
-                ctx,
-                uow,
+                name=f"Sync for {source_conn.name}",
+                source_connection_id=source_conn.connection_id,
+                destination_connection_ids=dest_ids,
+                cron_schedule=new_cron,
+                run_immediately=False,
+                ctx=ctx,
+                uow=uow,
             )
 
             # Apply the sync_id update to the source connection now
@@ -226,12 +239,12 @@ class SourceConnectionUpdateService:
         if "schedule" in update_data:
             del update_data["schedule"]
 
-    async def _get_and_validate_source(self, db: AsyncSession, short_name: str) -> schemas.Source:
+    async def _get_and_validate_source(self, short_name: str, ctx: ApiContext) -> schemas.Source:
         """Get and validate source exists."""
-        source = await crud.source.get_by_short_name(db, short_name=short_name)
-        if not source:
+        try:
+            return await self._source_service.get(short_name, ctx)
+        except SourceNotFoundError:
             raise HTTPException(status_code=404, detail=f"Source '{short_name}' not found")
-        return source
 
     def _validate_cron_schedule_for_source(
         self, cron_schedule: str, source: schemas.Source, ctx: ApiContext
@@ -326,9 +339,7 @@ class SourceConnectionUpdateService:
         uow: UnitOfWork,
     ) -> None:
         """Update authentication fields."""
-        validated_auth = await source_connection_helpers.validate_auth_fields(
-            db, source_conn.short_name, auth_fields, ctx
-        )
+        validated_auth = self._source_validation.validate_auth(source_conn.short_name, auth_fields)
         if hasattr(validated_auth, "model_dump"):
             serializable_auth = validated_auth.model_dump()
         elif hasattr(validated_auth, "dict"):
@@ -343,8 +354,29 @@ class SourceConnectionUpdateService:
             )
             if credential:
                 credential_update = schemas.IntegrationCredentialUpdate(
-                    encrypted_credentials=credentials.encrypt(serializable_auth)
+                    encrypted_credentials=self._credential_encryptor.encrypt(serializable_auth)
                 )
                 await self._cred_repo.update(
                     db, db_obj=credential, obj_in=credential_update, ctx=ctx, uow=uow
                 )
+
+    @staticmethod
+    def _determine_auth_method(source_conn: Any) -> AuthenticationMethod:
+        """Determine authentication method from database fields."""
+        if (
+            hasattr(source_conn, "readable_auth_provider_id")
+            and source_conn.readable_auth_provider_id
+        ):
+            return AuthenticationMethod.AUTH_PROVIDER
+
+        if (
+            hasattr(source_conn, "connection_init_session_id")
+            and source_conn.connection_init_session_id
+            and not source_conn.is_authenticated
+        ):
+            return AuthenticationMethod.OAUTH_BROWSER
+
+        if source_conn.is_authenticated:
+            return AuthenticationMethod.DIRECT
+
+        return AuthenticationMethod.OAUTH_BROWSER

@@ -165,14 +165,14 @@ async def test_create_oauth2_init_session_contract(monkeypatch):
 
     captured = {}
 
-    async def _fake_create_proxy_url(db, provider_auth_url, ctx, uow):
-        return "https://api/authorize/abc123", NOW, uuid4()
+    async def _fake_create_redirect_session(db, provider_auth_url, ctx, uow):
+        return uuid4()
 
     async def _fake_create_init_session(db, obj_in, state, ctx, uow, **kwargs):
         captured.update(kwargs)
         return MagicMock(id=uuid4())
 
-    monkeypatch.setattr(svc, "_create_proxy_url", _fake_create_proxy_url)
+    monkeypatch.setattr(svc, "_create_redirect_session", _fake_create_redirect_session)
     monkeypatch.setattr(svc, "_create_init_session", _fake_create_init_session)
 
     class _FakeUOW:
@@ -239,14 +239,14 @@ async def test_create_oauth1_init_session_contract(monkeypatch):
 
     captured = {}
 
-    async def _fake_create_proxy_url(db, provider_auth_url, ctx, uow):
-        return "https://api/authorize/abc123", NOW, uuid4()
+    async def _fake_create_redirect_session(db, provider_auth_url, ctx, uow):
+        return uuid4()
 
     async def _fake_create_init_session(db, obj_in, state, ctx, uow, **kwargs):
         captured.update(kwargs)
         return MagicMock(id=uuid4())
 
-    monkeypatch.setattr(svc, "_create_proxy_url", _fake_create_proxy_url)
+    monkeypatch.setattr(svc, "_create_redirect_session", _fake_create_redirect_session)
     monkeypatch.setattr(svc, "_create_init_session", _fake_create_init_session)
 
     class _FakeUOW:
@@ -283,3 +283,39 @@ async def test_create_oauth1_init_session_contract(monkeypatch):
     assert overrides["oauth_token_secret"] == "req-secret"
     assert overrides["consumer_key"] == "custom-key"
     assert overrides["consumer_secret"] == "custom-secret"
+
+
+def test_determine_auth_method_rejects_unknown_auth_shape():
+    obj_in = SimpleNamespace(authentication=object())
+    with pytest.raises(HTTPException, match="Invalid authentication configuration"):
+        SourceConnectionCreationService._determine_auth_method(obj_in)  # type: ignore[arg-type]
+
+
+async def test_trigger_sync_workflow_logs_warning_when_event_publish_fails():
+    svc = _service(_entry())
+    svc._event_bus.publish = AsyncMock(side_effect=RuntimeError("bus down"))
+    svc._temporal_workflow_service.run_source_connection_workflow = AsyncMock()
+
+    ctx = _ctx()
+    ctx.logger.warning = MagicMock()
+
+    sync_job_id = uuid4()
+    sync_id = uuid4()
+    sync_result = SimpleNamespace(
+        sync_job=SimpleNamespace(id=sync_job_id),
+        sync_id=sync_id,
+        sync=SimpleNamespace(id=sync_id),
+    )
+    connection = SimpleNamespace(short_name="github")
+    collection = SimpleNamespace(id=uuid4(), name="c", readable_id="col-1")
+
+    await svc._trigger_sync_workflow(
+        connection=connection,
+        sync_result=sync_result,
+        collection=collection,
+        source_connection_id=uuid4(),
+        ctx=ctx,
+    )
+
+    ctx.logger.warning.assert_called_once()
+    svc._temporal_workflow_service.run_source_connection_workflow.assert_awaited_once()

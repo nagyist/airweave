@@ -429,7 +429,7 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
             )
             await uow.session.flush()
 
-            _, _, redirect_session_id = await self._create_proxy_url(
+            redirect_session_id = await self._create_redirect_session(
                 uow.session, provider_auth_url, ctx, uow
             )
             await uow.session.flush()
@@ -452,10 +452,10 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
 
         return await self._response_builder.build_response(db, source_conn, ctx)
 
-    async def _create_proxy_url(
+    async def _create_redirect_session(
         self, db: AsyncSession, provider_auth_url: str, ctx: ApiContext, uow: UnitOfWork
-    ) -> tuple[str, datetime, UUID]:
-        """Create a short-lived redirect proxy URL and backing redirect session."""
+    ) -> UUID:
+        """Create redirect session and return its id."""
         proxy_expires = datetime.now(timezone.utc) + timedelta(hours=24)
         code = await crud.redirect_session.generate_unique_code(db, length=8)
         redirect_sess = await crud.redirect_session.create(
@@ -466,11 +466,7 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
             ctx=ctx,
             uow=uow,
         )
-        return (
-            f"{core_settings.api_url}/source-connections/authorize/{code}",
-            proxy_expires,
-            redirect_sess.id,
-        )
+        return redirect_sess.id
 
     async def _create_init_session(
         self,
@@ -709,6 +705,8 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
                 ):
                     return AuthenticationMethod.OAUTH_BYOC
                 return AuthenticationMethod.OAUTH_BROWSER
+            case _:
+                raise HTTPException(status_code=400, detail="Invalid authentication configuration")
 
     @staticmethod
     def _validate_auth_compatibility(
@@ -772,5 +770,5 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
                     collection_readable_id=collection.readable_id,
                 )
             )
-        except Exception:
-            pass
+        except Exception as e:
+            ctx.logger.warning(f"Failed to publish sync.pending event: {e}")

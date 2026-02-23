@@ -665,7 +665,7 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
         uow: UnitOfWork,
     ):
         connection_in = ConnectionCreate(
-            name=f"Connection to {name}",
+            name=name,
             integration_type=IntegrationType.SOURCE,
             status=ConnectionStatus.ACTIVE,
             integration_credential_id=credential_id,
@@ -735,7 +735,10 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
         template_fields = config_class.get_template_config_fields()
         if not template_fields:
             return None
-        config_class.validate_template_configs(validated_config)
+        try:
+            config_class.validate_template_configs(validated_config)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
         return config_class.extract_template_configs(validated_config)
 
     async def _trigger_sync_workflow(
@@ -750,13 +753,6 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
         if not sync_result.sync_job:
             return
 
-        await self._temporal_workflow_service.run_source_connection_workflow(
-            sync=sync_result.sync,
-            sync_job=sync_result.sync_job,
-            collection=collection,
-            connection=connection,
-            ctx=ctx,
-        )
         try:
             await self._event_bus.publish(
                 SyncLifecycleEvent.pending(
@@ -772,3 +768,10 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
             )
         except Exception as e:
             ctx.logger.warning(f"Failed to publish sync.pending event: {e}")
+        await self._temporal_workflow_service.run_source_connection_workflow(
+            sync=sync_result.sync,
+            sync_job=sync_result.sync_job,
+            collection=collection,
+            connection=connection,
+            ctx=ctx,
+        )

@@ -18,6 +18,7 @@ from airweave.core.exceptions import NotFoundException
 from airweave.core.protocols.encryption import CredentialEncryptor
 from airweave.core.protocols.event_bus import EventBus
 from airweave.core.shared_models import ConnectionStatus, IntegrationType
+from airweave.core.source_connection_service_helpers import source_connection_helpers
 from airweave.db.unit_of_work import UnitOfWork
 from airweave.domains.collections.protocols import CollectionRepositoryProtocol
 from airweave.domains.connections.protocols import ConnectionRepositoryProtocol
@@ -406,8 +407,6 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
             if code_verifier:
                 additional_overrides["code_verifier"] = code_verifier
 
-        from airweave.core.source_connection_service_helpers import source_connection_helpers
-
         async with UnitOfWork(db) as uow:
             source_conn = await self._sc_repo.create(
                 uow.session,
@@ -658,20 +657,17 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
             ctx=ctx,
         )
         try:
-            from airweave.core.container import container
-
-            if container is not None:
-                await container.event_bus.publish(
-                    SyncLifecycleEvent.pending(
-                        organization_id=ctx.organization.id,
-                        source_connection_id=source_connection_id,
-                        sync_job_id=sync_result.sync_job.id,
-                        sync_id=sync_result.sync_id,
-                        collection_id=collection.id,
-                        source_type=connection.short_name,
-                        collection_name=collection.name,
-                        collection_readable_id=collection.readable_id,
-                    )
+            await self._event_bus.publish(
+                SyncLifecycleEvent.pending(
+                    organization_id=ctx.organization.id,
+                    source_connection_id=source_connection_id,
+                    sync_job_id=sync_result.sync_job.id,
+                    sync_id=sync_result.sync_id,
+                    collection_id=collection.id,
+                    source_type=connection.short_name,
+                    collection_name=collection.name,
+                    collection_readable_id=collection.readable_id,
                 )
+            )
         except Exception:
             pass

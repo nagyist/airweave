@@ -1,13 +1,14 @@
 """Source connection creation service."""
 
 import secrets
+from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 from uuid import UUID
 
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from airweave import schemas
+from airweave import crud, schemas
 from airweave.analytics import business_events
 from airweave.api.context import ApiContext
 from airweave.core.auth_provider_service import auth_provider_service
@@ -18,7 +19,6 @@ from airweave.core.exceptions import NotFoundException
 from airweave.core.protocols.encryption import CredentialEncryptor
 from airweave.core.protocols.event_bus import EventBus
 from airweave.core.shared_models import ConnectionStatus, IntegrationType
-from airweave.core.source_connection_service_helpers import source_connection_helpers
 from airweave.db.unit_of_work import UnitOfWork
 from airweave.domains.collections.protocols import CollectionRepositoryProtocol
 from airweave.domains.connections.protocols import ConnectionRepositoryProtocol
@@ -39,6 +39,7 @@ from airweave.domains.syncs.protocols import (
     SyncRecordServiceProtocol,
 )
 from airweave.domains.temporal.protocols import TemporalWorkflowServiceProtocol
+from airweave.models.connection_init_session import ConnectionInitStatus
 from airweave.platform.auth.schemas import OAuth1Settings, OAuth2Settings
 from airweave.platform.auth.settings import integration_settings
 from airweave.schemas.connection import ConnectionCreate
@@ -424,10 +425,10 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
                 uow=uow,
             )
 
-            _, _, redirect_session_id = await source_connection_helpers.create_proxy_url(
+            _, _, redirect_session_id = await self._create_proxy_url(
                 uow.session, provider_auth_url, ctx, uow
             )
-            init_session = await source_connection_helpers.create_init_session(
+            init_session = await self._create_init_session(
                 uow.session,
                 obj_in=obj_in,
                 state=state,
@@ -443,6 +444,95 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
             await uow.session.refresh(source_conn)
 
         return await self._response_builder.build_response(db, source_conn, ctx)
+
+    async def _create_proxy_url(
+        self, db: AsyncSession, provider_auth_url: str, ctx: ApiContext, uow: UnitOfWork
+    ) -> tuple[str, datetime, UUID]:
+        """Create a short-lived redirect proxy URL and backing redirect session."""
+        proxy_expires = datetime.now(timezone.utc) + timedelta(hours=24)
+        code = await crud.redirect_session.generate_unique_code(db, length=8)
+        redirect_sess = await crud.redirect_session.create(
+            db,
+            code=code,
+            final_url=provider_auth_url,
+            expires_at=proxy_expires,
+            ctx=ctx,
+            uow=uow,
+        )
+        return (
+            f"{core_settings.api_url}/source-connections/authorize/{code}",
+            proxy_expires,
+            redirect_sess.id,
+        )
+
+    async def _create_init_session(
+        self,
+        db: AsyncSession,
+        *,
+        obj_in: SourceConnectionCreate,
+        state: str,
+        ctx: ApiContext,
+        uow: UnitOfWork,
+        redirect_session_id: Optional[UUID] = None,
+        template_configs: Optional[dict[str, Any]] = None,
+        additional_overrides: Optional[dict[str, Any]] = None,
+    ):
+        """Persist OAuth init session payload used by callback completion."""
+        payload = obj_in.model_dump(
+            exclude={
+                "client_id",
+                "client_secret",
+                "token_inject",
+                "redirect_url",
+                "auth_mode",
+                "custom_client",
+                "auth_method",
+                "authentication",
+            },
+            exclude_none=True,
+        )
+
+        auth = obj_in.authentication
+        nested_client_id = getattr(auth, "client_id", None) if auth is not None else None
+        nested_client_secret = getattr(auth, "client_secret", None) if auth is not None else None
+        nested_consumer_key = getattr(auth, "consumer_key", None) if auth is not None else None
+        nested_consumer_secret = getattr(auth, "consumer_secret", None) if auth is not None else None
+
+        client_id = nested_client_id or nested_consumer_key
+        client_secret = nested_client_secret or nested_consumer_secret
+        if (client_id and not client_secret) or (client_secret and not client_id):
+            raise HTTPException(
+                status_code=422,
+                detail="Custom OAuth requires both client_id and client_secret or neither",
+            )
+
+        overrides: dict[str, Any] = {
+            "client_id": client_id,
+            "client_secret": client_secret,
+            "oauth_client_mode": "byoc_nested" if client_id and client_secret else "platform_default",
+            "redirect_url": getattr(obj_in, "redirect_url", core_settings.app_url),
+            "oauth_redirect_uri": f"{core_settings.api_url}/source-connections/callback",
+            "template_configs": template_configs,
+        }
+        if additional_overrides:
+            overrides.update(additional_overrides)
+
+        expires_at = datetime.now(timezone.utc) + timedelta(minutes=30)
+        return await crud.connection_init_session.create(
+            db,
+            obj_in={
+                "organization_id": ctx.organization.id,
+                "short_name": obj_in.short_name,
+                "payload": payload,
+                "overrides": overrides,
+                "state": state,
+                "status": ConnectionInitStatus.PENDING,
+                "expires_at": expires_at,
+                "redirect_session_id": redirect_session_id,
+            },
+            ctx=ctx,
+            uow=uow,
+        )
 
     async def _create_authenticated_connection(
         self,

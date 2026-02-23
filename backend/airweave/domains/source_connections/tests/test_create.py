@@ -161,7 +161,6 @@ async def test_create_oauth2_init_session_contract(monkeypatch):
     svc._sc_repo.create = AsyncMock(return_value=shell_sc)
     svc._response_builder.build_response = AsyncMock(return_value=MagicMock(id=shell_sc.id))
 
-    from airweave.core import source_connection_service_helpers as helper_module
     from airweave.domains.source_connections import create as create_module
 
     captured = {}
@@ -173,16 +172,8 @@ async def test_create_oauth2_init_session_contract(monkeypatch):
         captured.update(kwargs)
         return MagicMock(id=uuid4())
 
-    monkeypatch.setattr(
-        helper_module.source_connection_helpers,
-        "create_proxy_url",
-        _fake_create_proxy_url,
-    )
-    monkeypatch.setattr(
-        helper_module.source_connection_helpers,
-        "create_init_session",
-        _fake_create_init_session,
-    )
+    monkeypatch.setattr(svc, "_create_proxy_url", _fake_create_proxy_url)
+    monkeypatch.setattr(svc, "_create_init_session", _fake_create_init_session)
 
     class _FakeUOW:
         def __init__(self, db):
@@ -244,7 +235,6 @@ async def test_create_oauth1_init_session_contract(monkeypatch):
         ),
     )
 
-    from airweave.core import source_connection_service_helpers as helper_module
     from airweave.domains.source_connections import create as create_module
 
     captured = {}
@@ -256,16 +246,8 @@ async def test_create_oauth1_init_session_contract(monkeypatch):
         captured.update(kwargs)
         return MagicMock(id=uuid4())
 
-    monkeypatch.setattr(
-        helper_module.source_connection_helpers,
-        "create_proxy_url",
-        _fake_create_proxy_url,
-    )
-    monkeypatch.setattr(
-        helper_module.source_connection_helpers,
-        "create_init_session",
-        _fake_create_init_session,
-    )
+    monkeypatch.setattr(svc, "_create_proxy_url", _fake_create_proxy_url)
+    monkeypatch.setattr(svc, "_create_init_session", _fake_create_init_session)
 
     class _FakeUOW:
         def __init__(self, db):

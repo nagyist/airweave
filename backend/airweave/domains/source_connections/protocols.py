@@ -1,7 +1,7 @@
 """Protocols for source connection domain."""
 
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Protocol, Union
+from typing import Any, List, Optional, Protocol
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -68,7 +68,7 @@ class SourceConnectionRepositoryProtocol(Protocol):
         db: AsyncSession,
         *,
         db_obj: SourceConnection,
-        obj_in: Union[SourceConnectionUpdate, Dict[str, Any]],
+        obj_in: dict[str, Any],
         ctx: ApiContext,
         uow: Optional[UnitOfWork] = None,
     ) -> SourceConnection:

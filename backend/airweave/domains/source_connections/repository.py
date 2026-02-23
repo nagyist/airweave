@@ -1,6 +1,6 @@
 """Source connection repository wrapping crud.source_connection."""
 
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, List, Optional
 from uuid import UUID
 
 from sqlalchemy import select
@@ -14,7 +14,6 @@ from airweave.domains.source_connections.protocols import SourceConnectionReposi
 from airweave.domains.source_connections.types import ScheduleInfo, SourceConnectionStats
 from airweave.models.connection_init_session import ConnectionInitSession
 from airweave.models.source_connection import SourceConnection
-from airweave.schemas.source_connection import SourceConnectionUpdate
 
 
 class SourceConnectionRepository(SourceConnectionRepositoryProtocol):
@@ -69,7 +68,7 @@ class SourceConnectionRepository(SourceConnectionRepositoryProtocol):
         db: AsyncSession,
         *,
         db_obj: SourceConnection,
-        obj_in: Union[SourceConnectionUpdate, Dict[str, Any]],
+        obj_in: dict[str, Any],
         ctx: ApiContext,
         uow: Optional[UnitOfWork] = None,
     ) -> SourceConnection:

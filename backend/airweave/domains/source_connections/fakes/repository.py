@@ -1,6 +1,6 @@
 """Fake source connection repository for testing."""
 
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, List, Optional
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -10,7 +10,6 @@ from airweave.db.unit_of_work import UnitOfWork
 from airweave.domains.source_connections.types import ScheduleInfo, SourceConnectionStats
 from airweave.models.connection_init_session import ConnectionInitSession
 from airweave.models.source_connection import SourceConnection
-from airweave.schemas.source_connection import SourceConnectionUpdate
 
 
 class FakeSourceConnectionRepository:
@@ -91,16 +90,13 @@ class FakeSourceConnectionRepository:
         db: AsyncSession,
         *,
         db_obj: SourceConnection,
-        obj_in: Union[SourceConnectionUpdate, Dict[str, Any]],
+        obj_in: dict[str, Any],
         ctx: ApiContext,
         uow: Optional[UnitOfWork] = None,
     ) -> SourceConnection:
         """Update a source connection in the in-memory store."""
         self._calls.append(("update", db, db_obj, obj_in, ctx, uow))
-        if isinstance(obj_in, dict):
-            update_data = obj_in
-        else:
-            update_data = obj_in.model_dump(exclude_unset=True)
+        update_data = obj_in
         for field, value in update_data.items():
             setattr(db_obj, field, value)
         self._store[db_obj.id] = db_obj

@@ -536,6 +536,7 @@ def _create_sync_services(
     sync_record_service = SyncRecordService(
         sync_repo=sync_repo,
         sync_job_repo=sync_job_repo,
+        connection_repo=conn_repo,
     )
 
     response_builder = ResponseBuilder(

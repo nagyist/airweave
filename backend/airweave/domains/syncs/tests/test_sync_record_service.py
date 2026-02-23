@@ -85,6 +85,7 @@ TRIGGER_CASES = [
 async def test_trigger_sync_run(case: TriggerCase):
     sync_repo = AsyncMock()
     sync_job_repo = AsyncMock()
+    connection_repo = AsyncMock()
 
     sync_job_repo.get_active_for_sync = AsyncMock(return_value=case.active_jobs)
     sync_repo.get = AsyncMock(return_value=_mock_sync_model() if case.sync_exists else None)
@@ -92,7 +93,11 @@ async def test_trigger_sync_run(case: TriggerCase):
     created_job = _mock_sync_job_model()
     sync_job_repo.create = AsyncMock(return_value=created_job)
 
-    svc = SyncRecordService(sync_repo=sync_repo, sync_job_repo=sync_job_repo)
+    svc = SyncRecordService(
+        sync_repo=sync_repo,
+        sync_job_repo=sync_job_repo,
+        connection_repo=connection_repo,
+    )
     db = AsyncMock()
     ctx = _mock_ctx()
 
@@ -185,17 +190,20 @@ RESOLVE_DEST_CASES = [
 async def test_resolve_destination_ids(case: ResolveDestCase):
     sync_repo = AsyncMock()
     sync_job_repo = AsyncMock()
-    svc = SyncRecordService(sync_repo=sync_repo, sync_job_repo=sync_job_repo)
-
-    db = AsyncMock()
-    db_result = MagicMock()
+    connection_repo = AsyncMock()
     if case.s3_connection_id:
         s3_connection = MagicMock()
         s3_connection.id = case.s3_connection_id
-        db_result.scalar_one_or_none.return_value = s3_connection
+        connection_repo.get_s3_destination_for_org = AsyncMock(return_value=s3_connection)
     else:
-        db_result.scalar_one_or_none.return_value = None
-    db.execute = AsyncMock(return_value=db_result)
+        connection_repo.get_s3_destination_for_org = AsyncMock(return_value=None)
+    svc = SyncRecordService(
+        sync_repo=sync_repo,
+        sync_job_repo=sync_job_repo,
+        connection_repo=connection_repo,
+    )
+
+    db = AsyncMock()
 
     ctx = _mock_ctx()
     ctx.has_feature = MagicMock(
@@ -207,9 +215,9 @@ async def test_resolve_destination_ids(case: ResolveDestCase):
     assert destination_ids == case.expected_dest_ids
 
     if case.expect_db_execute:
-        db.execute.assert_called_once()
+        connection_repo.get_s3_destination_for_org.assert_called_once_with(db, ctx)
     else:
-        db.execute.assert_not_called()
+        connection_repo.get_s3_destination_for_org.assert_not_called()
 
     if case.expect_info_log:
         ctx.logger.info.assert_called_once()

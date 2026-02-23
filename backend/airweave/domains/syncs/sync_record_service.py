@@ -11,6 +11,7 @@ from airweave.api.context import ApiContext
 from airweave.core.constants.reserved_ids import NATIVE_VESPA_UUID
 from airweave.core.shared_models import FeatureFlag, SyncJobStatus, SyncStatus
 from airweave.db.unit_of_work import UnitOfWork
+from airweave.domains.connections.protocols import ConnectionRepositoryProtocol
 from airweave.domains.syncs.protocols import (
     SyncJobRepositoryProtocol,
     SyncRecordServiceProtocol,
@@ -27,29 +28,19 @@ class SyncRecordService(SyncRecordServiceProtocol):
         self,
         sync_repo: SyncRepositoryProtocol,
         sync_job_repo: SyncJobRepositoryProtocol,
+        connection_repo: ConnectionRepositoryProtocol,
     ) -> None:
         """Initialize with injected repositories."""
         self._sync_repo = sync_repo
         self._sync_job_repo = sync_job_repo
+        self._connection_repo = connection_repo
 
     async def resolve_destination_ids(self, db: AsyncSession, ctx: ApiContext) -> List[UUID]:
         """Resolve destination connection IDs based on feature flags."""
-        from sqlalchemy import and_, select
-
-        from airweave.models.connection import Connection
-
         destination_ids: List[UUID] = [NATIVE_VESPA_UUID]
 
         if ctx.has_feature(FeatureFlag.S3_DESTINATION):
-            stmt = select(Connection).where(
-                and_(
-                    Connection.organization_id == ctx.organization.id,
-                    Connection.short_name == "s3",
-                    Connection.integration_type == "DESTINATION",
-                )
-            )
-            result = await db.execute(stmt)
-            s3_connection = result.scalar_one_or_none()
+            s3_connection = await self._connection_repo.get_s3_destination_for_org(db, ctx)
 
             if s3_connection:
                 destination_ids.append(s3_connection.id)

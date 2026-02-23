@@ -85,7 +85,9 @@ class FakeSourceConnectionService:
     async def delete(self, db: AsyncSession, id: UUID, ctx: ApiContext) -> SourceConnectionSchema:
         self._calls.append(("delete", db, id, ctx))
         if self._deletion_service:
-            return await self._deletion_service.delete(db, id=id, ctx=ctx)
+            response = await self._deletion_service.delete(db, id=id, ctx=ctx)
+            self._store.pop(id, None)
+            return response
         obj = self._store.get(id)
         if not obj:
             raise NotFoundException("Source connection not found")

@@ -496,7 +496,9 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
         nested_client_id = getattr(auth, "client_id", None) if auth is not None else None
         nested_client_secret = getattr(auth, "client_secret", None) if auth is not None else None
         nested_consumer_key = getattr(auth, "consumer_key", None) if auth is not None else None
-        nested_consumer_secret = getattr(auth, "consumer_secret", None) if auth is not None else None
+        nested_consumer_secret = (
+            getattr(auth, "consumer_secret", None) if auth is not None else None
+        )
 
         client_id = nested_client_id or nested_consumer_key
         client_secret = nested_client_secret or nested_consumer_secret
@@ -509,7 +511,9 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
         overrides: dict[str, Any] = {
             "client_id": client_id,
             "client_secret": client_secret,
-            "oauth_client_mode": "byoc_nested" if client_id and client_secret else "platform_default",
+            "oauth_client_mode": "byoc_nested"
+            if client_id and client_secret
+            else "platform_default",
             "redirect_url": getattr(obj_in, "redirect_url", core_settings.app_url),
             "oauth_redirect_uri": f"{core_settings.api_url}/source-connections/callback",
             "template_configs": template_configs,
@@ -694,8 +698,6 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
                 ):
                     return AuthenticationMethod.OAUTH_BYOC
                 return AuthenticationMethod.OAUTH_BROWSER
-            case _:
-                raise HTTPException(status_code=400, detail="Invalid authentication configuration")
 
     @staticmethod
     def _validate_auth_compatibility(

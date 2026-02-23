@@ -12,9 +12,11 @@ from airweave.analytics import business_events
 from airweave.api.context import ApiContext
 from airweave.core.auth_provider_service import auth_provider_service
 from airweave.core.config import settings as core_settings
+from airweave.core.events.source_connection import SourceConnectionLifecycleEvent
 from airweave.core.events.sync import SyncLifecycleEvent
 from airweave.core.exceptions import NotFoundException
 from airweave.core.protocols.encryption import CredentialEncryptor
+from airweave.core.protocols.event_bus import EventBus
 from airweave.core.shared_models import ConnectionStatus, IntegrationType
 from airweave.db.unit_of_work import UnitOfWork
 from airweave.domains.collections.protocols import CollectionRepositoryProtocol
@@ -75,6 +77,7 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
         oauth2_service: OAuth2ServiceProtocol,
         credential_encryptor: CredentialEncryptor,
         temporal_workflow_service: TemporalWorkflowServiceProtocol,
+        event_bus: EventBus,
     ) -> None:
         """Initialize with injected repositories, validators, and orchestration services."""
         self._sc_repo = sc_repo
@@ -91,6 +94,7 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
         self._oauth2_service = oauth2_service
         self._credential_encryptor = credential_encryptor
         self._temporal_workflow_service = temporal_workflow_service
+        self._event_bus = event_bus
 
     async def create(
         self, db: AsyncSession, *, obj_in: SourceConnectionCreate, ctx: ApiContext
@@ -153,6 +157,18 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
             connection_id=result.id,
             source_short_name=result.short_name,
         )
+        try:
+            await self._event_bus.publish(
+                SourceConnectionLifecycleEvent.created(
+                    organization_id=ctx.organization.id,
+                    source_connection_id=result.id,
+                    source_type=result.short_name,
+                    collection_readable_id=result.readable_collection_id,
+                    is_authenticated=result.is_authenticated,
+                )
+            )
+        except Exception as e:
+            ctx.logger.warning(f"Failed to publish source_connection.created event: {e}")
         return result
 
     async def _create_with_direct_auth(

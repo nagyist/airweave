@@ -211,6 +211,7 @@ def create_container(settings: Settings) -> Container:
         oauth2_service=source_deps["oauth2_service"],
         credential_encryptor=encryptor,
         temporal_workflow_service=sync_deps["temporal_workflow_service"],
+        event_bus=event_bus,
     )
     source_connection_service = SourceConnectionService(
         sc_repo=source_deps["sc_repo"],

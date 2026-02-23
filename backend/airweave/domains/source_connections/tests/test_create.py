@@ -86,6 +86,7 @@ def _service(entry) -> SourceConnectionCreationService:
         oauth2_service=AsyncMock(),
         credential_encryptor=MagicMock(),
         temporal_workflow_service=FakeTemporalWorkflowService(),
+        event_bus=AsyncMock(),
     )
 
 

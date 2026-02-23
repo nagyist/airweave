@@ -176,7 +176,8 @@ def _get_decorated_classes() -> Dict[str, list[Type | Callable]]:
 
     base_package = "airweave.platform"
 
-    for root, _, files in os.walk(PLATFORM_DIR):
+    for root, dirs, files in os.walk(PLATFORM_DIR):
+        dirs[:] = [d for d in dirs if d != "tests"]
         # Skip files in the root directory
         if Path(root) == PLATFORM_DIR:
             continue

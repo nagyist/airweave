@@ -130,14 +130,23 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
                     ),
                 )
 
-        if auth_method == AuthenticationMethod.DIRECT:
-            result = await self._create_with_direct_auth(db, obj_in=obj_in, entry=entry, ctx=ctx)
-        elif auth_method == AuthenticationMethod.OAUTH_TOKEN:
-            result = await self._create_with_oauth_token(db, obj_in=obj_in, entry=entry, ctx=ctx)
-        elif auth_method == AuthenticationMethod.AUTH_PROVIDER:
-            result = await self._create_with_auth_provider(db, obj_in=obj_in, entry=entry, ctx=ctx)
-        else:
-            result = await self._create_with_oauth_browser(db, obj_in=obj_in, entry=entry, ctx=ctx)
+        match auth_method:
+            case AuthenticationMethod.DIRECT:
+                result = await self._create_with_direct_auth(
+                    db, obj_in=obj_in, entry=entry, ctx=ctx
+                )
+            case AuthenticationMethod.OAUTH_TOKEN:
+                result = await self._create_with_oauth_token(
+                    db, obj_in=obj_in, entry=entry, ctx=ctx
+                )
+            case AuthenticationMethod.AUTH_PROVIDER:
+                result = await self._create_with_auth_provider(
+                    db, obj_in=obj_in, entry=entry, ctx=ctx
+                )
+            case _:
+                result = await self._create_with_oauth_browser(
+                    db, obj_in=obj_in, entry=entry, ctx=ctx
+                )
 
         business_events.track_source_connection_created(
             ctx=ctx,
@@ -565,21 +574,23 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
     @staticmethod
     def _determine_auth_method(obj_in: SourceConnectionCreate) -> AuthenticationMethod:
         auth = obj_in.authentication
-        if auth is None:
-            return AuthenticationMethod.OAUTH_BROWSER
-        if isinstance(auth, DirectAuthentication):
-            return AuthenticationMethod.DIRECT
-        if isinstance(auth, OAuthTokenAuthentication):
-            return AuthenticationMethod.OAUTH_TOKEN
-        if isinstance(auth, AuthProviderAuthentication):
-            return AuthenticationMethod.AUTH_PROVIDER
-        if isinstance(auth, OAuthBrowserAuthentication):
-            if (auth.client_id and auth.client_secret) or (
-                auth.consumer_key and auth.consumer_secret
-            ):
-                return AuthenticationMethod.OAUTH_BYOC
-            return AuthenticationMethod.OAUTH_BROWSER
-        raise HTTPException(status_code=400, detail="Invalid authentication configuration")
+        match auth:
+            case None:
+                return AuthenticationMethod.OAUTH_BROWSER
+            case DirectAuthentication():
+                return AuthenticationMethod.DIRECT
+            case OAuthTokenAuthentication():
+                return AuthenticationMethod.OAUTH_TOKEN
+            case AuthProviderAuthentication():
+                return AuthenticationMethod.AUTH_PROVIDER
+            case OAuthBrowserAuthentication():
+                if (auth.client_id and auth.client_secret) or (
+                    auth.consumer_key and auth.consumer_secret
+                ):
+                    return AuthenticationMethod.OAUTH_BYOC
+                return AuthenticationMethod.OAUTH_BROWSER
+            case _:
+                raise HTTPException(status_code=400, detail="Invalid authentication configuration")
 
     @staticmethod
     def _validate_auth_compatibility(

@@ -1,6 +1,30 @@
-"""Types for the embedder registries."""
+"""Types for the embedders domain."""
+
+from pydantic import BaseModel, Field
 
 from airweave.core.protocols.registry import BaseRegistryEntry
+
+# ---------------------------------------------------------------------------
+# Embedding value types
+# ---------------------------------------------------------------------------
+
+
+class DenseEmbedding(BaseModel):
+    """A dense embedding vector."""
+
+    vector: list[float] = Field(..., description="The dense embedding vector.")
+
+
+class SparseEmbedding(BaseModel):
+    """A sparse embedding with token indices and weights."""
+
+    indices: list[int] = Field(..., description="Token indices with non-zero values.")
+    values: list[float] = Field(..., description="Weights for each token index.")
+
+
+# ---------------------------------------------------------------------------
+# Registry entry types
+# ---------------------------------------------------------------------------
 
 
 class DenseEmbedderEntry(BaseRegistryEntry):

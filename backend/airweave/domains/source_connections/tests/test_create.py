@@ -139,6 +139,23 @@ async def test_create_oauth2_init_session_contract(monkeypatch):
     svc._oauth2_service.generate_auth_url_with_redirect = AsyncMock(
         return_value=("https://provider/auth", "verifier-123")
     )
+    from airweave.platform.auth.schemas import OAuth2Settings
+
+    monkeypatch.setattr(
+        "airweave.domains.source_connections.create.integration_settings.get_by_short_name",
+        AsyncMock(
+            return_value=OAuth2Settings(
+                integration_short_name="github",
+                url="https://provider/authorize",
+                backend_url="https://provider/token",
+                grant_type="authorization_code",
+                client_id="platform-client-id",
+                client_secret="platform-client-secret",
+                content_type="application/x-www-form-urlencoded",
+                client_credential_location="payload",
+            )
+        ),
+    )
 
     shell_sc = MagicMock(id=uuid4(), connection_init_session_id=None, is_authenticated=False)
     svc._sc_repo.create = AsyncMock(return_value=shell_sc)

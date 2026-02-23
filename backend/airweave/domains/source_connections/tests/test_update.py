@@ -359,6 +359,81 @@ async def test_credential_update(case: CredentialCase):
         assert "direct authentication" in str(exc_info.value.detail)
 
 
+async def test_credential_update_direct_auth_missing_connection_raises():
+    conn_id = uuid4()
+    sc = _make_sc(connection_id=conn_id, is_authenticated=True)
+
+    sc_repo = FakeSourceConnectionRepository()
+    sc_repo.seed(sc.id, sc)
+
+    validation = FakeSourceValidationService()
+    validation.seed_auth_result("github", _AuthPayload(token="secret"))
+
+    svc = _build_service(sc_repo=sc_repo, source_validation=validation)
+
+    obj_in = SourceConnectionUpdate(authentication={"credentials": {"token": "new_secret"}})
+
+    with pytest.raises(NotFoundException, match="Connection not found"):
+        await svc.update(AsyncMock(), id=sc.id, obj_in=obj_in, ctx=_make_ctx())
+
+
+async def test_credential_update_direct_auth_missing_integration_credential_raises():
+    conn_id = uuid4()
+    sc = _make_sc(connection_id=conn_id, is_authenticated=True)
+
+    sc_repo = FakeSourceConnectionRepository()
+    sc_repo.seed(sc.id, sc)
+
+    conn = MagicMock(spec=Connection)
+    conn.id = conn_id
+    conn.integration_credential_id = None
+    conn_repo = FakeConnectionRepository()
+    conn_repo.seed(conn_id, conn)
+
+    validation = FakeSourceValidationService()
+    validation.seed_auth_result("github", _AuthPayload(token="secret"))
+
+    svc = _build_service(
+        sc_repo=sc_repo,
+        connection_repo=conn_repo,
+        source_validation=validation,
+    )
+
+    obj_in = SourceConnectionUpdate(authentication={"credentials": {"token": "new_secret"}})
+
+    with pytest.raises(NotFoundException, match="Integration credential not configured"):
+        await svc.update(AsyncMock(), id=sc.id, obj_in=obj_in, ctx=_make_ctx())
+
+
+async def test_credential_update_direct_auth_missing_credential_record_raises():
+    conn_id = uuid4()
+    cred_id = uuid4()
+    sc = _make_sc(connection_id=conn_id, is_authenticated=True)
+
+    sc_repo = FakeSourceConnectionRepository()
+    sc_repo.seed(sc.id, sc)
+
+    conn = MagicMock(spec=Connection)
+    conn.id = conn_id
+    conn.integration_credential_id = cred_id
+    conn_repo = FakeConnectionRepository()
+    conn_repo.seed(conn_id, conn)
+
+    validation = FakeSourceValidationService()
+    validation.seed_auth_result("github", _AuthPayload(token="secret"))
+
+    svc = _build_service(
+        sc_repo=sc_repo,
+        connection_repo=conn_repo,
+        source_validation=validation,
+    )
+
+    obj_in = SourceConnectionUpdate(authentication={"credentials": {"token": "new_secret"}})
+
+    with pytest.raises(NotFoundException, match="Integration credential not found"):
+        await svc.update(AsyncMock(), id=sc.id, obj_in=obj_in, ctx=_make_ctx())
+
+
 # ---------------------------------------------------------------------------
 # Cron validation -- table-driven (tests _validate_cron_schedule_for_source directly)
 # ---------------------------------------------------------------------------

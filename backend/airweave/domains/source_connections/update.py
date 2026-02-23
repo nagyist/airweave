@@ -25,13 +25,18 @@ from airweave.domains.sources.protocols import (
     SourceServiceProtocol,
     SourceValidationServiceProtocol,
 )
-from airweave.domains.syncs.protocols import SyncRecordServiceProtocol, SyncRepositoryProtocol
+from airweave.domains.syncs.protocols import (
+    SyncRecordServiceProtocol,
+    SyncRepositoryProtocol,
+)
 from airweave.domains.temporal.protocols import TemporalScheduleServiceProtocol
 from airweave.models.source_connection import SourceConnection
 from airweave.schemas.source_connection import (
     AuthenticationMethod,
-    SourceConnection as SourceConnectionSchema,
     SourceConnectionUpdate,
+)
+from airweave.schemas.source_connection import (
+    SourceConnection as SourceConnectionSchema,
 )
 
 
@@ -344,18 +349,30 @@ class SourceConnectionUpdateService(SourceConnectionUpdateServiceProtocol):
         )
         serializable_auth = validated_auth.model_dump()
 
+        if not source_conn.connection_id:
+            raise NotFoundException("Connection not found")
+
         connection = await self._connection_repo.get(db, id=source_conn.connection_id, ctx=ctx)
-        if connection and connection.integration_credential_id:
-            credential = await self._cred_repo.get(
-                db, id=connection.integration_credential_id, ctx=ctx
-            )
-            if credential:
-                credential_update = schemas.IntegrationCredentialUpdate(
-                    encrypted_credentials=self._credential_encryptor.encrypt(serializable_auth)
-                )
-                await self._cred_repo.update(
-                    db, db_obj=credential, obj_in=credential_update, ctx=ctx, uow=uow
-                )
+        if not connection:
+            raise NotFoundException("Connection not found")
+
+        if not connection.integration_credential_id:
+            raise NotFoundException("Integration credential not configured")
+
+        credential = await self._cred_repo.get(db, id=connection.integration_credential_id, ctx=ctx)
+        if not credential:
+            raise NotFoundException("Integration credential not found")
+
+        credential_update = schemas.IntegrationCredentialUpdate(
+            encrypted_credentials=self._credential_encryptor.encrypt(serializable_auth)
+        )
+        await self._cred_repo.update(
+            db,
+            db_obj=credential,
+            obj_in=credential_update,
+            ctx=ctx,
+            uow=uow,
+        )
 
     @staticmethod
     def _determine_auth_method(source_conn: SourceConnection) -> AuthenticationMethod:

@@ -1,5 +1,6 @@
 """Protocols for source services."""
 
+from collections.abc import Mapping
 from typing import Any, Dict, Optional, Protocol, Union
 from uuid import UUID
 
@@ -32,16 +33,20 @@ class SourceRegistryProtocol(RegistryProtocol[SourceRegistryEntry], Protocol):
 
 
 class SourceValidationServiceProtocol(Protocol):
-    """Validates config and auth fields against registry-resolved Pydantic schemas."""
+    """Validates source config and direct-auth fields against source schemas.
+
+    This protocol is intentionally scoped to source schemas only (not auth-provider
+    credential validation).
+    """
 
     def validate_config(
-        self, short_name: str, config_fields: Any, ctx: ApiContext
-    ) -> Dict[str, Any]:
-        """Validate config against source's Pydantic schema. Strips feature-flagged fields."""
+        self, short_name: str, config_fields: Mapping[str, Any] | None, ctx: ApiContext
+    ) -> dict[str, Any]:
+        """Validate source config against source schema."""
         ...
 
-    def validate_auth(self, short_name: str, auth_fields: dict) -> BaseModel:
-        """Validate auth fields against source's auth config schema."""
+    def validate_auth_schema(self, short_name: str, auth_fields: dict[str, Any]) -> BaseModel:
+        """Validate direct-auth fields against source auth schema."""
         ...
 
 

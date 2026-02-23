@@ -1,7 +1,7 @@
 """Source connection update service."""
 
 import re
-from typing import Any, Dict, Optional
+from typing import Any, Optional
 from uuid import UUID
 
 from fastapi import HTTPException
@@ -27,11 +27,10 @@ from airweave.domains.sources.protocols import (
 )
 from airweave.domains.syncs.protocols import SyncRecordServiceProtocol, SyncRepositoryProtocol
 from airweave.domains.temporal.protocols import TemporalScheduleServiceProtocol
-from airweave.schemas.source_connection import (
-    SourceConnection as SourceConnectionSchema,
-)
+from airweave.models.source_connection import SourceConnection
 from airweave.schemas.source_connection import (
     AuthenticationMethod,
+    SourceConnection as SourceConnectionSchema,
     SourceConnectionUpdate,
 )
 
@@ -59,6 +58,7 @@ class SourceConnectionUpdateService(SourceConnectionUpdateServiceProtocol):
         response_builder: ResponseBuilderProtocol,
         temporal_schedule_service: TemporalScheduleServiceProtocol,
     ) -> None:
+        """Initialize with repositories and collaborator services."""
         self._sc_repo = sc_repo
         self._collection_repo = collection_repo
         self._connection_repo = connection_repo
@@ -140,8 +140,8 @@ class SourceConnectionUpdateService(SourceConnectionUpdateServiceProtocol):
     async def _handle_schedule_update(
         self,
         uow: UnitOfWork,
-        source_conn: Any,
-        update_data: dict,
+        source_conn: SourceConnection,
+        update_data: dict[str, Any],
         ctx: ApiContext,
     ) -> None:
         """Handle schedule updates for a source connection.
@@ -333,19 +333,16 @@ class SourceConnectionUpdateService(SourceConnectionUpdateServiceProtocol):
     async def _update_auth_fields(
         self,
         db: AsyncSession,
-        source_conn: Any,
-        auth_fields: Any,
+        source_conn: SourceConnection,
+        auth_fields: dict[str, Any],
         ctx: ApiContext,
         uow: UnitOfWork,
     ) -> None:
         """Update authentication fields."""
-        validated_auth = self._source_validation.validate_auth(source_conn.short_name, auth_fields)
-        if hasattr(validated_auth, "model_dump"):
-            serializable_auth = validated_auth.model_dump()
-        elif hasattr(validated_auth, "dict"):
-            serializable_auth = validated_auth.dict()
-        else:
-            serializable_auth = validated_auth
+        validated_auth = self._source_validation.validate_auth_schema(
+            source_conn.short_name, auth_fields
+        )
+        serializable_auth = validated_auth.model_dump()
 
         connection = await self._connection_repo.get(db, id=source_conn.connection_id, ctx=ctx)
         if connection and connection.integration_credential_id:
@@ -361,19 +358,12 @@ class SourceConnectionUpdateService(SourceConnectionUpdateServiceProtocol):
                 )
 
     @staticmethod
-    def _determine_auth_method(source_conn: Any) -> AuthenticationMethod:
+    def _determine_auth_method(source_conn: SourceConnection) -> AuthenticationMethod:
         """Determine authentication method from database fields."""
-        if (
-            hasattr(source_conn, "readable_auth_provider_id")
-            and source_conn.readable_auth_provider_id
-        ):
+        if source_conn.readable_auth_provider_id:
             return AuthenticationMethod.AUTH_PROVIDER
 
-        if (
-            hasattr(source_conn, "connection_init_session_id")
-            and source_conn.connection_init_session_id
-            and not source_conn.is_authenticated
-        ):
+        if source_conn.connection_init_session_id and not source_conn.is_authenticated:
             return AuthenticationMethod.OAUTH_BROWSER
 
         if source_conn.is_authenticated:

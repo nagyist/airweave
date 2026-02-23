@@ -13,6 +13,7 @@ from uuid import uuid4
 
 import pytest
 
+import airweave.domains.source_connections.delete as delete_module
 from airweave.api.context import ApiContext
 from airweave.core.exceptions import NotFoundException
 from airweave.core.logging import logger
@@ -293,3 +294,52 @@ async def test_delete_wait_timeout_proceeds():
     result = await svc.delete(AsyncMock(), id=sc.id, ctx=_make_ctx())
     assert result.id == sc.id
     assert sc_repo._store.get(sc.id) is None
+
+
+async def test_wait_for_sync_job_terminal_state_reaches_terminal(monkeypatch):
+    sync_id = uuid4()
+    running_job = _make_job(status=SyncJobStatus.RUNNING, sync_id=sync_id)
+    cancelled_job = _make_job(status=SyncJobStatus.CANCELLED, sync_id=sync_id)
+
+    job_repo = FakeSyncJobRepository()
+    job_repo.get_latest_by_sync_id = AsyncMock(side_effect=[running_job, cancelled_job])  # type: ignore[method-assign]
+    svc = _build_service(sync_job_repo=job_repo)
+
+    async def _no_sleep(_: float) -> None:
+        return None
+
+    monkeypatch.setattr(delete_module.asyncio, "sleep", _no_sleep)
+
+    db = MagicMock()
+    db.expire_all = MagicMock()
+
+    reached = await svc._wait_for_sync_job_terminal_state(
+        db, sync_id, timeout_seconds=2, poll_interval=1
+    )
+
+    assert reached is True
+    assert db.expire_all.call_count == 2
+
+
+async def test_wait_for_sync_job_terminal_state_times_out(monkeypatch):
+    sync_id = uuid4()
+    running_job = _make_job(status=SyncJobStatus.RUNNING, sync_id=sync_id)
+
+    job_repo = FakeSyncJobRepository()
+    job_repo.get_latest_by_sync_id = AsyncMock(side_effect=[running_job, running_job])  # type: ignore[method-assign]
+    svc = _build_service(sync_job_repo=job_repo)
+
+    async def _no_sleep(_: float) -> None:
+        return None
+
+    monkeypatch.setattr(delete_module.asyncio, "sleep", _no_sleep)
+
+    db = MagicMock()
+    db.expire_all = MagicMock()
+
+    reached = await svc._wait_for_sync_job_terminal_state(
+        db, sync_id, timeout_seconds=2, poll_interval=1
+    )
+
+    assert reached is False
+    assert db.expire_all.call_count == 2

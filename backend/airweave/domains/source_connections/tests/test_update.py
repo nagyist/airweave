@@ -46,6 +46,10 @@ NOW = datetime.now(timezone.utc)
 ORG_ID = uuid4()
 
 
+class _AuthPayload(BaseModel):
+    token: str
+
+
 def _make_ctx() -> ApiContext:
     org = Organization(id=str(ORG_ID), name="Test Org", created_at=NOW, modified_at=NOW)
     return ApiContext(
@@ -329,7 +333,7 @@ async def test_credential_update(case: CredentialCase):
     cred_repo.seed(cred_id, cred)
 
     validation = FakeSourceValidationService()
-    validation.seed_auth_result("github", MagicMock(model_dump=lambda: {"token": "secret"}))
+    validation.seed_auth_result("github", _AuthPayload(token="secret"))
 
     encryptor = FakeCredentialEncryptor()
 

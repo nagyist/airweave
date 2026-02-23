@@ -295,6 +295,7 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
                 ctx=ctx,
                 uow=uow,
             )
+            await uow.session.flush()
             destination_ids = await self._sync_record_service.resolve_destination_ids(
                 uow.session, ctx
             )
@@ -311,6 +312,7 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
                 ctx=ctx,
                 uow=uow,
             )
+            await uow.session.flush()
 
             source_conn = await self._sc_repo.create(
                 uow.session,
@@ -329,6 +331,7 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
                 ctx=ctx,
                 uow=uow,
             )
+            await uow.session.flush()
             await uow.commit()
             await uow.session.refresh(source_conn)
 
@@ -424,10 +427,12 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
                 ctx=ctx,
                 uow=uow,
             )
+            await uow.session.flush()
 
             _, _, redirect_session_id = await self._create_proxy_url(
                 uow.session, provider_auth_url, ctx, uow
             )
+            await uow.session.flush()
             init_session = await self._create_init_session(
                 uow.session,
                 obj_in=obj_in,
@@ -438,8 +443,10 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
                 template_configs=template_configs,
                 additional_overrides=additional_overrides,
             )
+            await uow.session.flush()
             source_conn.connection_init_session_id = init_session.id
             uow.session.add(source_conn)
+            await uow.session.flush()
             await uow.commit()
             await uow.session.refresh(source_conn)
 
@@ -562,6 +569,7 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
                 ctx=ctx,
                 uow=uow,
             )
+            await uow.session.flush()
             connection = await self._create_connection_record(
                 uow.session,
                 name=obj_in.name,
@@ -570,6 +578,7 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
                 ctx=ctx,
                 uow=uow,
             )
+            await uow.session.flush()
             destination_ids = await self._sync_record_service.resolve_destination_ids(
                 uow.session, ctx
             )
@@ -586,6 +595,7 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
                 ctx=ctx,
                 uow=uow,
             )
+            await uow.session.flush()
             source_conn = await self._sc_repo.create(
                 uow.session,
                 obj_in={
@@ -601,6 +611,7 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
                 ctx=ctx,
                 uow=uow,
             )
+            await uow.session.flush()
             await uow.commit()
             await uow.session.refresh(source_conn)
 

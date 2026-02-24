@@ -7,7 +7,7 @@ import random
 import re
 import string
 from datetime import datetime
-from typing import Any, Optional
+from typing import Optional
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, model_validator
@@ -198,19 +198,6 @@ class CollectionInDBBase(CollectionBase):
         ...,
         description="Reference to the deployment-wide embedding configuration.",
     )
-    vector_size: Optional[int] = Field(
-        None,
-        description=(
-            "Vector dimensions used by this collection (derived from deployment metadata)."
-        ),
-    )
-    embedding_model_name: Optional[str] = Field(
-        None,
-        description=(
-            "Name of the embedding model used for this collection "
-            "(derived from deployment metadata)."
-        ),
-    )
     sync_config: Optional[SyncConfig] = Field(
         None,
         description=(
@@ -242,37 +229,15 @@ class CollectionInDBBase(CollectionBase):
         description="Email address of the user who last modified this collection.",
     )
 
-    @model_validator(mode="before")
-    @classmethod
-    def populate_from_deployment_metadata(cls, data: Any) -> Any:
-        """Populate vector_size and embedding_model_name from deployment metadata."""
-        # When constructing from an ORM object, pull values from the relationship
-        vd_attr = "vector_db_deployment_metadata"
-        if hasattr(data, vd_attr) and getattr(data, vd_attr) is not None:
-            vd = getattr(data, vd_attr)
-            # Build a dict so Pydantic can read our computed fields
-            obj = {}
-            for field_name in cls.model_fields:
-                if field_name in ("vector_size", "embedding_model_name"):
-                    continue
-                if hasattr(data, field_name):
-                    obj[field_name] = getattr(data, field_name)
-            obj["vector_size"] = vd.embedding_dimensions
-            # Resolve api_model_name from registry
-            from airweave.domains.embedders.registry_data import get_dense_spec
-
-            obj["embedding_model_name"] = get_dense_spec(vd.dense_embedder).api_model_name
-            return obj
-        return data
-
     model_config = ConfigDict(from_attributes=True)
 
 
-class Collection(CollectionInDBBase):
-    """Complete collection representation returned by the API.
+class CollectionRecord(CollectionInDBBase):
+    """Internal collection schema with status.
 
-    This schema includes all collection metadata plus computed status information
-    based on the health and state of associated source connections.
+    Used throughout the codebase for internal operations. Does NOT include
+    embedding-derived fields (vector_size, embedding_model_name) — use
+    Collection for API responses that need those fields.
     """
 
     status: CollectionStatus = Field(
@@ -287,6 +252,32 @@ class Collection(CollectionInDBBase):
         ),
     )
 
+    model_config = ConfigDict(from_attributes=True)
+
+
+class Collection(CollectionRecord):
+    """API-facing collection schema with embedding metadata.
+
+    Extends CollectionRecord with vector_size and embedding_model_name, which
+    are resolved by the CollectionService from the deployment metadata and the
+    dense embedder registry.
+
+    Excludes vector_db_deployment_metadata_id (internal FK).
+    """
+
+    vector_db_deployment_metadata_id: UUID = Field(exclude=True)
+    vector_size: int = Field(
+        ...,
+        description="Vector dimensions used by this collection (derived from deployment metadata).",
+    )
+    embedding_model_name: str = Field(
+        ...,
+        description=(
+            "Name of the embedding model used for this collection "
+            "(derived from deployment metadata)."
+        ),
+    )
+
     model_config = {
         "from_attributes": True,
         "json_schema_extra": {
@@ -294,7 +285,6 @@ class Collection(CollectionInDBBase):
                 "id": "550e8400-e29b-41d4-a716-446655440000",
                 "name": "Finance Data",
                 "readable_id": "finance-data-ab123",
-                "vector_db_deployment_metadata_id": "660e8400-e29b-41d4-a716-446655440000",
                 "vector_size": 3072,
                 "embedding_model_name": "text-embedding-3-large",
                 "sync_config": None,

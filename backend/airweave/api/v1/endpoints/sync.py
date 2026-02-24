@@ -97,7 +97,7 @@ async def create_sync(
     collection = await crud.collection.get_by_readable_id(
         db=db, readable_id=source_connection.readable_collection_id, ctx=ctx
     )
-    collection = schemas.Collection.model_validate(collection, from_attributes=True)
+    collection = schemas.CollectionRecord.model_validate(collection, from_attributes=True)
 
     source_connection = schemas.SourceConnection.model_validate(
         source_connection, from_attributes=True

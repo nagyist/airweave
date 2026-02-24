@@ -51,15 +51,3 @@ class Collection(OrganizationBase, UserMixin):
         cascade="all, delete-orphan",
         passive_deletes=True,
     )
-
-    @property
-    def vector_size(self) -> int:
-        """Derive vector_size from the vector_db_deployment_metadata relationship."""
-        return self.vector_db_deployment_metadata.embedding_dimensions
-
-    @property
-    def embedding_model_name(self) -> str:
-        """Derive embedding_model_name from the vector_db_deployment_metadata relationship."""
-        from airweave.domains.embedders.registry_data import get_dense_spec
-
-        return get_dense_spec(self.vector_db_deployment_metadata.dense_embedder).api_model_name

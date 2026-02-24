@@ -139,7 +139,7 @@ async def test_sync(
         # Convert models to schemas
         sync_schema = schemas.Sync.model_validate(sync)
         sync_job_schema = schemas.SyncJob.model_validate(sync_job)
-        collection_schema = schemas.Collection.model_validate(collection)
+        collection_schema = schemas.CollectionRecord.model_validate(collection)
         source_connection_schema = schemas.Connection.model_validate(source_connection)
 
     _ = await sync_service.run(

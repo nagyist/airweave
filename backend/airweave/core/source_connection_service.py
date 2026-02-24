@@ -1,6 +1,5 @@
 """Clean source connection service with auth method inference."""
 
-import asyncio
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, Optional, Tuple
 from uuid import UUID
@@ -34,7 +33,6 @@ from airweave.schemas.source_connection import (
     OAuthTokenAuthentication,
     SourceConnection,
     SourceConnectionCreate,
-    SourceConnectionUpdate,
 )
 
 
@@ -1134,9 +1132,11 @@ class SourceConnectionService:
         uow,
         sync: Optional[schemas.Sync],
         sync_job: Optional[schemas.SyncJob],
-        collection: schemas.Collection,
+        collection: schemas.CollectionRecord,
         obj_in: SourceConnectionCreate,
-    ) -> Tuple[Optional[schemas.Sync], Optional[schemas.SyncJob], Optional[schemas.Collection]]:
+    ) -> Tuple[
+        Optional[schemas.Sync], Optional[schemas.SyncJob], Optional[schemas.CollectionRecord]
+    ]:
         """Prepare sync schemas for Temporal workflow if immediate sync is requested.
 
         Args:
@@ -1157,7 +1157,9 @@ class SourceConnectionService:
 
             sync_schema = schemas.Sync.model_validate(sync, from_attributes=True)
             sync_job_schema = schemas.SyncJob.model_validate(sync_job, from_attributes=True)
-            collection_schema = schemas.Collection.model_validate(collection, from_attributes=True)
+            collection_schema = schemas.CollectionRecord.model_validate(
+                collection, from_attributes=True
+            )
 
             return sync_schema, sync_job_schema, collection_schema
 
@@ -1169,7 +1171,7 @@ class SourceConnectionService:
         connection: schemas.Connection,
         sync: schemas.Sync,
         sync_job: schemas.SyncJob,
-        collection: schemas.Collection,
+        collection: schemas.CollectionRecord,
         ctx: ApiContext,
         source_connection_id: Optional[UUID] = None,
     ) -> None:
@@ -1494,7 +1496,7 @@ class SourceConnectionService:
                             db, readable_id=source_conn.readable_collection_id, ctx=ctx
                         )
                         if collection:
-                            collection_schema = schemas.Collection.model_validate(
+                            collection_schema = schemas.CollectionRecord.model_validate(
                                 collection, from_attributes=True
                             )
                             sync_job_schema = schemas.SyncJob.model_validate(

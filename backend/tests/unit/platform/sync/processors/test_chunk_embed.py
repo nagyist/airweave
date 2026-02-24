@@ -1,8 +1,8 @@
 """Unit tests for ChunkEmbedProcessor (simplified with mocks)."""
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
-from uuid import UUID
+
+import pytest
 
 from airweave.platform.sync.processors.chunk_embed import ChunkEmbedProcessor
 
@@ -19,8 +19,6 @@ def mock_sync_context():
     context = MagicMock()
     context.logger = MagicMock()
     context.collection = MagicMock()
-    context.collection.vector_size = 3072
-    context.collection.embedding_model_name = "text-embedding-3-large"
     return context
 
 

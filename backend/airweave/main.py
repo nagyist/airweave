@@ -88,7 +88,11 @@ async def lifespan(app: FastAPI):
         await init_db(db)
 
         # Validate embedding stack configuration (raises if misconfigured)
-        await validate_embedding_config(db)
+        await validate_embedding_config(
+            db,
+            dense_registry=container_mod.container.dense_embedder_registry,
+            sparse_registry=container_mod.container.sparse_embedder_registry,
+        )
 
     # Initialize cleanup schedule for stuck sync jobs
     try:

@@ -115,11 +115,10 @@ class RunSyncActivity:
             if not collection_model:
                 raise ValueError(f"Collection {collection_id} not found in database")
 
-            collection = schemas.Collection.model_validate(collection_model, from_attributes=True)
-            ctx.logger.info(
-                f"Fetched fresh collection data from DB: {collection.readable_id} "
-                f"(vector_size={collection.vector_size}, model={collection.embedding_model_name})"
+            collection = schemas.CollectionRecord.model_validate(
+                collection_model, from_attributes=True
             )
+            ctx.logger.info(f"Fetched fresh collection data from DB: {collection.readable_id}")
 
             # Fetch the SourceConnection to get its user-facing ID for webhook events.
             # sync.source_connection_id is the internal Connection.id, NOT the

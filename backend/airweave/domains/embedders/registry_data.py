@@ -103,20 +103,3 @@ SPARSE_EMBEDDERS: list[SparseEmbedderSpec] = [
         required_setting=None,
     ),
 ]
-
-# ---------------------------------------------------------------------------
-# O(1) lookups by short_name
-# ---------------------------------------------------------------------------
-
-_DENSE_BY_NAME: dict[str, DenseEmbedderSpec] = {s.short_name: s for s in DENSE_EMBEDDERS}
-_SPARSE_BY_NAME: dict[str, SparseEmbedderSpec] = {s.short_name: s for s in SPARSE_EMBEDDERS}
-
-
-def get_dense_spec(short_name: str) -> DenseEmbedderSpec:
-    """Look up a dense embedder spec by short_name. Raises KeyError if unknown."""
-    return _DENSE_BY_NAME[short_name]
-
-
-def get_sparse_spec(short_name: str) -> SparseEmbedderSpec:
-    """Look up a sparse embedder spec by short_name. Raises KeyError if unknown."""
-    return _SPARSE_BY_NAME[short_name]

@@ -24,7 +24,6 @@ from airweave.api.deps import Inject
 from airweave.api.router import TrailingSlashRouter
 from airweave.core.context_cache_service import context_cache
 from airweave.core.exceptions import InvalidStateError, NotFoundException
-from airweave.domains.source_connections.protocols import SourceConnectionServiceProtocol
 from airweave.core.organization_service import organization_service
 from airweave.core.protocols.payment import PaymentGatewayProtocol
 from airweave.core.shared_models import FeatureFlag as FeatureFlagEnum
@@ -32,6 +31,8 @@ from airweave.core.temporal_service import temporal_service
 from airweave.crud.crud_organization_billing import organization_billing
 from airweave.db.unit_of_work import UnitOfWork
 from airweave.domains.billing.operations import BillingOperations
+from airweave.domains.embedders.config import EMBEDDING_DIMENSIONS
+from airweave.domains.source_connections.protocols import SourceConnectionServiceProtocol
 from airweave.integrations.auth0_management import auth0_management_client
 from airweave.models.organization import Organization
 from airweave.models.organization_billing import OrganizationBilling
@@ -1180,7 +1181,7 @@ async def resync_with_execution_config(
     if not collection:
         raise NotFoundException(f"Collection {source_conn.readable_collection_id} not found")
 
-    collection_schema = schemas.Collection.model_validate(collection, from_attributes=True)
+    collection_schema = schemas.CollectionRecord.model_validate(collection, from_attributes=True)
 
     # Get the Connection object (bypass org filtering)
     connection_result = await db.execute(
@@ -1471,9 +1472,7 @@ async def _build_admin_search_context(
     if not has_federated_sources and not has_vector_sources:
         raise ValueError("Collection has no sources")
 
-    vector_size = collection.vector_size
-    if vector_size is None:
-        raise ValueError(f"Collection {collection.readable_id} has no vector_size set.")
+    vector_size = EMBEDDING_DIMENSIONS
 
     # Select providers for operations
     api_keys = factory._get_available_api_keys()
@@ -1941,6 +1940,7 @@ async def admin_delete_sync(
         sync_id: The sync ID to delete
         db: Database session
         ctx: API context
+        sc_service: Source connection service for deletion logic
 
     Returns:
         Success message with deleted sync ID

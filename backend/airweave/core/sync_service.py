@@ -96,7 +96,7 @@ class SyncService:
         self,
         sync: schemas.Sync,
         sync_job: schemas.SyncJob,
-        collection: schemas.Collection,
+        collection: schemas.CollectionRecord,
         source_connection: schemas.Connection,
         ctx: ApiContext,
         access_token: Optional[str] = None,
@@ -109,7 +109,7 @@ class SyncService:
         ----
             sync (schemas.Sync): The sync to run.
             sync_job (schemas.SyncJob): The sync job to run.
-            collection (schemas.Collection): The collection to sync.
+            collection (schemas.CollectionRecord): The collection to sync.
             source_connection (schemas.Connection): The source connection to sync.
             ctx (ApiContext): The API context.
             access_token (Optional[str]): Optional access token to use

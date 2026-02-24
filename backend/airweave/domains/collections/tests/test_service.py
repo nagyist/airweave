@@ -26,6 +26,8 @@ from airweave.domains.collections.service import CollectionService
 from airweave.domains.source_connections.fakes.repository import (
     FakeSourceConnectionRepository,
 )
+from airweave.domains.embedders.fakes.registry import FakeDenseEmbedderRegistry
+from airweave.domains.embedders.types import DenseEmbedderEntry
 from airweave.domains.syncs.fakes.sync_lifecycle_service import FakeSyncLifecycleService
 from airweave.models.collection import Collection
 from airweave.schemas.organization import Organization
@@ -91,6 +93,25 @@ def _fake_settings(**overrides) -> MagicMock:
     return s
 
 
+def _fake_dense_registry() -> FakeDenseEmbedderRegistry:
+    registry = FakeDenseEmbedderRegistry()
+    registry.seed(
+        DenseEmbedderEntry(
+            short_name="openai_text_embedding_3_large",
+            name="OpenAI text-embedding-3-large",
+            description="OpenAI large embedding model",
+            class_name="OpenAIDenseEmbedder",
+            provider="openai",
+            api_model_name="text-embedding-3-large",
+            max_dimensions=3072,
+            max_tokens=8191,
+            supports_matryoshka=True,
+            embedder_class_ref=object,
+        )
+    )
+    return registry
+
+
 def _build_service(
     collection_repo=None,
     sc_repo=None,
@@ -98,6 +119,7 @@ def _build_service(
     event_bus=None,
     settings=None,
     deployment_metadata_repo=None,
+    dense_registry=None,
 ) -> CollectionService:
     return CollectionService(
         collection_repo=collection_repo or FakeCollectionRepository(),
@@ -109,6 +131,7 @@ def _build_service(
         or FakeVectorDbDeploymentMetadataRepository(
             deployment_metadata_id=DEPLOYMENT_METADATA_ID
         ),
+        dense_registry=dense_registry or _fake_dense_registry(),
     )
 
 
@@ -224,6 +247,12 @@ async def test_create_happy_path():
     result = await svc.create(AsyncMock(), collection_in=collection_in, ctx=_ctx())
 
     assert result is not None
+    assert isinstance(result, schemas.Collection)
+    # API response must include derived fields and exclude internal FK
+    response_dict = result.model_dump(mode="json")
+    assert "vector_size" in response_dict
+    assert "embedding_model_name" in response_dict
+    assert "vector_db_deployment_metadata_id" not in response_dict
     # Verify event was published
     assert len(event_bus.events) == 1
     assert event_bus.events[0].event_type.value == "collection.created"
@@ -271,14 +300,17 @@ async def test_create_sets_deployment_metadata_id():
 
 @pytest.mark.asyncio
 async def test_get_found():
-    """get() returns collection when found."""
+    """get() returns CollectionResponse when found."""
     repo = FakeCollectionRepository()
     col = _collection()
     repo.seed_readable("test-collection", col)
 
     svc = _build_service(collection_repo=repo)
     result = await svc.get(MagicMock(), readable_id="test-collection", ctx=_ctx())
-    assert result == col
+    assert isinstance(result, schemas.Collection)
+    assert result.readable_id == "test-collection"
+    assert result.vector_size == 3072
+    assert result.embedding_model_name == "text-embedding-3-large"
 
 
 @pytest.mark.asyncio

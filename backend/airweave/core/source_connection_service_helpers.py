@@ -478,7 +478,7 @@ class SourceConnectionHelpers:
 
     async def get_collection(
         self, db: AsyncSession, collection_id: str, ctx: BaseContext
-    ) -> schemas.Collection:
+    ) -> schemas.CollectionRecord:
         """Get or validate collection exists."""
         if not collection_id:
             # This should never happen with proper typing, but kept for safety

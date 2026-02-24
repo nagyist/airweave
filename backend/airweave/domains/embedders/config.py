@@ -10,12 +10,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave.core.config import settings
 from airweave.core.logging import logger
-from airweave.domains.embedders.registry_data import (
-    DenseEmbedderSpec,
-    SparseEmbedderSpec,
-    get_dense_spec,
-    get_sparse_spec,
+from airweave.domains.embedders.protocols import (
+    DenseEmbedderRegistryProtocol,
+    SparseEmbedderRegistryProtocol,
 )
+from airweave.domains.embedders.types import DenseEmbedderEntry, SparseEmbedderEntry
 from airweave.models.vector_db_deployment_metadata import VectorDbDeploymentMetadata
 
 # ---------------------------------------------------------------------------
@@ -36,7 +35,12 @@ class EmbeddingConfigError(Exception):
     """Hard error raised when embedding config is invalid or mismatched."""
 
 
-async def validate_embedding_config(db: AsyncSession) -> None:
+async def validate_embedding_config(
+    db: AsyncSession,
+    *,
+    dense_registry: DenseEmbedderRegistryProtocol,
+    sparse_registry: SparseEmbedderRegistryProtocol,
+) -> None:
     """Validate the embedding configuration at startup.
 
     Steps:
@@ -49,12 +53,12 @@ async def validate_embedding_config(db: AsyncSession) -> None:
         EmbeddingConfigError on any mismatch.
     """
     try:
-        dense_spec = get_dense_spec(DENSE_EMBEDDER)
+        dense_spec = dense_registry.get(DENSE_EMBEDDER)
     except KeyError:
         raise EmbeddingConfigError(f"Dense embedder '{DENSE_EMBEDDER}' not found in registry.")
 
     try:
-        sparse_spec = get_sparse_spec(SPARSE_EMBEDDER)
+        sparse_spec = sparse_registry.get(SPARSE_EMBEDDER)
     except KeyError:
         raise EmbeddingConfigError(f"Sparse embedder '{SPARSE_EMBEDDER}' not found in registry.")
 
@@ -63,7 +67,7 @@ async def validate_embedding_config(db: AsyncSession) -> None:
     await _reconcile_db(db)
 
 
-def _validate_dimensions(dense_spec: DenseEmbedderSpec) -> None:
+def _validate_dimensions(dense_spec: DenseEmbedderEntry) -> None:
     """Validate EMBEDDING_DIMENSIONS against the dense embedder spec."""
     if dense_spec.supports_matryoshka:
         if EMBEDDING_DIMENSIONS > dense_spec.max_dimensions:
@@ -80,8 +84,8 @@ def _validate_dimensions(dense_spec: DenseEmbedderSpec) -> None:
 
 
 def _validate_credentials(
-    dense_spec: DenseEmbedderSpec,
-    sparse_spec: SparseEmbedderSpec,
+    dense_spec: DenseEmbedderEntry,
+    sparse_spec: SparseEmbedderEntry,
 ) -> None:
     """Check that required API keys / settings are present."""
     if dense_spec.required_setting:

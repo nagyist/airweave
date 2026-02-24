@@ -9,6 +9,7 @@ from airweave import schemas
 from airweave.api.context import ApiContext
 from airweave.db.unit_of_work import UnitOfWork
 from airweave.models.collection import Collection
+from airweave.models.vector_db_deployment_metadata import VectorDbDeploymentMetadata
 
 
 class CollectionRepositoryProtocol(Protocol):
@@ -66,6 +67,14 @@ class CollectionRepositoryProtocol(Protocol):
 
     async def remove(self, db: AsyncSession, *, id: UUID, ctx: ApiContext) -> Optional[Collection]:
         """Delete a collection by ID."""
+        ...
+
+
+class VectorDbDeploymentMetadataRepositoryProtocol(Protocol):
+    """Data access for the singleton VectorDbDeploymentMetadata row."""
+
+    async def get(self, db: AsyncSession) -> VectorDbDeploymentMetadata:
+        """Return the single VectorDbDeploymentMetadata row (created at startup)."""
         ...
 
 

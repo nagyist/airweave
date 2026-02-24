@@ -7,7 +7,7 @@ import random
 import re
 import string
 from datetime import datetime
-from typing import Optional
+from typing import Any, Optional
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, model_validator
@@ -194,20 +194,21 @@ class CollectionInDBBase(CollectionBase):
             "once the collection is created."
         ),
     )
-    vector_size: int = Field(
+    vector_db_deployment_metadata_id: UUID = Field(
         ...,
+        description="Reference to the deployment-wide embedding configuration.",
+    )
+    vector_size: Optional[int] = Field(
+        None,
         description=(
-            "Vector dimensions used by this collection. Determines which embedding model "
-            "is used: 3072 (text-embedding-3-large), 1536 (text-embedding-3-small), "
-            "1024 (mistral-embed), or 384 (MiniLM-L6-v2)."
+            "Vector dimensions used by this collection (derived from deployment metadata)."
         ),
     )
-    embedding_model_name: str = Field(
-        ...,
+    embedding_model_name: Optional[str] = Field(
+        None,
         description=(
             "Name of the embedding model used for this collection "
-            "(e.g., 'text-embedding-3-large', 'text-embedding-3-small', 'mistral-embed'). "
-            "This ensures queries use the same model as the indexed data."
+            "(derived from deployment metadata)."
         ),
     )
     sync_config: Optional[SyncConfig] = Field(
@@ -241,6 +242,29 @@ class CollectionInDBBase(CollectionBase):
         description="Email address of the user who last modified this collection.",
     )
 
+    @model_validator(mode="before")
+    @classmethod
+    def populate_from_deployment_metadata(cls, data: Any) -> Any:
+        """Populate vector_size and embedding_model_name from deployment metadata."""
+        # When constructing from an ORM object, pull values from the relationship
+        vd_attr = "vector_db_deployment_metadata"
+        if hasattr(data, vd_attr) and getattr(data, vd_attr) is not None:
+            vd = getattr(data, vd_attr)
+            # Build a dict so Pydantic can read our computed fields
+            obj = {}
+            for field_name in cls.model_fields:
+                if field_name in ("vector_size", "embedding_model_name"):
+                    continue
+                if hasattr(data, field_name):
+                    obj[field_name] = getattr(data, field_name)
+            obj["vector_size"] = vd.embedding_dimensions
+            # Resolve api_model_name from registry
+            from airweave.domains.embedders.registry_data import get_dense_spec
+
+            obj["embedding_model_name"] = get_dense_spec(vd.dense_embedder).api_model_name
+            return obj
+        return data
+
     model_config = ConfigDict(from_attributes=True)
 
 
@@ -270,6 +294,7 @@ class Collection(CollectionInDBBase):
                 "id": "550e8400-e29b-41d4-a716-446655440000",
                 "name": "Finance Data",
                 "readable_id": "finance-data-ab123",
+                "vector_db_deployment_metadata_id": "660e8400-e29b-41d4-a716-446655440000",
                 "vector_size": 3072,
                 "embedding_model_name": "text-embedding-3-large",
                 "sync_config": None,

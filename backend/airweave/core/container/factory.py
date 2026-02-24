@@ -45,6 +45,9 @@ from airweave.db.session import health_check_engine
 from airweave.domains.auth_provider.registry import AuthProviderRegistry
 from airweave.domains.collections.repository import CollectionRepository
 from airweave.domains.collections.service import CollectionService
+from airweave.domains.collections.vector_db_deployment_metadata_repository import (
+    VectorDbDeploymentMetadataRepository,
+)
 from airweave.domains.connections.repository import ConnectionRepository
 from airweave.domains.credentials.repository import IntegrationCredentialRepository
 from airweave.domains.entities.entity_count_repository import EntityCountRepository
@@ -217,6 +220,7 @@ def create_container(settings: Settings) -> Container:
         sync_lifecycle=sync_deps["sync_lifecycle"],
         event_bus=event_bus,
         settings=settings,
+        deployment_metadata_repo=VectorDbDeploymentMetadataRepository(),
     )
 
     # -----------------------------------------------------------------

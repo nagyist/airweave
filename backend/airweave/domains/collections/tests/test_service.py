@@ -19,6 +19,9 @@ from airweave.domains.collections.exceptions import (
     CollectionNotFoundError,
 )
 from airweave.domains.collections.fakes.repository import FakeCollectionRepository
+from airweave.domains.collections.fakes.vector_db_deployment_metadata_repository import (
+    FakeVectorDbDeploymentMetadataRepository,
+)
 from airweave.domains.collections.service import CollectionService
 from airweave.domains.source_connections.fakes.repository import (
     FakeSourceConnectionRepository,
@@ -30,6 +33,7 @@ from airweave.schemas.organization import Organization
 NOW = datetime.now(timezone.utc)
 ORG_ID = uuid4()
 COLLECTION_ID = uuid4()
+DEPLOYMENT_METADATA_ID = uuid4()
 
 
 # ---------------------------------------------------------------------------
@@ -57,6 +61,15 @@ def _collection(
     col.name = name
     col.readable_id = readable_id
     col.organization_id = ORG_ID
+    col.vector_db_deployment_metadata_id = DEPLOYMENT_METADATA_ID
+    col.sync_config = None
+    col.created_by_email = None
+    col.modified_by_email = None
+
+    dep_meta = MagicMock()
+    dep_meta.embedding_dimensions = 3072
+    dep_meta.dense_embedder = "openai_text_embedding_3_large"
+    col.vector_db_deployment_metadata = dep_meta
     return col
 
 
@@ -73,7 +86,8 @@ class _FakeEventBus:
 def _fake_settings(**overrides) -> MagicMock:
     """Build a fake Settings with sensible defaults."""
     s = MagicMock(spec=Settings)
-    s.EMBEDDING_DIMENSIONS = overrides.get("EMBEDDING_DIMENSIONS", 1536)
+    for k, v in overrides.items():
+        setattr(s, k, v)
     return s
 
 
@@ -83,6 +97,7 @@ def _build_service(
     sync_lifecycle=None,
     event_bus=None,
     settings=None,
+    deployment_metadata_repo=None,
 ) -> CollectionService:
     return CollectionService(
         collection_repo=collection_repo or FakeCollectionRepository(),
@@ -90,6 +105,10 @@ def _build_service(
         sync_lifecycle=sync_lifecycle or FakeSyncLifecycleService(),
         event_bus=event_bus or _FakeEventBus(),
         settings=settings or _fake_settings(),
+        deployment_metadata_repo=deployment_metadata_repo
+        or FakeVectorDbDeploymentMetadataRepository(
+            deployment_metadata_id=DEPLOYMENT_METADATA_ID
+        ),
     )
 
 
@@ -197,7 +216,7 @@ async def test_create_happy_path():
     svc = _build_service(
         collection_repo=repo,
         event_bus=event_bus,
-        settings=_fake_settings(EMBEDDING_DIMENSIONS=3072),
+        settings=_fake_settings(),
     )
 
     collection_in = schemas.CollectionCreate(name="New Collection", readable_id="new-collection")
@@ -227,24 +246,22 @@ async def test_create_duplicate_raises():
 
 
 @pytest.mark.asyncio
-async def test_create_sets_embedding_config():
-    """create() sets vector_size and embedding_model_name from config."""
+async def test_create_sets_deployment_metadata_id():
+    """create() sets vector_db_deployment_metadata_id from deployment metadata row."""
     repo = FakeCollectionRepository()
-    svc = _build_service(
-        collection_repo=repo,
-        settings=_fake_settings(EMBEDDING_DIMENSIONS=1536),
-    )
+    svc = _build_service(collection_repo=repo)
 
     collection_in = schemas.CollectionCreate(name="Embedding Test", readable_id="embed-test")
 
     await svc.create(AsyncMock(), collection_in=collection_in, ctx=_ctx())
 
-    # Verify repo.create was called with embedding fields
+    # Verify repo.create was called with vector_db_deployment_metadata_id
     create_calls = [c for c in repo._calls if c[0] == "create"]
     assert len(create_calls) == 1
     obj_in = create_calls[0][2]  # obj_in dict
-    assert obj_in["vector_size"] == 1536
-    assert "embedding_model_name" in obj_in
+    assert obj_in["vector_db_deployment_metadata_id"] == DEPLOYMENT_METADATA_ID
+    assert "vector_size" not in obj_in
+    assert "embedding_model_name" not in obj_in
 
 
 # ---------------------------------------------------------------------------

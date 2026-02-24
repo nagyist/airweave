@@ -17,11 +17,11 @@ from airweave.domains.collections.exceptions import (
 from airweave.domains.collections.protocols import (
     CollectionRepositoryProtocol,
     CollectionServiceProtocol,
+    VectorDbDeploymentMetadataRepositoryProtocol,
 )
 from airweave.domains.source_connections.protocols import SourceConnectionRepositoryProtocol
 from airweave.domains.syncs.protocols import SyncLifecycleServiceProtocol
 from airweave.models.collection import Collection
-from airweave.platform.embedders.config import get_default_provider, get_embedding_model
 
 
 class CollectionService(CollectionServiceProtocol):
@@ -34,6 +34,7 @@ class CollectionService(CollectionServiceProtocol):
         sync_lifecycle: SyncLifecycleServiceProtocol,
         event_bus: EventBus,
         settings: Settings,
+        deployment_metadata_repo: VectorDbDeploymentMetadataRepositoryProtocol,
     ) -> None:
         """Initialize with injected dependencies."""
         self._collection_repo = collection_repo
@@ -41,6 +42,7 @@ class CollectionService(CollectionServiceProtocol):
         self._sync_lifecycle = sync_lifecycle
         self._event_bus = event_bus
         self._settings = settings
+        self._deployment_metadata_repo = deployment_metadata_repo
 
     async def list(
         self,
@@ -77,14 +79,11 @@ class CollectionService(CollectionServiceProtocol):
         if existing:
             raise CollectionAlreadyExistsError(collection_in.readable_id)
 
-        # Resolve embedding config
-        vector_size = self._settings.EMBEDDING_DIMENSIONS
-        embedding_provider = get_default_provider()
-        embedding_model_name = get_embedding_model(embedding_provider)
+        # Look up the single deployment metadata row (created at startup)
+        deployment_metadata = await self._deployment_metadata_repo.get(db)
 
         collection_data = collection_in.model_dump()
-        collection_data["vector_size"] = vector_size
-        collection_data["embedding_model_name"] = embedding_model_name
+        collection_data["vector_db_deployment_metadata_id"] = deployment_metadata.id
 
         async with UnitOfWork(db) as uow:
             collection = await self._collection_repo.create(

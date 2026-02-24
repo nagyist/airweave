@@ -49,11 +49,14 @@ from airweave.domains.connections.repository import ConnectionRepository
 from airweave.domains.credentials.repository import IntegrationCredentialRepository
 from airweave.domains.entities.entity_count_repository import EntityCountRepository
 from airweave.domains.entities.registry import EntityDefinitionRegistry
+from airweave.domains.oauth.callback_service import OAuthCallbackService
+from airweave.domains.oauth.flow_service import OAuthFlowService
 from airweave.domains.oauth.oauth1_service import OAuth1Service
 from airweave.domains.oauth.oauth2_service import OAuth2Service
 from airweave.domains.oauth.repository import (
     OAuthConnectionRepository,
     OAuthCredentialRepository,
+    OAuthInitSessionRepository,
     OAuthRedirectSessionRepository,
     OAuthSourceRepository,
 )
@@ -77,6 +80,7 @@ from airweave.domains.temporal.schedule_service import TemporalScheduleService
 from airweave.domains.temporal.service import TemporalWorkflowService
 from airweave.domains.webhooks.service import WebhookServiceImpl
 from airweave.domains.webhooks.subscribers import WebhookEventSubscriber
+from airweave.platform.auth.settings import integration_settings
 from airweave.platform.temporal.client import TemporalClient
 
 
@@ -238,6 +242,30 @@ def create_container(settings: Settings) -> Container:
         settings=settings,
     )
 
+    # OAuth flow + callback services
+    # -----------------------------------------------------------------
+    init_session_repo = OAuthInitSessionRepository()
+
+    oauth_flow_svc = OAuthFlowService(
+        oauth2_service=source_deps["oauth2_service"],
+        oauth1_service=source_deps["oauth1_service"],
+        integration_settings=integration_settings,
+        init_session_repo=init_session_repo,
+        redirect_session_repo=source_deps["redirect_session_repo"],
+        settings=settings,
+    )
+
+    oauth_callback_svc = OAuthCallbackService(
+        oauth_flow_service=oauth_flow_svc,
+        init_session_repo=init_session_repo,
+        response_builder=sync_deps["response_builder"],
+        source_registry=source_deps["source_registry"],
+        sync_lifecycle=sync_deps["sync_lifecycle"],
+        sync_record_service=sync_deps["sync_record_service"],
+        temporal_workflow_service=sync_deps["temporal_workflow_service"],
+        event_bus=event_bus,
+    )
+
     # -----------------------------------------------------------------
     # Billing services
     # -----------------------------------------------------------------
@@ -265,6 +293,9 @@ def create_container(settings: Settings) -> Container:
         oauth2_service=source_deps["oauth2_service"],
         redirect_session_repo=source_deps["redirect_session_repo"],
         source_connection_service=source_connection_service,
+        oauth_flow_service=oauth_flow_svc,
+        oauth_callback_service=oauth_callback_svc,
+        init_session_repo=init_session_repo,
         source_lifecycle_service=source_deps["source_lifecycle_service"],
         endpoint_verifier=endpoint_verifier,
         webhook_service=webhook_service,

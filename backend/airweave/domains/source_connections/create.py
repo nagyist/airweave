@@ -132,7 +132,7 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
                 raise HTTPException(
                     status_code=400,
                     detail=(
-                        "OAuth browser connections cannot use sync_immediately. "
+                        "OAuth connections cannot use sync_immediately. "
                         "Sync starts after OAuth callback."
                     ),
                 )

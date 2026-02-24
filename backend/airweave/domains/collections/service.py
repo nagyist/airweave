@@ -91,8 +91,7 @@ class CollectionService(CollectionServiceProtocol):
                 db, obj_in=collection_data, ctx=ctx, uow=uow
             )
             await uow.session.flush()
-
-        result = schemas.Collection.model_validate(collection, from_attributes=True)
+            result = schemas.Collection.model_validate(collection, from_attributes=True)
 
         # Publish event
         try:
@@ -172,8 +171,11 @@ class CollectionService(CollectionServiceProtocol):
             ctx=ctx,
         )
 
+        # Snapshot before CASCADE-delete (commit expires attributes on deleted objects)
+        result = schemas.Collection.model_validate(db_obj, from_attributes=True)
+
         # CASCADE-delete the collection and all child objects
-        result = await self._collection_repo.remove(db, id=collection_id, ctx=ctx)
+        await self._collection_repo.remove(db, id=collection_id, ctx=ctx)
 
         # Publish event
         try:

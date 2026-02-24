@@ -157,9 +157,12 @@ class CollectionService(CollectionServiceProtocol):
         collection_id = db_obj.id
         organization_id = ctx.organization.id
 
+        # Snapshot while session is fresh (teardown expires all objects via db.expire_all)
+        result = schemas.Collection.model_validate(db_obj, from_attributes=True)
+
         # Collect sync IDs before CASCADE removes them
         sync_ids = await self._sc_repo.get_sync_ids_for_collection(
-            db, organization_id=organization_id, readable_collection_id=db_obj.readable_id
+            db, organization_id=organization_id, readable_collection_id=result.readable_id
         )
 
         # Cancel running workflows and wait for workers to stop
@@ -170,9 +173,6 @@ class CollectionService(CollectionServiceProtocol):
             organization_id=organization_id,
             ctx=ctx,
         )
-
-        # Snapshot before CASCADE-delete (commit expires attributes on deleted objects)
-        result = schemas.Collection.model_validate(db_obj, from_attributes=True)
 
         # CASCADE-delete the collection and all child objects
         await self._collection_repo.remove(db, id=collection_id, ctx=ctx)

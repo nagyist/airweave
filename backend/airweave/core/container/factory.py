@@ -255,6 +255,8 @@ def create_container(settings: Settings) -> Container:
         settings=settings,
     )
 
+    from airweave.domains.organizations.repository import OrganizationRepository as OrgRepo
+
     oauth_callback_svc = OAuthCallbackService(
         oauth_flow_service=oauth_flow_svc,
         init_session_repo=init_session_repo,
@@ -264,6 +266,15 @@ def create_container(settings: Settings) -> Container:
         sync_record_service=sync_deps["sync_record_service"],
         temporal_workflow_service=sync_deps["temporal_workflow_service"],
         event_bus=event_bus,
+        organization_repo=OrgRepo(),
+        source_repo=source_deps["source_repo"],
+        sc_repo=source_deps["sc_repo"],
+        credential_repo=source_deps["cred_repo"],
+        connection_repo=source_deps["conn_repo"],
+        collection_repo=source_deps["collection_repo"],
+        sync_repo=source_deps["sync_repo"],
+        sync_job_repo=source_deps["sync_job_repo"],
+        credential_encryptor=encryptor,
     )
 
     # -----------------------------------------------------------------

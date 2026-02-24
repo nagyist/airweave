@@ -662,12 +662,12 @@ class TemporalScheduleService:
         if not collection:
             raise ValueError(f"No collection found for source connection {source_connection.id}")
 
-        if not source_connection.connection_id:
-            raise ValueError(f"Source connection {source_connection.id} has no connection_id")
-        connection = await crud.connection.get(db=db, id=source_connection.connection_id, ctx=ctx)
-        if not connection:
-            raise ValueError(f"Connection {source_connection.connection_id} not found")
-        connection_schema = schemas.Connection.model_validate(connection, from_attributes=True)
+        # Get the actual Connection object (not SourceConnection!)
+        from airweave.core.source_connection_service_helpers import source_connection_helpers
+
+        connection_schema = await source_connection_helpers.get_connection_for_source_connection(
+            db=db, source_connection=source_connection, ctx=ctx
+        )
 
         sync_schema = schemas.Sync.model_validate(sync, from_attributes=True)
         collection_schema = schemas.Collection.model_validate(collection, from_attributes=True)

@@ -13,6 +13,7 @@ Key operations:
 
 import logging
 from typing import List, Optional
+from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 from uuid import UUID
 
 from fastapi import Depends, HTTPException, Path, Query, Response
@@ -23,6 +24,7 @@ from airweave.api import deps
 from airweave.api.context import ApiContext
 from airweave.api.deps import Inject
 from airweave.api.router import TrailingSlashRouter
+from airweave.core.config import settings
 from airweave.core.events.source_connection import SourceConnectionLifecycleEvent
 from airweave.core.guard_rail_service import GuardRailService
 from airweave.core.protocols import EventBus
@@ -90,11 +92,7 @@ async def oauth_callback(
     redirect_url = source_conn.auth.redirect_url
 
     if not redirect_url:
-        from airweave.core.config import settings
-
         redirect_url = settings.app_url
-
-    from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
     parsed = urlparse(redirect_url)
     query_params = parse_qs(parsed.query, keep_blank_values=True)

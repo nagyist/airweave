@@ -64,6 +64,7 @@ def _oauth2_settings():
 
 def _oauth1_settings():
     return OAuth1Settings(
+        integration_short_name="twitter",
         request_token_url="https://provider.com/request_token",
         authorization_url="https://provider.com/authorize",
         access_token_url="https://provider.com/access_token",

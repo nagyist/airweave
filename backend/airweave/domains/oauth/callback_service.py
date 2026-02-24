@@ -12,21 +12,34 @@ from uuid import UUID
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from airweave import crud, schemas
+from airweave import schemas
 from airweave.api.context import ApiContext
-from airweave.core import credentials
 from airweave.core.events.source_connection import SourceConnectionLifecycleEvent
 from airweave.core.events.sync import SyncLifecycleEvent
+from airweave.core.protocols.encryption import CredentialEncryptor
 from airweave.core.protocols.event_bus import EventBus
 from airweave.core.shared_models import AuthMethod, ConnectionStatus, SyncJobStatus
 from airweave.db.unit_of_work import UnitOfWork
+from airweave.domains.collections.protocols import CollectionRepositoryProtocol
+from airweave.domains.connections.protocols import ConnectionRepositoryProtocol
+from airweave.domains.credentials.protocols import IntegrationCredentialRepositoryProtocol
 from airweave.domains.oauth.protocols import (
     OAuthFlowServiceProtocol,
     OAuthInitSessionRepositoryProtocol,
+    OAuthSourceRepositoryProtocol,
 )
-from airweave.domains.source_connections.protocols import ResponseBuilderProtocol
+from airweave.domains.organizations.repository import OrganizationRepositoryProtocol
+from airweave.domains.source_connections.protocols import (
+    ResponseBuilderProtocol,
+    SourceConnectionRepositoryProtocol,
+)
 from airweave.domains.sources.protocols import SourceRegistryProtocol
-from airweave.domains.syncs.protocols import SyncLifecycleServiceProtocol, SyncRecordServiceProtocol
+from airweave.domains.syncs.protocols import (
+    SyncJobRepositoryProtocol,
+    SyncLifecycleServiceProtocol,
+    SyncRecordServiceProtocol,
+    SyncRepositoryProtocol,
+)
 from airweave.domains.temporal.protocols import TemporalWorkflowServiceProtocol
 from airweave.models.connection_init_session import ConnectionInitSession, ConnectionInitStatus
 from airweave.models.integration_credential import IntegrationType
@@ -59,6 +72,15 @@ class OAuthCallbackService:
         sync_record_service: SyncRecordServiceProtocol,
         temporal_workflow_service: TemporalWorkflowServiceProtocol,
         event_bus: EventBus,
+        organization_repo: OrganizationRepositoryProtocol,
+        source_repo: OAuthSourceRepositoryProtocol,
+        sc_repo: SourceConnectionRepositoryProtocol,
+        credential_repo: IntegrationCredentialRepositoryProtocol,
+        connection_repo: ConnectionRepositoryProtocol,
+        collection_repo: CollectionRepositoryProtocol,
+        sync_repo: SyncRepositoryProtocol,
+        sync_job_repo: SyncJobRepositoryProtocol,
+        credential_encryptor: CredentialEncryptor,
     ) -> None:
         self._oauth_flow_service = oauth_flow_service
         self._init_session_repo = init_session_repo
@@ -68,6 +90,15 @@ class OAuthCallbackService:
         self._sync_record_service = sync_record_service
         self._temporal_workflow_service = temporal_workflow_service
         self._event_bus = event_bus
+        self._organization_repo = organization_repo
+        self._source_repo = source_repo
+        self._sc_repo = sc_repo
+        self._credential_repo = credential_repo
+        self._connection_repo = connection_repo
+        self._collection_repo = collection_repo
+        self._sync_repo = sync_repo
+        self._sync_job_repo = sync_job_repo
+        self._credential_encryptor = credential_encryptor
 
     # ------------------------------------------------------------------
     # Public API
@@ -92,8 +123,8 @@ class OAuthCallbackService:
 
         ctx = await self._reconstruct_context(db, init_session)
 
-        source_conn_shell = await crud.source_connection.get_by_query_and_org(
-            db, ctx=ctx, connection_init_session_id=init_session.id
+        source_conn_shell = await self._sc_repo.get_by_init_session(
+            db, init_session_id=init_session.id, ctx=ctx
         )
         if not source_conn_shell:
             raise HTTPException(status_code=404, detail="Source connection shell not found")
@@ -102,7 +133,7 @@ class OAuthCallbackService:
             init_session.short_name, code, init_session.overrides, ctx
         )
 
-        source = await crud.source.get_by_short_name(db, short_name=init_session.short_name)
+        source = await self._source_repo.get_by_short_name(db, short_name=init_session.short_name)
         if source:
             try:
                 entry = self._source_registry.get(init_session.short_name)
@@ -152,8 +183,8 @@ class OAuthCallbackService:
 
         ctx = await self._reconstruct_context(db, init_session)
 
-        source_conn_shell = await crud.source_connection.get_by_query_and_org(
-            db, ctx=ctx, connection_init_session_id=init_session.id
+        source_conn_shell = await self._sc_repo.get_by_init_session(
+            db, init_session_id=init_session.id, ctx=ctx
         )
         if not source_conn_shell:
             raise HTTPException(status_code=404, detail="Source connection shell not found")
@@ -193,8 +224,8 @@ class OAuthCallbackService:
         """Reconstruct ApiContext from stored session data."""
         from airweave.core.logging import logger
 
-        organization = await crud.organization.get(
-            db, id=init_session.organization_id, skip_access_validation=True
+        organization = await self._organization_repo.get_by_id(
+            db, organization_id=init_session.organization_id, skip_access_validation=True
         )
         organization_schema = schemas.Organization.model_validate(
             organization, from_attributes=True
@@ -232,7 +263,7 @@ class OAuthCallbackService:
         ctx: ApiContext,
     ) -> Any:
         """Complete OAuth1 connection after callback."""
-        source = await crud.source.get_by_short_name(db, short_name=init_session.short_name)
+        source = await self._source_repo.get_by_short_name(db, short_name=init_session.short_name)
         if not source:
             raise HTTPException(
                 status_code=404, detail=f"Source '{init_session.short_name}' not found"
@@ -296,7 +327,7 @@ class OAuthCallbackService:
         ctx: ApiContext,
     ) -> Any:
         """Complete OAuth2 connection after callback."""
-        source = await crud.source.get_by_short_name(db, short_name=init_session.short_name)
+        source = await self._source_repo.get_by_short_name(db, short_name=init_session.short_name)
         if not source:
             raise HTTPException(
                 status_code=404, detail=f"Source '{init_session.short_name}' not found"
@@ -369,7 +400,7 @@ class OAuthCallbackService:
         auth_type_name = "OAuth1" if is_oauth1 else "OAuth2"
 
         async with UnitOfWork(db) as uow:
-            encrypted = credentials.encrypt(auth_fields)
+            encrypted = self._credential_encryptor.encrypt(auth_fields)
 
             cred_in = schemas.IntegrationCredentialCreateEncrypted(
                 name=f"{source.name} {auth_type_name} Credential",
@@ -381,7 +412,7 @@ class OAuthCallbackService:
                 encrypted_credentials=encrypted,
                 auth_config_class=source.auth_config_class,
             )
-            credential = await crud.integration_credential.create(
+            credential = await self._credential_repo.create(
                 uow.session, obj_in=cred_in, ctx=ctx, uow=uow
             )
 
@@ -395,7 +426,9 @@ class OAuthCallbackService:
                 integration_credential_id=credential.id,
                 short_name=source.short_name,
             )
-            connection = await crud.connection.create(uow.session, obj_in=conn_in, ctx=ctx, uow=uow)
+            connection = await self._connection_repo.create(
+                uow.session, obj_in=conn_in, ctx=ctx, uow=uow
+            )
 
             collection = await self._get_collection(
                 uow.session,
@@ -429,7 +462,7 @@ class OAuthCallbackService:
                     "connection_id": connection.id,
                     "is_authenticated": True,
                 }
-                source_conn = await crud.source_connection.update(
+                source_conn = await self._sc_repo.update(
                     uow.session,
                     db_obj=source_conn_shell,
                     obj_in=sc_update,
@@ -474,7 +507,7 @@ class OAuthCallbackService:
                     "connection_id": connection.id,
                     "is_authenticated": True,
                 }
-                source_conn = await crud.source_connection.update(
+                source_conn = await self._sc_repo.update(
                     uow.session,
                     db_obj=source_conn_shell,
                     obj_in=sc_update,
@@ -508,13 +541,13 @@ class OAuthCallbackService:
         source_conn_response = await self._response_builder.build_response(db, source_conn, ctx)
 
         if source_conn.sync_id:
-            sync = await crud.sync.get(db, id=source_conn.sync_id, ctx=ctx)
+            sync = await self._sync_repo.get(db, id=source_conn.sync_id, ctx=ctx)
             if sync:
-                jobs = await crud.sync_job.get_all_by_sync_id(db, sync_id=sync.id)
+                jobs = await self._sync_job_repo.get_all_by_sync_id(db, sync_id=sync.id, ctx=ctx)
                 if jobs and len(jobs) > 0:
                     sync_job = jobs[0]
                     if sync_job.status == SyncJobStatus.PENDING:
-                        collection = await crud.collection.get_by_readable_id(
+                        collection = await self._collection_repo.get_by_readable_id(
                             db, readable_id=source_conn.readable_collection_id, ctx=ctx
                         )
                         if collection:
@@ -530,8 +563,8 @@ class OAuthCallbackService:
                                 raise ValueError(
                                     f"Source connection {source_conn.id} has no connection_id"
                                 )
-                            conn_model = await crud.connection.get(
-                                db=db, id=source_conn.connection_id, ctx=ctx
+                            conn_model = await self._connection_repo.get(
+                                db, id=source_conn.connection_id, ctx=ctx
                             )
                             if not conn_model:
                                 raise ValueError(
@@ -645,14 +678,12 @@ class OAuthCallbackService:
                 ) from e
             raise HTTPException(status_code=422, detail=str(e)) from e
 
-    async def _get_collection(
-        self, db: AsyncSession, collection_id: str, ctx: ApiContext
-    ) -> schemas.Collection:
+    async def _get_collection(self, db: AsyncSession, collection_id: str, ctx: ApiContext) -> Any:
         """Get collection by readable ID."""
         if not collection_id:
             raise HTTPException(status_code=400, detail="Collection is required")
 
-        collection = await crud.collection.get_by_readable_id(
+        collection = await self._collection_repo.get_by_readable_id(
             db, readable_id=collection_id, ctx=ctx
         )
         if not collection:

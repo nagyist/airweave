@@ -16,7 +16,7 @@ from airweave.domains.embedders.exceptions import (
     EmbedderResponseError,
     EmbedderTimeoutError,
 )
-from airweave.domains.embedders.local_dense import LocalDenseEmbedder
+from airweave.domains.embedders.dense.local import LocalDenseEmbedder
 from airweave.domains.embedders.types import DenseEmbedding
 
 _DIMS = 384

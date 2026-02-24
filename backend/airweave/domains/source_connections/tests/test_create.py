@@ -18,6 +18,7 @@ from airweave.domains.source_connections.create import SourceConnectionCreationS
 from airweave.domains.source_connections.fakes.repository import FakeSourceConnectionRepository
 from airweave.domains.source_connections.fakes.response import FakeResponseBuilder
 from airweave.domains.source_connections.fakes.service import FakeSourceConnectionService
+from airweave.domains.sources.exceptions import SourceValidationError
 from airweave.domains.sources.fakes.lifecycle import FakeSourceLifecycleService
 from airweave.domains.sources.fakes.registry import FakeSourceRegistry
 from airweave.domains.sources.fakes.validation import FakeSourceValidationService
@@ -575,6 +576,27 @@ async def test_create_with_oauth_token_builds_full_payload_and_delegates():
     assert kwargs["auth_method"] == AuthenticationMethod.OAUTH_TOKEN
 
 
+async def test_create_with_oauth_token_maps_source_validation_error_to_400():
+    svc = _service(_entry())
+    svc._source_validation.validate_config = MagicMock(return_value={"cfg": "x"})
+    svc._source_lifecycle.validate = AsyncMock(
+        side_effect=SourceValidationError("notion", "invalid token")
+    )
+
+    obj_in = SourceConnectionCreate(
+        short_name="notion",
+        readable_collection_id="col-1",
+        authentication=OAuthTokenAuthentication(access_token="invalid_token_12345"),
+    )
+    with pytest.raises(HTTPException) as exc_info:
+        await svc._create_with_oauth_token(AsyncMock(), obj_in=obj_in, entry=_entry(), ctx=_ctx())
+
+    assert exc_info.value.status_code == 400
+    detail = str(exc_info.value.detail).lower()
+    assert "token" in detail
+    assert "invalid" in detail
+
+
 async def test_create_with_auth_provider_requires_provider_auth():
     svc = _service(_entry())
     obj_in = SourceConnectionCreate(short_name="github", readable_collection_id="col-1")
@@ -643,6 +665,37 @@ async def test_create_with_oauth_browser_rejects_non_oauth2_settings(monkeypatch
     obj_in = SourceConnectionCreate(short_name="github", readable_collection_id="col-1")
     with pytest.raises(HTTPException, match="is not OAuth2"):
         await svc._create_with_oauth_browser(AsyncMock(), obj_in=obj_in, entry=entry, ctx=_ctx())
+
+
+async def test_create_with_oauth_browser_maps_oauth2_value_error_to_422(monkeypatch):
+    entry = _entry(oauth_type="access_only")
+    svc = _service(entry)
+    svc._source_validation.validate_config = MagicMock(return_value={})
+    svc._extract_template_configs = MagicMock(return_value=None)
+    svc._oauth2_service.generate_auth_url_with_redirect = AsyncMock(
+        side_effect=ValueError("Template config fields missing or empty: subdomain")
+    )
+    from airweave.platform.auth.schemas import OAuth2Settings
+
+    monkeypatch.setattr(
+        "airweave.domains.source_connections.create.integration_settings.get_by_short_name",
+        AsyncMock(
+            return_value=OAuth2Settings(
+                integration_short_name="github",
+                url="https://provider/authorize",
+                backend_url="https://provider/token",
+                grant_type="authorization_code",
+                client_id="platform-client-id",
+                client_secret="platform-client-secret",
+                content_type="application/x-www-form-urlencoded",
+                client_credential_location="payload",
+            )
+        ),
+    )
+    obj_in = SourceConnectionCreate(short_name="github", readable_collection_id="col-1")
+    with pytest.raises(HTTPException) as exc_info:
+        await svc._create_with_oauth_browser(AsyncMock(), obj_in=obj_in, entry=entry, ctx=_ctx())
+    assert exc_info.value.status_code == 422
 
 
 async def test_create_with_direct_auth_requires_direct_auth():

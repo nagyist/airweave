@@ -29,6 +29,7 @@ from airweave.domains.source_connections.protocols import (
     SourceConnectionCreateServiceProtocol,
     SourceConnectionRepositoryProtocol,
 )
+from airweave.domains.sources.exceptions import SourceCreationError, SourceValidationError
 from airweave.domains.sources.protocols import (
     SourceLifecycleServiceProtocol,
     SourceRegistryProtocol,
@@ -188,11 +189,14 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
             obj_in.short_name, obj_in.config, ctx
         )
 
-        await self._source_lifecycle.validate(
-            short_name=obj_in.short_name,
-            credentials=validated_auth,
-            config=validated_config,
-        )
+        try:
+            await self._source_lifecycle.validate(
+                short_name=obj_in.short_name,
+                credentials=validated_auth,
+                config=validated_config,
+            )
+        except (SourceCreationError, SourceValidationError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
         auth_fields = validated_auth.model_dump()
         return await self._create_authenticated_connection(
             db,
@@ -216,11 +220,14 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
             obj_in.short_name, obj_in.config, ctx
         )
 
-        await self._source_lifecycle.validate(
-            short_name=obj_in.short_name,
-            credentials=obj_in.authentication.access_token,
-            config=validated_config,
-        )
+        try:
+            await self._source_lifecycle.validate(
+                short_name=obj_in.short_name,
+                credentials=obj_in.authentication.access_token,
+                config=validated_config,
+            )
+        except (SourceCreationError, SourceValidationError) as exc:
+            raise HTTPException(status_code=400, detail=f"OAuth token is invalid: {exc}") from exc
 
         token_payload: dict[str, Any] = {
             "access_token": obj_in.authentication.access_token,
@@ -284,9 +291,12 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
         validated_config = self._source_validation.validate_config(
             obj_in.short_name, obj_in.config, ctx
         )
+        connection_schema: Optional[schemas.Connection] = None
+        collection_schema: Optional[schemas.Collection] = None
 
         async with UnitOfWork(db) as uow:
             collection = await self._get_collection(uow.session, obj_in.readable_collection_id, ctx)
+            collection_schema = schemas.Collection.model_validate(collection, from_attributes=True)
             connection = await self._create_connection_record(
                 uow.session,
                 name=obj_in.name,
@@ -296,6 +306,7 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
                 uow=uow,
             )
             await uow.session.flush()
+            connection_schema = schemas.Connection.model_validate(connection, from_attributes=True)
             destination_ids = await self._sync_record_service.resolve_destination_ids(
                 uow.session, ctx
             )
@@ -337,10 +348,12 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
 
         response = await self._response_builder.build_response(db, source_conn, ctx)
         if sync_result and sync_result.sync_job and obj_in.sync_immediately:
+            if connection_schema is None or collection_schema is None:
+                raise RuntimeError("Connection or collection schema not materialized")
             await self._trigger_sync_workflow(
-                connection=schemas.Connection.model_validate(connection, from_attributes=True),
+                connection=connection_schema,
                 sync_result=sync_result,
-                collection=schemas.Collection.model_validate(collection, from_attributes=True),
+                collection=collection_schema,
                 source_connection_id=response.id,
                 ctx=ctx,
             )
@@ -357,7 +370,10 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
         validated_config = self._source_validation.validate_config(
             obj_in.short_name, obj_in.config, ctx
         )
-        template_configs = self._extract_template_configs(entry, validated_config)
+        try:
+            template_configs = self._extract_template_configs(entry, validated_config)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
         state = secrets.token_urlsafe(24)
         callback_url = f"{core_settings.api_url}/source-connections/callback"
 
@@ -398,16 +414,19 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
                 raise HTTPException(
                     status_code=400, detail=f"Source '{obj_in.short_name}' is not OAuth2"
                 )
-            (
-                provider_auth_url,
-                code_verifier,
-            ) = await self._oauth2_service.generate_auth_url_with_redirect(
-                oauth_settings,
-                redirect_uri=callback_url,
-                client_id=oauth_auth.client_id or None,
-                state=state,
-                template_configs=template_configs,
-            )
+            try:
+                (
+                    provider_auth_url,
+                    code_verifier,
+                ) = await self._oauth2_service.generate_auth_url_with_redirect(
+                    oauth_settings,
+                    redirect_uri=callback_url,
+                    client_id=oauth_auth.client_id or None,
+                    state=state,
+                    template_configs=template_configs,
+                )
+            except ValueError as exc:
+                raise HTTPException(status_code=422, detail=str(exc)) from exc
             if code_verifier:
                 additional_overrides["code_verifier"] = code_verifier
 
@@ -552,8 +571,11 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
         auth_method: AuthenticationMethod,
         ctx: ApiContext,
     ) -> SourceConnectionSchema:
+        connection_schema: Optional[schemas.Connection] = None
+        collection_schema: Optional[schemas.Collection] = None
         async with UnitOfWork(db) as uow:
             collection = await self._get_collection(uow.session, obj_in.readable_collection_id, ctx)
+            collection_schema = schemas.Collection.model_validate(collection, from_attributes=True)
             credential = await self._create_credential_record(
                 uow.session,
                 short_name=obj_in.short_name,
@@ -575,6 +597,7 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
                 uow=uow,
             )
             await uow.session.flush()
+            connection_schema = schemas.Connection.model_validate(connection, from_attributes=True)
             destination_ids = await self._sync_record_service.resolve_destination_ids(
                 uow.session, ctx
             )
@@ -613,10 +636,12 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
 
         response = await self._response_builder.build_response(db, source_conn, ctx)
         if sync_result and sync_result.sync_job and obj_in.sync_immediately:
+            if connection_schema is None or collection_schema is None:
+                raise RuntimeError("Connection or collection schema not materialized")
             await self._trigger_sync_workflow(
-                connection=schemas.Connection.model_validate(connection, from_attributes=True),
+                connection=connection_schema,
                 sync_result=sync_result,
-                collection=schemas.Collection.model_validate(collection, from_attributes=True),
+                collection=collection_schema,
                 source_connection_id=response.id,
                 ctx=ctx,
             )

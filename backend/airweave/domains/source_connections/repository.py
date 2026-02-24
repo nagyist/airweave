@@ -1,6 +1,6 @@
 """Source connection repository wrapping crud.source_connection."""
 
-from typing import List, Optional
+from typing import Any, List, Optional
 from uuid import UUID
 
 from sqlalchemy import select
@@ -9,6 +9,7 @@ from sqlalchemy.orm import selectinload
 
 from airweave import crud
 from airweave.api.context import ApiContext
+from airweave.db.unit_of_work import UnitOfWork
 from airweave.domains.source_connections.protocols import SourceConnectionRepositoryProtocol
 from airweave.domains.source_connections.types import ScheduleInfo, SourceConnectionStats
 from airweave.models.connection_init_session import ConnectionInitSession
@@ -61,3 +62,46 @@ class SourceConnectionRepository(SourceConnectionRepositoryProtocol):
             db, ctx=ctx, collection_id=collection_id, skip=skip, limit=limit
         )
         return [SourceConnectionStats.from_dict(d) for d in raw]
+
+    async def get_sync_ids_for_collection(
+        self,
+        db: AsyncSession,
+        *,
+        organization_id: UUID,
+        readable_collection_id: str,
+    ) -> List[UUID]:
+        """Get all sync IDs for source connections in a collection."""
+        rows = await db.execute(
+            select(SourceConnection.sync_id)
+            .where(
+                SourceConnection.organization_id == organization_id,
+                SourceConnection.readable_collection_id == readable_collection_id,
+                SourceConnection.sync_id.is_not(None),
+            )
+            .distinct()
+        )
+        return [row[0] for row in rows if row[0]]
+
+    async def update(
+        self,
+        db: AsyncSession,
+        *,
+        db_obj: SourceConnection,
+        obj_in: dict[str, Any],
+        ctx: ApiContext,
+        uow: Optional[UnitOfWork] = None,
+    ) -> SourceConnection:
+        """Update a source connection."""
+        return await crud.source_connection.update(
+            db, db_obj=db_obj, obj_in=obj_in, ctx=ctx, uow=uow
+        )
+
+    async def remove(
+        self,
+        db: AsyncSession,
+        *,
+        id: UUID,
+        ctx: ApiContext,
+    ) -> Optional[SourceConnection]:
+        """Delete a source connection by ID."""
+        return await crud.source_connection.remove(db, id=id, ctx=ctx)

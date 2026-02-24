@@ -44,6 +44,7 @@ from airweave.core.redis_client import redis_client
 from airweave.db.session import health_check_engine
 from airweave.domains.auth_provider.registry import AuthProviderRegistry
 from airweave.domains.collections.repository import CollectionRepository
+from airweave.domains.collections.service import CollectionService
 from airweave.domains.connections.repository import ConnectionRepository
 from airweave.domains.credentials.repository import IntegrationCredentialRepository
 from airweave.domains.entities.entity_count_repository import EntityCountRepository
@@ -56,12 +57,15 @@ from airweave.domains.oauth.repository import (
     OAuthRedirectSessionRepository,
     OAuthSourceRepository,
 )
+from airweave.domains.source_connections.delete import SourceConnectionDeletionService
 from airweave.domains.source_connections.repository import SourceConnectionRepository
 from airweave.domains.source_connections.response import ResponseBuilder
 from airweave.domains.source_connections.service import SourceConnectionService
+from airweave.domains.source_connections.update import SourceConnectionUpdateService
 from airweave.domains.sources.lifecycle import SourceLifecycleService
 from airweave.domains.sources.registry import SourceRegistry
 from airweave.domains.sources.service import SourceService
+from airweave.domains.sources.validation import SourceValidationService
 from airweave.domains.syncs.sync_cursor_repository import SyncCursorRepository
 from airweave.domains.syncs.sync_job_repository import SyncJobRepository
 from airweave.domains.syncs.sync_job_service import SyncJobService
@@ -165,6 +169,32 @@ def create_container(settings: Settings) -> Container:
 
     # SourceConnectionService is built here (not in _create_source_services)
     # because it needs sync_lifecycle which is built in _create_sync_services.
+    deletion_service = SourceConnectionDeletionService(
+        sc_repo=source_deps["sc_repo"],
+        collection_repo=source_deps["collection_repo"],
+        sync_job_repo=source_deps["sync_job_repo"],
+        sync_lifecycle=sync_deps["sync_lifecycle"],
+        response_builder=sync_deps["response_builder"],
+        temporal_workflow_service=sync_deps["temporal_workflow_service"],
+    )
+    source_validation = SourceValidationService(
+        source_registry=source_deps["source_registry"],
+    )
+    encryptor = FernetCredentialEncryptor(settings.ENCRYPTION_KEY)
+
+    update_service = SourceConnectionUpdateService(
+        sc_repo=source_deps["sc_repo"],
+        collection_repo=source_deps["collection_repo"],
+        connection_repo=source_deps["conn_repo"],
+        cred_repo=source_deps["cred_repo"],
+        sync_repo=source_deps["sync_repo"],
+        sync_record_service=sync_deps["sync_record_service"],
+        source_service=source_deps["source_service"],
+        source_validation=source_validation,
+        credential_encryptor=encryptor,
+        response_builder=sync_deps["response_builder"],
+        temporal_schedule_service=sync_deps["temporal_schedule_service"],
+    )
     source_connection_service = SourceConnectionService(
         sc_repo=source_deps["sc_repo"],
         collection_repo=source_deps["collection_repo"],
@@ -174,6 +204,19 @@ def create_container(settings: Settings) -> Container:
         auth_provider_registry=source_deps["auth_provider_registry"],
         response_builder=sync_deps["response_builder"],
         sync_lifecycle=sync_deps["sync_lifecycle"],
+        update_service=update_service,
+        deletion_service=deletion_service,
+    )
+
+    # -----------------------------------------------------------------
+    # Collection service (needs collection_repo, sc_repo, sync_lifecycle)
+    # -----------------------------------------------------------------
+    collection_service = CollectionService(
+        collection_repo=source_deps["collection_repo"],
+        sc_repo=source_deps["sc_repo"],
+        sync_lifecycle=sync_deps["sync_lifecycle"],
+        event_bus=event_bus,
+        settings=settings,
     )
 
     # -----------------------------------------------------------------
@@ -184,6 +227,7 @@ def create_container(settings: Settings) -> Container:
     return Container(
         billing_service=billing_services["billing_service"],
         billing_webhook=billing_services["billing_webhook"],
+        collection_service=collection_service,
         health=health,
         event_bus=event_bus,
         webhook_publisher=svix_adapter,
@@ -369,7 +413,6 @@ def _create_source_services(settings: Settings) -> dict:
     collection_repo = CollectionRepository()
     conn_repo = ConnectionRepository()
     cred_repo = IntegrationCredentialRepository()
-    entity_count_repo = EntityCountRepository()
     sync_repo = SyncRepository()
     sync_cursor_repo = SyncCursorRepository()
     sync_job_repo = SyncJobRepository()
@@ -381,15 +424,6 @@ def _create_source_services(settings: Settings) -> dict:
         cred_repo=OAuthCredentialRepository(),
         encryptor=FernetCredentialEncryptor(settings.ENCRYPTION_KEY),
         source_repo=OAuthSourceRepository(),
-    )
-
-    response_builder = ResponseBuilder(
-        sc_repo=sc_repo,
-        connection_repo=conn_repo,
-        credential_repo=cred_repo,
-        source_registry=source_registry,
-        entity_count_repo=entity_count_repo,
-        sync_job_repo=sync_job_repo,
     )
 
     source_service = SourceService(
@@ -510,6 +544,7 @@ def _create_sync_services(
     sync_record_service = SyncRecordService(
         sync_repo=sync_repo,
         sync_job_repo=sync_job_repo,
+        connection_repo=conn_repo,
     )
 
     response_builder = ResponseBuilder(

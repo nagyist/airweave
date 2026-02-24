@@ -431,6 +431,7 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
                 additional_overrides["code_verifier"] = code_verifier
 
         async with UnitOfWork(db) as uow:
+            collection = await self._get_collection(uow.session, obj_in.readable_collection_id, ctx)
             source_conn = await self._sc_repo.create(
                 uow.session,
                 obj_in={
@@ -439,7 +440,7 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
                     "short_name": obj_in.short_name,
                     "config_fields": validated_config,
                     "connection_id": None,
-                    "readable_collection_id": obj_in.readable_collection_id,
+                    "readable_collection_id": collection.readable_id,
                     "sync_id": None,
                     "is_authenticated": False,
                 },

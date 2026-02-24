@@ -231,6 +231,7 @@ async def test_create_oauth2_init_session_contract(monkeypatch):
     svc = _service(entry)
     svc._source_validation.validate_config = MagicMock(return_value={"instance_url": "acme"})
     svc._extract_template_configs = MagicMock(return_value={"instance_url": "acme"})
+    svc._collection_repo.seed_readable("col-1", MagicMock(readable_id="col-1"))
     svc._oauth2_service.generate_auth_url_with_redirect = AsyncMock(
         return_value=("https://provider/auth", "verifier-123")
     )
@@ -305,6 +306,7 @@ async def test_create_oauth1_init_session_contract(monkeypatch):
     entry = _entry(oauth_type="oauth1")
     svc = _service(entry)
     svc._source_validation.validate_config = MagicMock(return_value={})
+    svc._collection_repo.seed_readable("col-1", MagicMock(readable_id="col-1"))
     svc._oauth1_service.get_request_token = AsyncMock(
         return_value=SimpleNamespace(oauth_token="req-token", oauth_token_secret="req-secret")
     )
@@ -696,6 +698,36 @@ async def test_create_with_oauth_browser_maps_oauth2_value_error_to_422(monkeypa
     with pytest.raises(HTTPException) as exc_info:
         await svc._create_with_oauth_browser(AsyncMock(), obj_in=obj_in, entry=entry, ctx=_ctx())
     assert exc_info.value.status_code == 422
+
+
+async def test_create_with_oauth_browser_rejects_missing_collection(monkeypatch):
+    entry = _entry(oauth_type="access_only")
+    svc = _service(entry)
+    svc._source_validation.validate_config = MagicMock(return_value={})
+    svc._extract_template_configs = MagicMock(return_value=None)
+    svc._oauth2_service.generate_auth_url_with_redirect = AsyncMock(
+        return_value=("https://provider/auth", "verifier-123")
+    )
+    from airweave.platform.auth.schemas import OAuth2Settings
+
+    monkeypatch.setattr(
+        "airweave.domains.source_connections.create.integration_settings.get_by_short_name",
+        AsyncMock(
+            return_value=OAuth2Settings(
+                integration_short_name="github",
+                url="https://provider/authorize",
+                backend_url="https://provider/token",
+                grant_type="authorization_code",
+                client_id="platform-client-id",
+                client_secret="platform-client-secret",
+                content_type="application/x-www-form-urlencoded",
+                client_credential_location="payload",
+            )
+        ),
+    )
+    obj_in = SourceConnectionCreate(short_name="github", readable_collection_id="missing-col")
+    with pytest.raises(NotFoundException, match="Collection not found"):
+        await svc._create_with_oauth_browser(AsyncMock(), obj_in=obj_in, entry=entry, ctx=_ctx())
 
 
 async def test_create_with_direct_auth_requires_direct_auth():

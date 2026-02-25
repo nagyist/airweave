@@ -361,5 +361,8 @@ class OAuthCallbackServiceProtocol(Protocol):
         oauth_token: str,
         oauth_verifier: str,
     ) -> SourceConnectionSchema:
-        """Complete OAuth1 callback: exchange verifier, wire credential + connection, trigger sync."""
+        """Complete OAuth1 callback.
+
+        Exchange verifier, wire credential + connection, trigger sync.
+        """
         ...

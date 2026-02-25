@@ -359,9 +359,20 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         state = secrets.token_urlsafe(24)
-        client_id, client_secret, oauth_client_mode = self._extract_oauth_client_credentials(
-            obj_in.authentication
-        )
+
+        nested_client_id = oauth_auth.client_id
+        nested_client_secret = oauth_auth.client_secret
+        nested_consumer_key = oauth_auth.consumer_key
+        nested_consumer_secret = oauth_auth.consumer_secret
+
+        client_id = nested_client_id or nested_consumer_key
+        client_secret = nested_client_secret or nested_consumer_secret
+        if (client_id and not client_secret) or (client_secret and not client_id):
+            raise HTTPException(
+                status_code=422,
+                detail="Custom OAuth requires both client_id and client_secret or neither",
+            )
+        oauth_client_mode = "byoc_nested" if (client_id and client_secret) else "platform_default"
 
         additional_overrides: dict[str, Any] = {}
         if entry.oauth_type == SourceOAuthType.OAUTH1.value:
@@ -409,16 +420,31 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
                 uow,
             )
             await uow.session.flush()
-            init_session = await self._create_init_session(
+            payload = obj_in.model_dump(
+                exclude={
+                    "client_id",
+                    "client_secret",
+                    "token_inject",
+                    "redirect_url",
+                    "auth_mode",
+                    "custom_client",
+                    "auth_method",
+                    "authentication",
+                },
+                exclude_none=True,
+            )
+            init_session = await self._oauth_flow_service.create_init_session(
                 uow.session,
-                obj_in=obj_in,
+                short_name=obj_in.short_name,
                 state=state,
+                payload=payload,
                 ctx=ctx,
                 uow=uow,
                 redirect_session_id=redirect_session_id,
                 client_id=client_id,
                 client_secret=client_secret,
                 oauth_client_mode=oauth_client_mode,
+                redirect_url=obj_in.redirect_url,
                 template_configs=template_configs,
                 additional_overrides=additional_overrides,
             )
@@ -442,82 +468,6 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
             uow=uow,
         )
         return redirect_session_id
-
-    async def _create_init_session(
-        self,
-        db: AsyncSession,
-        *,
-        obj_in: SourceConnectionCreate,
-        state: str,
-        ctx: ApiContext,
-        uow: UnitOfWork,
-        redirect_session_id: Optional[UUID] = None,
-        client_id: Optional[str] = None,
-        client_secret: Optional[str] = None,
-        oauth_client_mode: Optional[str] = None,
-        template_configs: Optional[dict[str, Any]] = None,
-        additional_overrides: Optional[dict[str, Any]] = None,
-    ):
-        """Persist OAuth init session payload used by callback completion."""
-        if client_id is None and client_secret is None and oauth_client_mode is None:
-            auth = obj_in.authentication
-            if auth is not None and not isinstance(auth, OAuthBrowserAuthentication):
-                raise HTTPException(status_code=400, detail="OAuth browser authentication expected")
-            client_id, client_secret, oauth_client_mode = self._extract_oauth_client_credentials(
-                auth
-            )
-
-        payload = obj_in.model_dump(
-            exclude={
-                "client_id",
-                "client_secret",
-                "token_inject",
-                "redirect_url",
-                "auth_mode",
-                "custom_client",
-                "auth_method",
-                "authentication",
-            },
-            exclude_none=True,
-        )
-
-        return await self._oauth_flow_service.create_init_session(
-            db,
-            short_name=obj_in.short_name,
-            state=state,
-            payload=payload,
-            ctx=ctx,
-            uow=uow,
-            redirect_session_id=redirect_session_id,
-            client_id=client_id,
-            client_secret=client_secret,
-            oauth_client_mode=oauth_client_mode,
-            redirect_url=obj_in.redirect_url,
-            template_configs=template_configs,
-            additional_overrides=additional_overrides,
-        )
-
-    @staticmethod
-    def _extract_oauth_client_credentials(
-        auth: Optional[OAuthBrowserAuthentication],
-    ) -> tuple[Optional[str], Optional[str], Optional[str]]:
-        """Extract custom OAuth client credentials and mode from browser auth payload."""
-        nested_client_id = auth.client_id if auth is not None else None
-        nested_client_secret = auth.client_secret if auth is not None else None
-        nested_consumer_key = auth.consumer_key if auth is not None else None
-        nested_consumer_secret = auth.consumer_secret if auth is not None else None
-
-        client_id = nested_client_id or nested_consumer_key
-        client_secret = nested_client_secret or nested_consumer_secret
-        if (client_id and not client_secret) or (client_secret and not client_id):
-            raise HTTPException(
-                status_code=422,
-                detail="Custom OAuth requires both client_id and client_secret or neither",
-            )
-
-        if client_id and client_secret:
-            return client_id, client_secret, "byoc_nested"
-        return None, None, "platform_default"
 
     async def _create_authenticated_connection(
         self,
@@ -714,10 +664,7 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
         config_class = entry.config_ref
         if not config_class:
             return None
-        try:
-            template_fields = config_class.get_template_config_fields()
-        except AttributeError:
-            return None
+        template_fields = config_class.get_template_config_fields()
         if not template_fields:
             return None
         try:

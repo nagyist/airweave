@@ -4,10 +4,9 @@ Replaces the legacy source_connection_service callback methods and
 source_connection_service_helpers completion logic with proper DI.
 """
 
-import uuid as uuid_mod
 from collections.abc import Mapping
-from typing import Any, Dict, Optional
-from uuid import UUID
+from typing import Any, Dict
+from uuid import UUID, uuid4
 
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -83,6 +82,7 @@ class OAuthCallbackService:
         sync_job_repo: SyncJobRepositoryProtocol,
         credential_encryptor: CredentialEncryptor,
     ) -> None:
+        """Store callback orchestration dependencies."""
         self._oauth_flow_service = oauth_flow_service
         self._init_session_repo = init_session_repo
         self._response_builder = response_builder
@@ -221,7 +221,7 @@ class OAuthCallbackService:
             organization, from_attributes=True
         )
 
-        request_id = str(uuid_mod.uuid4())
+        request_id = str(uuid4())
 
         base_logger = logger.with_context(
             request_id=request_id,
@@ -665,37 +665,18 @@ class OAuthCallbackService:
         except KeyError:
             return {}
 
+        if not isinstance(config_fields, Mapping):
+            raise HTTPException(status_code=422, detail="Invalid config fields: expected object")
+
+        payload = dict(config_fields)
+
         if not entry.config_ref:
-            if isinstance(config_fields, Mapping):
-                return dict(config_fields)
-            if hasattr(config_fields, "model_dump"):
-                return config_fields.model_dump()
-            return {}
+            return payload
 
         try:
-            if isinstance(config_fields, Mapping):
-                payload = dict(config_fields)
-            elif hasattr(config_fields, "model_dump"):
-                payload = config_fields.model_dump()
-            elif hasattr(config_fields, "dict"):
-                payload = config_fields.dict()
-            elif hasattr(config_fields, "values"):
-                v = config_fields.values
-                payload = dict(v) if isinstance(v, Mapping) else v
-            else:
-                payload = config_fields
-
             config_class = entry.config_ref
-            if hasattr(config_class, "model_validate"):
-                model = config_class.model_validate(payload)
-            else:
-                model = config_class(**payload)
-
-            if hasattr(model, "model_dump"):
-                return model.model_dump()
-            if hasattr(model, "dict"):
-                return model.dict()
-            return dict(model) if isinstance(model, dict) else payload
+            model = config_class.model_validate(payload)
+            return model.model_dump()
 
         except Exception as e:
             from pydantic import ValidationError

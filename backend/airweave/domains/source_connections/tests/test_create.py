@@ -271,7 +271,6 @@ async def test_create_oauth2_init_session_contract(monkeypatch):
         return uuid4()
 
     monkeypatch.setattr(svc, "_create_redirect_session", _fake_create_redirect_session)
-    svc._oauth_flow_service.create_init_session = AsyncMock(return_value=MagicMock(id=uuid4()))
 
     class _FakeUOW:
         def __init__(self, db):
@@ -299,7 +298,7 @@ async def test_create_oauth2_init_session_contract(monkeypatch):
     )
     await svc._create_with_oauth_browser(db, obj_in=obj_in, entry=entry, ctx=_ctx())
 
-    captured.update(svc._oauth_flow_service.create_init_session.call_args.kwargs)
+    captured.update(svc._oauth_flow_service._last_create_init_session_kwargs)
 
     assert captured["template_configs"] == {"instance_url": "acme"}
     assert captured["additional_overrides"]["code_verifier"] == "verifier-123"
@@ -334,7 +333,6 @@ async def test_create_oauth1_init_session_contract(monkeypatch):
         return uuid4()
 
     monkeypatch.setattr(svc, "_create_redirect_session", _fake_create_redirect_session)
-    svc._oauth_flow_service.create_init_session = AsyncMock(return_value=MagicMock(id=uuid4()))
 
     class _FakeUOW:
         def __init__(self, db):
@@ -365,7 +363,7 @@ async def test_create_oauth1_init_session_contract(monkeypatch):
     )
     await svc._create_with_oauth_browser(db, obj_in=obj_in, entry=entry, ctx=_ctx())
 
-    captured.update(svc._oauth_flow_service.create_init_session.call_args.kwargs)
+    captured.update(svc._oauth_flow_service._last_create_init_session_kwargs)
 
     overrides = captured["additional_overrides"]
     assert overrides["oauth_token"] == "req-token"
@@ -725,12 +723,16 @@ async def test_create_with_oauth_browser_rejects_partial_custom_credentials():
         OAuthBrowserAuthentication(client_id="only-id")
 
 
+async def test_create_with_oauth_browser_rejects_empty_client_secret():
+    with pytest.raises(ValidationError, match="requires both client_id and client_secret"):
+        OAuthBrowserAuthentication(client_id="id", client_secret="")
+
+
 async def test_create_with_oauth_browser_sets_platform_default_overrides(monkeypatch):
     svc = _service(_entry())
     svc._source_validation.validate_config = MagicMock(return_value={})
     svc._collection_repo.seed_readable("col-1", MagicMock(readable_id="col-1"))
     svc._oauth_flow_service.initiate_oauth2 = AsyncMock(return_value=("https://provider/auth", None))
-    svc._oauth_flow_service.create_init_session = AsyncMock(return_value=SimpleNamespace(id=uuid4()))
     svc._sc_repo.create = AsyncMock(
         return_value=MagicMock(id=uuid4(), connection_init_session_id=None, is_authenticated=False)
     )
@@ -759,7 +761,7 @@ async def test_create_with_oauth_browser_sets_platform_default_overrides(monkeyp
     obj_in = SourceConnectionCreate(short_name="github", readable_collection_id="col-1")
     await svc._create_with_oauth_browser(db, obj_in=obj_in, entry=_entry(), ctx=_ctx())
 
-    kwargs = svc._oauth_flow_service.create_init_session.call_args.kwargs
+    kwargs = svc._oauth_flow_service._last_create_init_session_kwargs
     assert kwargs["oauth_client_mode"] == "platform_default"
     assert kwargs["client_id"] is None
     assert kwargs["client_secret"] is None
@@ -780,7 +782,6 @@ async def test_create_with_oauth_browser_sets_byoc_nested_for_oauth1(monkeypatch
             },
         )
     )
-    svc._oauth_flow_service.create_init_session = AsyncMock(return_value=SimpleNamespace(id=uuid4()))
     svc._sc_repo.create = AsyncMock(
         return_value=MagicMock(id=uuid4(), connection_init_session_id=None, is_authenticated=False)
     )
@@ -814,7 +815,7 @@ async def test_create_with_oauth_browser_sets_byoc_nested_for_oauth1(monkeypatch
     )
     await svc._create_with_oauth_browser(db, obj_in=obj_in, entry=_entry(oauth_type="oauth1"), ctx=_ctx())
 
-    kwargs = svc._oauth_flow_service.create_init_session.call_args.kwargs
+    kwargs = svc._oauth_flow_service._last_create_init_session_kwargs
     assert kwargs["oauth_client_mode"] == "byoc_nested"
     assert kwargs["client_id"] == "ck"
     assert kwargs["client_secret"] == "cs"

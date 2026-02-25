@@ -178,6 +178,20 @@ class TestInitiateOAuth2:
         call_kwargs = oauth2_svc.generate_auth_url_with_redirect.call_args
         assert call_kwargs.kwargs["redirect_uri"] == "https://custom-api.com/source-connections/callback"
 
+    async def test_value_error_from_oauth2_service_maps_to_422(self):
+        oauth2_svc = AsyncMock()
+        oauth2_svc.generate_auth_url_with_redirect = AsyncMock(
+            side_effect=ValueError("bad template config")
+        )
+        int_settings = AsyncMock()
+        int_settings.get_by_short_name = AsyncMock(return_value=_oauth2_settings())
+
+        svc = _service(oauth2_service=oauth2_svc, integration_settings=int_settings)
+        with pytest.raises(HTTPException) as exc:
+            await svc.initiate_oauth2("github", "state", ctx=_ctx())
+        assert exc.value.status_code == 422
+        assert "bad template config" in exc.value.detail
+
 
 # ---------------------------------------------------------------------------
 # initiate_oauth1
@@ -402,12 +416,9 @@ class TestCreateInitSession:
         assert obj_in["organization_id"] == ctx.organization.id
         assert obj_in["payload"] == {"name": "test"}
 
-    async def test_redirect_url_falls_back_to_app_url(self):
+    async def test_redirect_url_defaults_to_none_when_not_provided(self):
         init_repo = FakeOAuthInitSessionRepository()
-        svc = _service(
-            init_session_repo=init_repo,
-            settings=_settings(app_url="https://my-app.com"),
-        )
+        svc = _service(init_session_repo=init_repo)
         db = AsyncMock()
         uow = MagicMock()
 
@@ -421,7 +432,7 @@ class TestCreateInitSession:
         )
 
         _, obj_in = init_repo._calls[0]
-        assert obj_in["overrides"]["redirect_url"] == "https://my-app.com"
+        assert obj_in["overrides"]["redirect_url"] is None
 
 
 # ---------------------------------------------------------------------------

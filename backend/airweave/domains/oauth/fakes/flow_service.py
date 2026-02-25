@@ -19,6 +19,9 @@ class FakeOAuthFlowService:
         self._calls: List[Tuple[str, ...]] = []
         self._oauth2_token_response: Optional[OAuth2TokenResponse] = None
         self._oauth1_token_response: Optional[OAuth1TokenResponse] = None
+        self._last_create_init_session_kwargs: Dict[str, Any] = {}
+        self._last_initiate_oauth2_kwargs: Dict[str, Any] = {}
+        self._last_initiate_oauth1_kwargs: Dict[str, Any] = {}
         self._auth_url: str = "https://provider.example.com/auth"
         self._code_verifier: Optional[str] = "fake_verifier"
         self._oauth1_overrides: Dict[str, str] = {
@@ -44,6 +47,12 @@ class FakeOAuthFlowService:
         ctx: ApiContext,
     ) -> Tuple[str, Optional[str]]:
         self._calls.append(("initiate_oauth2", short_name, state))
+        self._last_initiate_oauth2_kwargs = {
+            "short_name": short_name,
+            "state": state,
+            "client_id": client_id,
+            "template_configs": template_configs,
+        }
         return self._auth_url, self._code_verifier
 
     async def initiate_oauth1(
@@ -55,6 +64,11 @@ class FakeOAuthFlowService:
         ctx: ApiContext,
     ) -> Tuple[str, Dict[str, str]]:
         self._calls.append(("initiate_oauth1", short_name))
+        self._last_initiate_oauth1_kwargs = {
+            "short_name": short_name,
+            "consumer_key": consumer_key,
+            "consumer_secret": consumer_secret,
+        }
         return self._auth_url, self._oauth1_overrides
 
     async def complete_oauth2_callback(
@@ -100,6 +114,18 @@ class FakeOAuthFlowService:
         additional_overrides: Optional[Dict[str, Any]] = None,
     ) -> Any:
         self._calls.append(("create_init_session", short_name, state))
+        self._last_create_init_session_kwargs = {
+            "short_name": short_name,
+            "state": state,
+            "payload": payload,
+            "redirect_session_id": redirect_session_id,
+            "client_id": client_id,
+            "client_secret": client_secret,
+            "oauth_client_mode": oauth_client_mode,
+            "redirect_url": redirect_url,
+            "template_configs": template_configs,
+            "additional_overrides": additional_overrides,
+        }
         return type("InitSession", (), {"id": uuid4()})()
 
     async def create_proxy_url(

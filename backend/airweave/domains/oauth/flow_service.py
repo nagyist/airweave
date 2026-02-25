@@ -243,7 +243,7 @@ class OAuthFlowService:
             "client_id": client_id,
             "client_secret": client_secret,
             "oauth_client_mode": effective_client_mode,
-            "redirect_url": redirect_url or self._settings.app_url,
+            "redirect_url": redirect_url,
             "oauth_redirect_uri": f"{self._settings.api_url}/source-connections/callback",
             "template_configs": template_configs,
         }

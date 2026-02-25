@@ -6,6 +6,7 @@ Create Date: 2026-02-23 00:00:00.000000
 
 """
 
+import os
 import uuid
 
 import sqlalchemy as sa
@@ -24,7 +25,17 @@ SEED_ID = uuid.UUID("00000000-0000-4000-a000-000000000001")
 
 
 def upgrade() -> None:
-    """Create vector_db_deployment_metadata, seed it, migrate collection FK, drop old columns."""
+    """Create vector_db_deployment_metadata, seed it from .env, migrate collection FK, drop old columns.
+
+    Reads DENSE_EMBEDDER, EMBEDDING_DIMENSIONS, and SPARSE_EMBEDDER from the
+    environment so the seed row matches whatever the operator configured in .env.
+    """
+    # These are guaranteed to be present: validate_embedding_config_sync()
+    # runs in the DI container factory *before* Alembic migrations.
+    dense_embedder = os.environ["DENSE_EMBEDDER"]
+    embedding_dimensions = int(os.environ["EMBEDDING_DIMENSIONS"])
+    sparse_embedder = os.environ["SPARSE_EMBEDDER"]
+
     # 1. Create vector_db_deployment_metadata table with singleton constraint
     op.create_table(
         "vector_db_deployment_metadata",
@@ -44,7 +55,7 @@ def upgrade() -> None:
         sa.CheckConstraint("singleton = true", name="ck_vector_db_deployment_metadata_singleton"),
     )
 
-    # 2. Seed a single row with the current default config
+    # 2. Seed a single row from the user's .env configuration
     op.execute(
         sa.text(
             "INSERT INTO vector_db_deployment_metadata "
@@ -53,9 +64,9 @@ def upgrade() -> None:
             "VALUES (:id, NOW(), NOW(), true, :dense, :dims, :sparse)"
         ).bindparams(
             id=str(SEED_ID),
-            dense="openai_text_embedding_3_large",
-            dims=3072,
-            sparse="fastembed_bm25",
+            dense=dense_embedder,
+            dims=embedding_dimensions,
+            sparse=sparse_embedder,
         )
     )
 

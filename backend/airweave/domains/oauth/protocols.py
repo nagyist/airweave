@@ -281,10 +281,9 @@ class OAuthFlowServiceProtocol(Protocol):
     async def initiate_oauth1(
         self,
         short_name: str,
-        state: str,
         *,
-        consumer_key: Optional[str] = None,
-        consumer_secret: Optional[str] = None,
+        consumer_key: str,
+        consumer_secret: str,
         ctx: ApiContext,
     ) -> Tuple[str, Dict[str, str]]:
         """Start OAuth1 flow. Returns (provider_auth_url, oauth1_overrides)."""

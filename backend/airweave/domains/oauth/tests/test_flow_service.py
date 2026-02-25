@@ -197,7 +197,7 @@ class TestInitiateOAuth1:
 
         svc = _service(oauth1_service=oauth1_svc, integration_settings=int_settings)
         url, overrides = await svc.initiate_oauth1(
-            "twitter", "state-1", consumer_key="ck", consumer_secret="cs", ctx=_ctx()
+            "twitter", consumer_key="ck", consumer_secret="cs", ctx=_ctx()
         )
 
         assert "oauth_token=req_tok" in url
@@ -213,7 +213,7 @@ class TestInitiateOAuth1:
         svc = _service(integration_settings=int_settings)
         with pytest.raises(HTTPException) as exc_info:
             await svc.initiate_oauth1(
-                "unknown", "state-1", consumer_key="ck", consumer_secret="cs", ctx=_ctx()
+                "unknown", consumer_key="ck", consumer_secret="cs", ctx=_ctx()
             )
         assert exc_info.value.status_code == 400
 
@@ -224,7 +224,7 @@ class TestInitiateOAuth1:
         svc = _service(integration_settings=int_settings)
         with pytest.raises(HTTPException) as exc_info:
             await svc.initiate_oauth1(
-                "github", "state-1", consumer_key="ck", consumer_secret="cs", ctx=_ctx()
+                "github", consumer_key="ck", consumer_secret="cs", ctx=_ctx()
             )
         assert exc_info.value.status_code == 400
         assert "not configured for OAuth1" in exc_info.value.detail

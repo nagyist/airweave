@@ -8,6 +8,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional, Tuple
 from uuid import UUID
 
+from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave.api.context import ApiContext
@@ -74,8 +75,6 @@ class OAuthFlowService:
         """
         oauth_settings = await self._integration_settings.get_by_short_name(short_name)
         if not oauth_settings:
-            from fastapi import HTTPException
-
             raise HTTPException(
                 status_code=400,
                 detail=f"OAuth not configured for source: {short_name}",
@@ -95,8 +94,6 @@ class OAuthFlowService:
                 template_configs=template_configs,
             )
         except ValueError as exc:
-            from fastapi import HTTPException
-
             raise HTTPException(status_code=422, detail=str(exc)) from exc
 
         if code_verifier:
@@ -107,10 +104,9 @@ class OAuthFlowService:
     async def initiate_oauth1(
         self,
         short_name: str,
-        state: str,
         *,
-        consumer_key: Optional[str] = None,
-        consumer_secret: Optional[str] = None,
+        consumer_key: str,
+        consumer_secret: str,
         ctx: ApiContext,
     ) -> Tuple[str, Dict[str, str]]:
         """Start OAuth1 flow: get request token and build authorization URL.
@@ -121,32 +117,20 @@ class OAuthFlowService:
         """
         oauth_settings = await self._integration_settings.get_by_short_name(short_name)
         if not oauth_settings:
-            from fastapi import HTTPException
-
             raise HTTPException(
                 status_code=400,
                 detail=f"OAuth not configured for source: {short_name}",
             )
 
         if not isinstance(oauth_settings, OAuth1Settings):
-            from fastapi import HTTPException
-
             raise HTTPException(
                 status_code=400,
                 detail=f"Source {short_name} is not configured for OAuth1",
             )
 
         api_callback = f"{self._settings.api_url}/source-connections/callback"
-
         effective_consumer_key = consumer_key or oauth_settings.consumer_key
         effective_consumer_secret = consumer_secret or oauth_settings.consumer_secret
-        if not effective_consumer_key or not effective_consumer_secret:
-            from fastapi import HTTPException
-
-            raise HTTPException(
-                status_code=422,
-                detail="Custom OAuth requires both client_id and client_secret or neither",
-            )
 
         request_token_response = await self._oauth1_service.get_request_token(
             request_token_url=oauth_settings.request_token_url,

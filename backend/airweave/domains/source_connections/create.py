@@ -367,9 +367,8 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
         if entry.oauth_type == SourceOAuthType.OAUTH1.value:
             provider_auth_url, oauth1_overrides = await self._oauth_flow_service.initiate_oauth1(
                 obj_in.short_name,
-                state,
-                consumer_key=oauth_auth.consumer_key,
-                consumer_secret=oauth_auth.consumer_secret,
+                consumer_key=oauth_auth.consumer_key or "",
+                consumer_secret=oauth_auth.consumer_secret or "",
                 ctx=ctx,
             )
             additional_overrides.update(oauth1_overrides)
@@ -461,8 +460,11 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
     ):
         """Persist OAuth init session payload used by callback completion."""
         if client_id is None and client_secret is None and oauth_client_mode is None:
+            auth = obj_in.authentication
+            if auth is not None and not isinstance(auth, OAuthBrowserAuthentication):
+                raise HTTPException(status_code=400, detail="OAuth browser authentication expected")
             client_id, client_secret, oauth_client_mode = self._extract_oauth_client_credentials(
-                obj_in.authentication
+                auth
             )
 
         payload = obj_in.model_dump(
@@ -490,7 +492,7 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
             client_id=client_id,
             client_secret=client_secret,
             oauth_client_mode=oauth_client_mode,
-            redirect_url=getattr(obj_in, "redirect_url", None),
+            redirect_url=obj_in.redirect_url,
             template_configs=template_configs,
             additional_overrides=additional_overrides,
         )
@@ -500,12 +502,10 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
         auth: Optional[OAuthBrowserAuthentication],
     ) -> tuple[Optional[str], Optional[str], Optional[str]]:
         """Extract custom OAuth client credentials and mode from browser auth payload."""
-        nested_client_id = getattr(auth, "client_id", None) if auth is not None else None
-        nested_client_secret = getattr(auth, "client_secret", None) if auth is not None else None
-        nested_consumer_key = getattr(auth, "consumer_key", None) if auth is not None else None
-        nested_consumer_secret = (
-            getattr(auth, "consumer_secret", None) if auth is not None else None
-        )
+        nested_client_id = auth.client_id if auth is not None else None
+        nested_client_secret = auth.client_secret if auth is not None else None
+        nested_consumer_key = auth.consumer_key if auth is not None else None
+        nested_consumer_secret = auth.consumer_secret if auth is not None else None
 
         client_id = nested_client_id or nested_consumer_key
         client_secret = nested_client_secret or nested_consumer_secret
@@ -714,9 +714,10 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
         config_class = entry.config_ref
         if not config_class:
             return None
-        if not hasattr(config_class, "get_template_config_fields"):
+        try:
+            template_fields = config_class.get_template_config_fields()
+        except AttributeError:
             return None
-        template_fields = config_class.get_template_config_fields()
         if not template_fields:
             return None
         try:

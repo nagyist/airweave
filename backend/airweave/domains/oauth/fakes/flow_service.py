@@ -49,13 +49,12 @@ class FakeOAuthFlowService:
     async def initiate_oauth1(
         self,
         short_name: str,
-        state: str,
         *,
-        consumer_key: Optional[str] = None,
-        consumer_secret: Optional[str] = None,
+        consumer_key: str,
+        consumer_secret: str,
         ctx: ApiContext,
     ) -> Tuple[str, Dict[str, str]]:
-        self._calls.append(("initiate_oauth1", short_name, state))
+        self._calls.append(("initiate_oauth1", short_name))
         return self._auth_url, self._oauth1_overrides
 
     async def complete_oauth2_callback(

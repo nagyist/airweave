@@ -489,18 +489,18 @@ class TestReconstructContext:
 class TestValidateConfig:
     def test_none_config_returns_empty(self):
         svc = _service()
-        result = svc._validate_config(SimpleNamespace(short_name="x"), None, _ctx())
+        result = svc._validate_config(SimpleNamespace(short_name="x"), None)
         assert result == {}
 
-    def test_unknown_source_returns_empty(self):
+    def test_unknown_source_raises_500(self):
         registry = MagicMock()
         registry.get.side_effect = KeyError("not found")
         svc = _service(source_registry=registry)
 
-        result = svc._validate_config(
-            SimpleNamespace(short_name="x"), {"key": "val"}, _ctx()
-        )
-        assert result == {}
+        with pytest.raises(HTTPException) as exc:
+            svc._validate_config(SimpleNamespace(short_name="x"), {"key": "val"})
+        assert exc.value.status_code == 500
+        assert "not registered" in exc.value.detail
 
     def test_no_config_ref_passes_through(self):
         entry = SimpleNamespace(config_ref=None)
@@ -508,9 +508,7 @@ class TestValidateConfig:
         registry.get.return_value = entry
         svc = _service(source_registry=registry)
 
-        result = svc._validate_config(
-            SimpleNamespace(short_name="x"), {"key": "val"}, _ctx()
-        )
+        result = svc._validate_config(SimpleNamespace(short_name="x"), {"key": "val"})
         assert result == {"key": "val"}
 
     def test_valid_config_validated(self):
@@ -522,9 +520,7 @@ class TestValidateConfig:
         registry.get.return_value = entry
         svc = _service(source_registry=registry)
 
-        result = svc._validate_config(
-            SimpleNamespace(short_name="x"), {"key": "val"}, _ctx()
-        )
+        result = svc._validate_config(SimpleNamespace(short_name="x"), {"key": "val"})
         assert result == {"key": "val"}
 
     def test_non_mapping_raises_422(self):
@@ -533,7 +529,7 @@ class TestValidateConfig:
         registry.get.return_value = entry
         svc = _service(source_registry=registry)
         with pytest.raises(HTTPException) as exc:
-            svc._validate_config(SimpleNamespace(short_name="x"), "not-a-dict", _ctx())
+            svc._validate_config(SimpleNamespace(short_name="x"), "not-a-dict")
         assert exc.value.status_code == 422
 
     def test_validation_error_mapped_to_422(self):
@@ -545,7 +541,7 @@ class TestValidateConfig:
         registry.get.return_value = entry
         svc = _service(source_registry=registry)
         with pytest.raises(HTTPException) as exc:
-            svc._validate_config(SimpleNamespace(short_name="x"), {"key": "abc"}, _ctx())
+            svc._validate_config(SimpleNamespace(short_name="x"), {"key": "abc"})
         assert exc.value.status_code == 422
         assert "Invalid config fields" in exc.value.detail
 
@@ -560,7 +556,7 @@ class TestValidateConfig:
         registry.get.return_value = entry
         svc = _service(source_registry=registry)
         with pytest.raises(HTTPException) as exc:
-            svc._validate_config(SimpleNamespace(short_name="x"), {"key": "val"}, _ctx())
+            svc._validate_config(SimpleNamespace(short_name="x"), {"key": "val"})
         assert exc.value.status_code == 422
         assert "boom" in exc.value.detail
 
@@ -649,6 +645,44 @@ class TestCompleteOAuth2Connection:
         call = svc._complete_connection_common.call_args
         assert call.args[6] == AuthenticationMethod.OAUTH_BYOC
 
+    async def test_sets_auth_method_oauth_browser_when_client_credentials_absent(self):
+        source_repo = FakeOAuthSourceRepository()
+        source_repo.seed(
+            "github",
+            SimpleNamespace(short_name="github", name="GitHub", auth_config_class="GitHubAuth"),
+        )
+        session = _init_session(overrides={})
+        token = SimpleNamespace(model_dump=lambda: {"access_token": "tok"})
+        svc = _service(source_repo=source_repo)
+        svc._complete_connection_common = AsyncMock(return_value=SimpleNamespace(id=uuid4()))
+        await svc._complete_oauth2_connection(DB, _source_conn_shell(), session, token, _ctx())
+        call = svc._complete_connection_common.call_args
+        assert call.args[6] == AuthenticationMethod.OAUTH_BROWSER
+
+    async def test_salesforce_instance_url_overrides_payload_config(self):
+        source_repo = FakeOAuthSourceRepository()
+        source_repo.seed(
+            "salesforce",
+            SimpleNamespace(
+                short_name="salesforce",
+                name="Salesforce",
+                auth_config_class="SalesforceAuth",
+                oauth_type="oauth2",
+            ),
+        )
+        session = _init_session(short_name="salesforce", payload={})
+        token = SimpleNamespace(
+            model_dump=lambda: {"access_token": "tok", "instance_url": "https://my.salesforce.com"}
+        )
+        svc = _service(source_repo=source_repo)
+        svc._complete_connection_common = AsyncMock(return_value=SimpleNamespace(id=uuid4()))
+
+        await svc._complete_oauth2_connection(DB, _source_conn_shell(), session, token, _ctx())
+
+        call = svc._complete_connection_common.call_args
+        payload = call.args[4]
+        assert payload["config"]["instance_url"] == "my.salesforce.com"
+
 
 # ---------------------------------------------------------------------------
 # _complete_oauth1_connection
@@ -691,6 +725,168 @@ class TestCompleteOAuth1Connection:
         await svc._complete_oauth1_connection(DB, _source_conn_shell(), session, token, _ctx())
         call = svc._complete_connection_common.call_args
         assert call.args[6] == AuthenticationMethod.OAUTH_BROWSER
+
+    async def test_sets_auth_method_byoc_when_consumer_key_differs_from_platform(self, monkeypatch):
+        source_repo = FakeOAuthSourceRepository()
+        source_repo.seed(
+            "github",
+            SimpleNamespace(short_name="github", name="GitHub", auth_config_class="GitHubAuth"),
+        )
+        session = _init_session(
+            overrides={"consumer_key": "ck-custom", "consumer_secret": "cs-custom"},
+        )
+        token = SimpleNamespace(oauth_token="t", oauth_token_secret="s")
+        svc = _service(source_repo=source_repo)
+        svc._complete_connection_common = AsyncMock(return_value=SimpleNamespace(id=uuid4()))
+
+        class _SettingsModule:
+            @staticmethod
+            async def get_by_short_name(_short_name):
+                from airweave.platform.auth.schemas import OAuth1Settings
+
+                return OAuth1Settings(
+                    integration_short_name="github",
+                    request_token_url="https://provider/request-token",
+                    authorization_url="https://provider/auth",
+                    access_token_url="https://provider/access",
+                    consumer_key="ck-platform",
+                    consumer_secret="cs-platform",
+                )
+
+        monkeypatch.setattr(
+            "airweave.domains.oauth.callback_service.integration_settings",
+            _SettingsModule(),
+        )
+        await svc._complete_oauth1_connection(DB, _source_conn_shell(), session, token, _ctx())
+        call = svc._complete_connection_common.call_args
+        assert call.args[6] == AuthenticationMethod.OAUTH_BYOC
+
+
+# ---------------------------------------------------------------------------
+# _complete_connection_common
+# ---------------------------------------------------------------------------
+
+
+class TestCompleteConnectionCommon:
+    async def test_federated_source_skips_sync_provisioning(self):
+        svc = _service()
+        svc._credential_repo.create = AsyncMock(return_value=SimpleNamespace(id=uuid4()))
+        svc._connection_repo.create = AsyncMock(return_value=SimpleNamespace(id=uuid4()))
+        svc._collection_repo.get_by_readable_id = AsyncMock(
+            return_value=SimpleNamespace(id=uuid4(), readable_id="col-abc")
+        )
+        svc._sc_repo.update = AsyncMock(return_value=SimpleNamespace(id=uuid4(), connection_id=uuid4()))
+        svc._init_session_repo.mark_completed = AsyncMock()
+        svc._source_registry.get = MagicMock(
+            return_value=SimpleNamespace(source_class_ref=SimpleNamespace(federated_search=True))
+        )
+        svc._sync_record_service.resolve_destination_ids = AsyncMock(return_value=[uuid4()])
+        svc._sync_lifecycle.provision_sync = AsyncMock()
+
+        from airweave.domains.oauth import callback_service as callback_module
+
+        class _FakeUOW:
+            def __init__(self, db):
+                self.session = db
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, exc_type, exc, tb):
+                return False
+
+            async def commit(self):
+                return None
+
+        db = AsyncMock()
+        db.flush = AsyncMock()
+        db.refresh = AsyncMock()
+        monkeypatch = pytest.MonkeyPatch()
+        monkeypatch.setattr(callback_module, "UnitOfWork", _FakeUOW)
+        try:
+            source = SimpleNamespace(
+                short_name="github",
+                name="GitHub",
+                auth_config_class="GitHubAuth",
+                oauth_type="oauth2",
+            )
+            shell = _source_conn_shell()
+            await svc._complete_connection_common(
+                db,
+                source,
+                shell,
+                SESSION_ID,
+                {"name": "n", "readable_collection_id": "col-abc", "config": {}},
+                {"access_token": "tok"},
+                AuthenticationMethod.OAUTH_BROWSER,
+                is_oauth1=False,
+                ctx=_ctx(),
+            )
+        finally:
+            monkeypatch.undo()
+
+        svc._sync_lifecycle.provision_sync.assert_not_awaited()
+
+    async def test_non_federated_source_provisions_sync_with_cron_schedule(self):
+        svc = _service()
+        conn_id = uuid4()
+        svc._credential_repo.create = AsyncMock(return_value=SimpleNamespace(id=uuid4()))
+        svc._connection_repo.create = AsyncMock(return_value=SimpleNamespace(id=conn_id))
+        svc._collection_repo.get_by_readable_id = AsyncMock(
+            return_value=SimpleNamespace(id=uuid4(), readable_id="col-abc")
+        )
+        svc._sc_repo.update = AsyncMock(return_value=SimpleNamespace(id=uuid4(), connection_id=conn_id))
+        svc._init_session_repo.mark_completed = AsyncMock()
+        svc._source_registry.get = MagicMock(
+            return_value=SimpleNamespace(source_class_ref=SimpleNamespace(federated_search=False))
+        )
+        svc._sync_record_service.resolve_destination_ids = AsyncMock(return_value=[uuid4()])
+        svc._sync_lifecycle.provision_sync = AsyncMock(return_value=SimpleNamespace(sync_id=uuid4()))
+
+        from airweave.domains.oauth import callback_service as callback_module
+
+        class _FakeUOW:
+            def __init__(self, db):
+                self.session = db
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, exc_type, exc, tb):
+                return False
+
+            async def commit(self):
+                return None
+
+        db = AsyncMock()
+        db.flush = AsyncMock()
+        db.refresh = AsyncMock()
+        monkeypatch = pytest.MonkeyPatch()
+        monkeypatch.setattr(callback_module, "UnitOfWork", _FakeUOW)
+        try:
+            source = SimpleNamespace(
+                short_name="github",
+                name="GitHub",
+                auth_config_class="GitHubAuth",
+                oauth_type="oauth2",
+            )
+            shell = _source_conn_shell()
+            await svc._complete_connection_common(
+                db,
+                source,
+                shell,
+                SESSION_ID,
+                {"name": "n", "readable_collection_id": "col-abc", "cron_schedule": "0 0 * * *"},
+                {"access_token": "tok"},
+                AuthenticationMethod.OAUTH_BROWSER,
+                is_oauth1=False,
+                ctx=_ctx(),
+            )
+        finally:
+            monkeypatch.undo()
+
+        svc._sync_lifecycle.provision_sync.assert_awaited_once()
+        svc._init_session_repo.mark_completed.assert_awaited_once()
 
 
 # ---------------------------------------------------------------------------
@@ -1003,6 +1199,57 @@ class TestFinalizeCallback:
         result = await svc._finalize_callback(DB, source_conn, ctx)
         assert result is response
         ctx.logger.warning.assert_called()
+
+    async def test_pending_job_with_connection_executes_event_payload_path(self):
+        response = MagicMock(id=uuid4(), short_name="github", readable_collection_id="col-abc")
+        builder = AsyncMock()
+        builder.build_response = AsyncMock(return_value=response)
+
+        sync_id = uuid4()
+        conn_id = uuid4()
+        source_conn = SimpleNamespace(
+            id=uuid4(),
+            sync_id=sync_id,
+            connection_id=conn_id,
+            readable_collection_id="col-abc",
+        )
+
+        sync_repo = AsyncMock()
+        sync_repo.get = AsyncMock(return_value=SimpleNamespace(id=sync_id))
+
+        sync_job_repo = AsyncMock()
+        sync_job_repo.get_all_by_sync_id = AsyncMock(
+            return_value=[SimpleNamespace(id=uuid4(), status=SyncJobStatus.PENDING)]
+        )
+
+        collection_repo = AsyncMock()
+        collection_repo.get_by_readable_id = AsyncMock(
+            return_value=SimpleNamespace(id=uuid4(), name="Col", readable_id="col-abc")
+        )
+
+        connection_repo = AsyncMock()
+        connection_repo.get = AsyncMock(return_value=SimpleNamespace(short_name="github"))
+
+        temporal_svc = AsyncMock()
+        temporal_svc.run_source_connection_workflow = AsyncMock()
+
+        event_bus = AsyncMock()
+        event_bus.publish = AsyncMock()
+
+        svc = _service(
+            response_builder=builder,
+            sync_repo=sync_repo,
+            sync_job_repo=sync_job_repo,
+            collection_repo=collection_repo,
+            connection_repo=connection_repo,
+            temporal_workflow_service=temporal_svc,
+            event_bus=event_bus,
+        )
+
+        await svc._finalize_callback(DB, source_conn, _ctx())
+
+        connection_repo.get.assert_awaited_once()
+        temporal_svc.run_source_connection_workflow.assert_awaited_once()
 
 
 class TestTokenValidation:

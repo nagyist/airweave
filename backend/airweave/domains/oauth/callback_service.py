@@ -29,6 +29,7 @@ from airweave.domains.oauth.protocols import (
     OAuthInitSessionRepositoryProtocol,
     OAuthSourceRepositoryProtocol,
 )
+from airweave.domains.oauth.types import OAuth1TokenResponse
 from airweave.domains.organizations.repository import OrganizationRepositoryProtocol
 from airweave.domains.source_connections.protocols import (
     ResponseBuilderProtocol,
@@ -43,9 +44,12 @@ from airweave.domains.syncs.protocols import (
     SyncRepositoryProtocol,
 )
 from airweave.domains.temporal.protocols import TemporalWorkflowServiceProtocol
+from airweave.models.collection import Collection
 from airweave.models.connection_init_session import ConnectionInitSession, ConnectionInitStatus
 from airweave.models.integration_credential import IntegrationType
-from airweave.platform.auth.schemas import OAuth1Settings
+from airweave.models.source import Source
+from airweave.models.source_connection import SourceConnection
+from airweave.platform.auth.schemas import OAuth1Settings, OAuth2TokenResponse
 from airweave.platform.auth.settings import integration_settings
 from airweave.schemas.source_connection import (
     AuthenticationMethod,
@@ -248,11 +252,11 @@ class OAuthCallbackService:
     async def _complete_oauth1_connection(
         self,
         db: AsyncSession,
-        source_conn_shell: Any,
+        source_conn_shell: SourceConnection,
         init_session: ConnectionInitSession,
-        token_response: Any,
+        token_response: OAuth1TokenResponse,
         ctx: ApiContext,
-    ) -> Any:
+    ) -> SourceConnection:
         """Complete OAuth1 connection after callback."""
         source = await self._source_repo.get_by_short_name(db, short_name=init_session.short_name)
         if not source:
@@ -309,11 +313,11 @@ class OAuthCallbackService:
     async def _complete_oauth2_connection(
         self,
         db: AsyncSession,
-        source_conn_shell: Any,
+        source_conn_shell: SourceConnection,
         init_session: ConnectionInitSession,
-        token_response: Any,
+        token_response: OAuth2TokenResponse,
         ctx: ApiContext,
-    ) -> Any:
+    ) -> SourceConnection:
         """Complete OAuth2 connection after callback."""
         source = await self._source_repo.get_by_short_name(db, short_name=init_session.short_name)
         if not source:
@@ -373,17 +377,17 @@ class OAuthCallbackService:
     async def _complete_connection_common(  # noqa: C901
         self,
         db: AsyncSession,
-        source: Any,
-        source_conn_shell: Any,
+        source: Source,
+        source_conn_shell: SourceConnection,
         init_session_id: UUID,
         payload: Dict[str, Any],
         auth_fields: Dict[str, Any],
         auth_method_to_save: AuthenticationMethod,
         is_oauth1: bool,
         ctx: ApiContext,
-    ) -> Any:
+    ) -> SourceConnection:
         """Common logic for completing OAuth connections (shared by OAuth1/OAuth2)."""
-        validated_config = self._validate_config(source, payload.get("config"), ctx)
+        validated_config = self._validate_config(source, payload.get("config"))
 
         auth_type_name = "OAuth1" if is_oauth1 else "OAuth2"
 
@@ -509,7 +513,7 @@ class OAuthCallbackService:
     async def _validate_oauth2_token_or_raise(
         self,
         *,
-        source: Any,
+        source: Source | None,
         access_token: str,
         ctx: ApiContext,
     ) -> None:
@@ -539,7 +543,7 @@ class OAuthCallbackService:
     async def _finalize_callback(
         self,
         db: AsyncSession,
-        source_conn: Any,
+        source_conn: SourceConnection,
         ctx: ApiContext,
     ) -> SourceConnectionSchema:
         """Build response and trigger sync workflow if needed."""
@@ -623,9 +627,8 @@ class OAuthCallbackService:
 
     def _validate_config(
         self,
-        source: Any,
-        config_fields: Any,
-        ctx: ApiContext,
+        source: Source,
+        config_fields: Mapping[str, Any] | None,
     ) -> Dict[str, Any]:
         """Validate config fields using source_registry."""
         if not config_fields:
@@ -634,7 +637,10 @@ class OAuthCallbackService:
         try:
             entry = self._source_registry.get(source.short_name)
         except KeyError:
-            return {}
+            raise HTTPException(
+                status_code=500,
+                detail=f"Source '{source.short_name}' is not registered",
+            )
 
         if not isinstance(config_fields, Mapping):
             raise HTTPException(status_code=422, detail="Invalid config fields: expected object")
@@ -662,7 +668,9 @@ class OAuthCallbackService:
                 ) from e
             raise HTTPException(status_code=422, detail=str(e)) from e
 
-    async def _get_collection(self, db: AsyncSession, collection_id: str, ctx: ApiContext) -> Any:
+    async def _get_collection(
+        self, db: AsyncSession, collection_id: str, ctx: ApiContext
+    ) -> Collection:
         """Get collection by readable ID."""
         if not collection_id:
             raise HTTPException(status_code=400, detail="Collection is required")

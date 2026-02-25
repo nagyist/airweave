@@ -9,7 +9,6 @@ from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import crud, schemas
-from airweave.analytics import business_events
 from airweave.api.context import ApiContext
 from airweave.core.auth_provider_service import auth_provider_service
 from airweave.core.config import settings as core_settings
@@ -155,23 +154,15 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
                     db, obj_in=obj_in, entry=entry, ctx=ctx
                 )
 
-        business_events.track_source_connection_created(
-            ctx=ctx,
-            connection_id=result.id,
-            source_short_name=result.short_name,
-        )
-        try:
-            await self._event_bus.publish(
-                SourceConnectionLifecycleEvent.created(
-                    organization_id=ctx.organization.id,
-                    source_connection_id=result.id,
-                    source_type=result.short_name,
-                    collection_readable_id=result.readable_collection_id,
-                    is_authenticated=result.is_authenticated,
-                )
+        await self._event_bus.publish(
+            SourceConnectionLifecycleEvent.created(
+                organization_id=ctx.organization.id,
+                source_connection_id=result.id,
+                source_type=result.short_name,
+                collection_readable_id=result.readable_collection_id,
+                is_authenticated=result.auth.authenticated,
             )
-        except Exception as e:
-            ctx.logger.warning(f"Failed to publish source_connection.created event: {e}")
+        )
         return result
 
     async def _create_with_direct_auth(

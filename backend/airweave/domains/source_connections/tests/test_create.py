@@ -96,7 +96,12 @@ def _service(entry) -> SourceConnectionCreationService:
 
 async def test_create_dispatches_direct_branch():
     svc = _service(_entry())
-    expected = MagicMock(id=uuid4(), short_name="github")
+    expected = MagicMock(
+        id=uuid4(),
+        short_name="github",
+        readable_collection_id="col-1",
+        auth=SimpleNamespace(authenticated=True),
+    )
     svc._create_with_direct_auth = AsyncMock(return_value=expected)
     svc._create_with_oauth_token = AsyncMock()
     svc._create_with_auth_provider = AsyncMock()
@@ -114,7 +119,12 @@ async def test_create_dispatches_direct_branch():
 
 async def test_create_dispatches_oauth_token_branch():
     svc = _service(_entry())
-    expected = MagicMock(id=uuid4(), short_name="github")
+    expected = MagicMock(
+        id=uuid4(),
+        short_name="github",
+        readable_collection_id="col-1",
+        auth=SimpleNamespace(authenticated=True),
+    )
     svc._create_with_oauth_token = AsyncMock(return_value=expected)
     svc._create_with_direct_auth = AsyncMock()
     svc._create_with_auth_provider = AsyncMock()
@@ -132,7 +142,12 @@ async def test_create_dispatches_oauth_token_branch():
 
 async def test_create_dispatches_auth_provider_branch():
     svc = _service(_entry())
-    expected = MagicMock(id=uuid4(), short_name="github")
+    expected = MagicMock(
+        id=uuid4(),
+        short_name="github",
+        readable_collection_id="col-1",
+        auth=SimpleNamespace(authenticated=True),
+    )
     svc._create_with_auth_provider = AsyncMock(return_value=expected)
     svc._create_with_direct_auth = AsyncMock()
     svc._create_with_oauth_token = AsyncMock()
@@ -150,7 +165,12 @@ async def test_create_dispatches_auth_provider_branch():
 
 async def test_create_dispatches_oauth_browser_branch_and_defaults_sync_false():
     svc = _service(_entry())
-    expected = MagicMock(id=uuid4(), short_name="github")
+    expected = MagicMock(
+        id=uuid4(),
+        short_name="github",
+        readable_collection_id="col-1",
+        auth=SimpleNamespace(authenticated=False),
+    )
     svc._create_with_oauth_browser = AsyncMock(return_value=expected)
     svc._create_with_direct_auth = AsyncMock()
     svc._create_with_oauth_token = AsyncMock()
@@ -169,7 +189,12 @@ async def test_create_dispatches_oauth_browser_branch_and_defaults_sync_false():
 
 async def test_create_defaults_sync_true_for_direct_when_unset():
     svc = _service(_entry())
-    expected = MagicMock(id=uuid4(), short_name="github")
+    expected = MagicMock(
+        id=uuid4(),
+        short_name="github",
+        readable_collection_id="col-1",
+        auth=SimpleNamespace(authenticated=True),
+    )
     svc._create_with_direct_auth = AsyncMock(return_value=expected)
 
     obj_in = SourceConnectionCreate(
@@ -181,26 +206,23 @@ async def test_create_defaults_sync_true_for_direct_when_unset():
     assert obj_in.sync_immediately is True
 
 
-async def test_create_logs_warning_when_source_connection_created_event_fails():
+async def test_create_raises_when_source_connection_created_event_fails():
     svc = _service(_entry())
     expected = MagicMock(
         id=uuid4(),
         short_name="github",
         readable_collection_id="col-1",
-        is_authenticated=True,
+        auth=SimpleNamespace(authenticated=True),
     )
     svc._create_with_direct_auth = AsyncMock(return_value=expected)
     svc._event_bus.publish = AsyncMock(side_effect=RuntimeError("bus down"))
-    ctx = _ctx()
-    ctx.logger.warning = MagicMock()
-
     obj_in = SourceConnectionCreate(
         short_name="github",
         readable_collection_id="col-1",
         authentication=DirectAuthentication(credentials={"token": "abc"}),
     )
-    await svc.create(AsyncMock(), obj_in=obj_in, ctx=ctx)
-    ctx.logger.warning.assert_called_once()
+    with pytest.raises(RuntimeError, match="bus down"):
+        await svc.create(AsyncMock(), obj_in=obj_in, ctx=_ctx())
 
 
 async def test_create_rejects_browser_sync_immediately_true():
@@ -559,7 +581,7 @@ async def test_create_with_oauth_token_builds_full_payload_and_delegates():
     svc._source_lifecycle.validate = AsyncMock()
     svc._create_authenticated_connection = AsyncMock(return_value=MagicMock(id=uuid4()))
 
-    expires = datetime.utcnow() + timedelta(minutes=5)
+    expires = datetime.now(timezone.utc) + timedelta(minutes=5)
     obj_in = SourceConnectionCreate(
         short_name="github",
         readable_collection_id="col-1",

@@ -16,6 +16,7 @@ from airweave.domains.collections.fakes.repository import FakeCollectionReposito
 from airweave.domains.connections.fakes.repository import FakeConnectionRepository
 from airweave.domains.credentials.fakes.repository import FakeIntegrationCredentialRepository
 from airweave.domains.oauth.fakes.flow_service import FakeOAuthFlowService
+from airweave.domains.oauth.types import OAuthBrowserInitiationResult
 from airweave.domains.source_connections.create import SourceConnectionCreationService
 from airweave.domains.source_connections.fakes.repository import FakeSourceConnectionRepository
 from airweave.domains.source_connections.fakes.response import FakeResponseBuilder
@@ -255,8 +256,14 @@ async def test_create_oauth2_init_session_contract(monkeypatch):
     svc._source_validation.validate_config = MagicMock(return_value={"instance_url": "acme"})
     svc._extract_template_configs = MagicMock(return_value={"instance_url": "acme"})
     svc._collection_repo.seed_readable("col-1", MagicMock(readable_id="col-1"))
-    svc._oauth_flow_service.initiate_oauth2 = AsyncMock(
-        return_value=("https://provider/auth", "verifier-123")
+    svc._oauth_flow_service.seed_initiate_browser_flow_result(
+        OAuthBrowserInitiationResult(
+            provider_auth_url="https://provider/auth",
+            client_id=None,
+            client_secret=None,
+            oauth_client_mode="platform_default",
+            additional_overrides={"code_verifier": "verifier-123"},
+        )
     )
 
     shell_sc = MagicMock(id=uuid4(), connection_init_session_id=None, is_authenticated=False)
@@ -313,10 +320,13 @@ async def test_create_oauth1_init_session_contract(monkeypatch):
     shell_sc = MagicMock(id=uuid4(), connection_init_session_id=None, is_authenticated=False)
     svc._sc_repo.create = AsyncMock(return_value=shell_sc)
     svc._response_builder.build_response = AsyncMock(return_value=MagicMock(id=shell_sc.id))
-    svc._oauth_flow_service.initiate_oauth1 = AsyncMock(
-        return_value=(
-            "https://provider/oauth1-auth",
-            {
+    svc._oauth_flow_service.seed_initiate_browser_flow_result(
+        OAuthBrowserInitiationResult(
+            provider_auth_url="https://provider/oauth1-auth",
+            client_id="custom-key",
+            client_secret="custom-secret",
+            oauth_client_mode="byoc_nested",
+            additional_overrides={
                 "oauth_token": "req-token",
                 "oauth_token_secret": "req-secret",
                 "consumer_key": "custom-key",
@@ -625,45 +635,39 @@ async def test_create_with_oauth_browser_rejects_non_oauth_browser_auth():
         await svc._create_with_oauth_browser(AsyncMock(), obj_in=obj_in, entry=_entry(), ctx=_ctx())
 
 
-async def test_create_with_oauth_browser_rejects_non_oauth1_settings():
-    entry = _entry(oauth_type="oauth1")
-    svc = _service(entry)
-    svc._source_validation.validate_config = MagicMock(return_value={})
-    svc._oauth_flow_service.initiate_oauth1 = AsyncMock(
-        side_effect=HTTPException(status_code=400, detail="Source 'github' is not OAuth1")
-    )
-    obj_in = SourceConnectionCreate(short_name="github", readable_collection_id="col-1")
-    with pytest.raises(HTTPException, match="is not OAuth1"):
-        await svc._create_with_oauth_browser(AsyncMock(), obj_in=obj_in, entry=entry, ctx=_ctx())
-
-
-async def test_create_with_oauth_browser_rejects_non_oauth2_settings():
-    entry = _entry(oauth_type="access_only")
-    svc = _service(entry)
-    svc._source_validation.validate_config = MagicMock(return_value={})
-    svc._oauth_flow_service.initiate_oauth2 = AsyncMock(
-        side_effect=HTTPException(status_code=400, detail="Source 'github' is not OAuth2")
-    )
-    obj_in = SourceConnectionCreate(short_name="github", readable_collection_id="col-1")
-    with pytest.raises(HTTPException, match="is not OAuth2"):
-        await svc._create_with_oauth_browser(AsyncMock(), obj_in=obj_in, entry=entry, ctx=_ctx())
-
-
-async def test_create_with_oauth_browser_maps_oauth2_value_error_to_422():
-    entry = _entry(oauth_type="access_only")
+@pytest.mark.parametrize(
+    "oauth_type,error,status_code,detail_match",
+    [
+        ("oauth1", HTTPException(status_code=400, detail="Source 'github' is not OAuth1"), 400, "is not OAuth1"),
+        (
+            "access_only",
+            HTTPException(status_code=400, detail="Source 'github' is not OAuth2"),
+            400,
+            "is not OAuth2",
+        ),
+        (
+            "access_only",
+            HTTPException(
+                status_code=422,
+                detail="Template config fields missing or empty: subdomain",
+            ),
+            422,
+            "Template config fields missing or empty",
+        ),
+    ],
+)
+async def test_create_with_oauth_browser_propagates_initiation_errors(
+    oauth_type, error, status_code, detail_match
+):
+    entry = _entry(oauth_type=oauth_type)
     svc = _service(entry)
     svc._source_validation.validate_config = MagicMock(return_value={})
     svc._extract_template_configs = MagicMock(return_value=None)
-    svc._oauth_flow_service.initiate_oauth2 = AsyncMock(
-        side_effect=HTTPException(
-            status_code=422,
-            detail="Template config fields missing or empty: subdomain",
-        )
-    )
+    svc._oauth_flow_service.seed_initiate_browser_flow_error(error)
     obj_in = SourceConnectionCreate(short_name="github", readable_collection_id="col-1")
-    with pytest.raises(HTTPException) as exc_info:
+    with pytest.raises(HTTPException, match=detail_match) as exc_info:
         await svc._create_with_oauth_browser(AsyncMock(), obj_in=obj_in, entry=entry, ctx=_ctx())
-    assert exc_info.value.status_code == 422
+    assert exc_info.value.status_code == status_code
 
 
 async def test_create_with_oauth_browser_rejects_missing_collection():
@@ -671,8 +675,14 @@ async def test_create_with_oauth_browser_rejects_missing_collection():
     svc = _service(entry)
     svc._source_validation.validate_config = MagicMock(return_value={})
     svc._extract_template_configs = MagicMock(return_value=None)
-    svc._oauth_flow_service.initiate_oauth2 = AsyncMock(
-        return_value=("https://provider/auth", "verifier-123")
+    svc._oauth_flow_service.seed_initiate_browser_flow_result(
+        OAuthBrowserInitiationResult(
+            provider_auth_url="https://provider/auth",
+            client_id=None,
+            client_secret=None,
+            oauth_client_mode="platform_default",
+            additional_overrides={"code_verifier": "verifier-123"},
+        )
     )
     obj_in = SourceConnectionCreate(short_name="github", readable_collection_id="missing-col")
     with pytest.raises(NotFoundException, match="Collection not found"):
@@ -732,7 +742,15 @@ async def test_create_with_oauth_browser_sets_platform_default_overrides(monkeyp
     svc = _service(_entry())
     svc._source_validation.validate_config = MagicMock(return_value={})
     svc._collection_repo.seed_readable("col-1", MagicMock(readable_id="col-1"))
-    svc._oauth_flow_service.initiate_oauth2 = AsyncMock(return_value=("https://provider/auth", None))
+    svc._oauth_flow_service.seed_initiate_browser_flow_result(
+        OAuthBrowserInitiationResult(
+            provider_auth_url="https://provider/auth",
+            client_id=None,
+            client_secret=None,
+            oauth_client_mode="platform_default",
+            additional_overrides={},
+        )
+    )
     svc._sc_repo.create = AsyncMock(
         return_value=MagicMock(id=uuid4(), connection_init_session_id=None, is_authenticated=False)
     )
@@ -771,10 +789,13 @@ async def test_create_with_oauth_browser_sets_byoc_nested_for_oauth1(monkeypatch
     svc = _service(_entry())
     svc._source_validation.validate_config = MagicMock(return_value={})
     svc._collection_repo.seed_readable("col-1", MagicMock(readable_id="col-1"))
-    svc._oauth_flow_service.initiate_oauth1 = AsyncMock(
-        return_value=(
-            "https://provider/auth",
-            {
+    svc._oauth_flow_service.seed_initiate_browser_flow_result(
+        OAuthBrowserInitiationResult(
+            provider_auth_url="https://provider/auth",
+            client_id="ck",
+            client_secret="cs",
+            oauth_client_mode="byoc_nested",
+            additional_overrides={
                 "oauth_token": "req-token",
                 "oauth_token_secret": "req-secret",
                 "consumer_key": "ck",

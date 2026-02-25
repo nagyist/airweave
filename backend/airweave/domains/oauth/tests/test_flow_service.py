@@ -245,6 +245,84 @@ class TestInitiateOAuth1:
 
 
 # ---------------------------------------------------------------------------
+# initiate_browser_flow
+# ---------------------------------------------------------------------------
+
+
+class TestInitiateBrowserFlow:
+    async def test_oauth2_path_returns_normalized_result(self):
+        svc = _service()
+        svc.initiate_oauth2 = AsyncMock(return_value=("https://provider.com/auth", "verifier123"))
+
+        result = await svc.initiate_browser_flow(
+            short_name="github",
+            oauth_type="access_only",
+            state="state-abc",
+            nested_client_id=None,
+            nested_client_secret=None,
+            nested_consumer_key=None,
+            nested_consumer_secret=None,
+            template_configs={"domain": "acme"},
+            ctx=_ctx(),
+        )
+
+        assert result.provider_auth_url == "https://provider.com/auth"
+        assert result.oauth_client_mode == "platform_default"
+        assert result.client_id is None
+        assert result.client_secret is None
+        assert result.additional_overrides["code_verifier"] == "verifier123"
+
+    async def test_oauth1_path_returns_overrides_and_byoc_mode(self):
+        svc = _service()
+        svc.initiate_oauth1 = AsyncMock(
+            return_value=(
+                "https://provider.com/oauth1",
+                {
+                    "oauth_token": "req_tok",
+                    "oauth_token_secret": "req_sec",
+                    "consumer_key": "ck",
+                    "consumer_secret": "cs",
+                },
+            )
+        )
+
+        result = await svc.initiate_browser_flow(
+            short_name="twitter",
+            oauth_type="oauth1",
+            state="state-abc",
+            nested_client_id=None,
+            nested_client_secret=None,
+            nested_consumer_key="ck",
+            nested_consumer_secret="cs",
+            template_configs=None,
+            ctx=_ctx(),
+        )
+
+        assert result.provider_auth_url == "https://provider.com/oauth1"
+        assert result.oauth_client_mode == "byoc_nested"
+        assert result.client_id == "ck"
+        assert result.client_secret == "cs"
+        assert result.additional_overrides["oauth_token"] == "req_tok"
+        assert result.additional_overrides["oauth_token_secret"] == "req_sec"
+
+    async def test_partial_custom_credentials_raises_422(self):
+        svc = _service()
+        with pytest.raises(HTTPException) as exc:
+            await svc.initiate_browser_flow(
+                short_name="github",
+                oauth_type="access_only",
+                state="state-abc",
+                nested_client_id="only-id",
+                nested_client_secret=None,
+                nested_consumer_key=None,
+                nested_consumer_secret=None,
+                template_configs=None,
+                ctx=_ctx(),
+            )
+        assert exc.value.status_code == 422
+
+
+# ---------------------------------------------------------------------------
 # complete_oauth2_callback
 # ---------------------------------------------------------------------------
 

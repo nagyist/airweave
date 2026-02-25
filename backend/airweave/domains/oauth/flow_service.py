@@ -20,7 +20,7 @@ from airweave.domains.oauth.protocols import (
     OAuthInitSessionRepositoryProtocol,
     OAuthRedirectSessionRepositoryProtocol,
 )
-from airweave.domains.oauth.types import OAuth1TokenResponse
+from airweave.domains.oauth.types import OAuth1TokenResponse, OAuthBrowserInitiationResult
 from airweave.models.connection_init_session import ConnectionInitSession, ConnectionInitStatus
 from airweave.platform.auth.schemas import OAuth1Settings, OAuth2TokenResponse
 from airweave.platform.auth.settings import IntegrationSettings
@@ -157,6 +157,58 @@ class OAuthFlowService:
         ctx.logger.debug(f"OAuth1 request token obtained for {short_name}")
 
         return provider_auth_url, oauth1_overrides
+
+    async def initiate_browser_flow(
+        self,
+        *,
+        short_name: str,
+        oauth_type: Optional[str],
+        state: str,
+        nested_client_id: Optional[str],
+        nested_client_secret: Optional[str],
+        nested_consumer_key: Optional[str],
+        nested_consumer_secret: Optional[str],
+        template_configs: Optional[dict],
+        ctx: ApiContext,
+    ) -> OAuthBrowserInitiationResult:
+        """Start browser OAuth flow and return normalized init-session data."""
+        client_id = nested_client_id or nested_consumer_key
+        client_secret = nested_client_secret or nested_consumer_secret
+        if (client_id and not client_secret) or (client_secret and not client_id):
+            raise HTTPException(
+                status_code=422,
+                detail="Custom OAuth requires both client_id and client_secret or neither",
+            )
+
+        oauth_client_mode = "byoc_nested" if (client_id and client_secret) else "platform_default"
+        additional_overrides: Dict[str, Any] = {}
+
+        if oauth_type == "oauth1":
+            provider_auth_url, oauth1_overrides = await self.initiate_oauth1(
+                short_name,
+                consumer_key=nested_consumer_key or "",
+                consumer_secret=nested_consumer_secret or "",
+                ctx=ctx,
+            )
+            additional_overrides.update(oauth1_overrides)
+        else:
+            provider_auth_url, code_verifier = await self.initiate_oauth2(
+                short_name,
+                state,
+                client_id=nested_client_id or None,
+                template_configs=template_configs,
+                ctx=ctx,
+            )
+            if code_verifier:
+                additional_overrides["code_verifier"] = code_verifier
+
+        return OAuthBrowserInitiationResult(
+            provider_auth_url=provider_auth_url,
+            client_id=client_id,
+            client_secret=client_secret,
+            oauth_client_mode=oauth_client_mode,
+            additional_overrides=additional_overrides,
+        )
 
     # ------------------------------------------------------------------
     # Token exchange (callback phase)

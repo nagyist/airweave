@@ -360,39 +360,18 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         state = secrets.token_urlsafe(24)
 
-        nested_client_id = oauth_auth.client_id
-        nested_client_secret = oauth_auth.client_secret
-        nested_consumer_key = oauth_auth.consumer_key
-        nested_consumer_secret = oauth_auth.consumer_secret
-
-        client_id = nested_client_id or nested_consumer_key
-        client_secret = nested_client_secret or nested_consumer_secret
-        if (client_id and not client_secret) or (client_secret and not client_id):
-            raise HTTPException(
-                status_code=422,
-                detail="Custom OAuth requires both client_id and client_secret or neither",
-            )
-        oauth_client_mode = "byoc_nested" if (client_id and client_secret) else "platform_default"
-
-        additional_overrides: dict[str, Any] = {}
-        if entry.oauth_type == SourceOAuthType.OAUTH1.value:
-            provider_auth_url, oauth1_overrides = await self._oauth_flow_service.initiate_oauth1(
-                obj_in.short_name,
-                consumer_key=oauth_auth.consumer_key or "",
-                consumer_secret=oauth_auth.consumer_secret or "",
-                ctx=ctx,
-            )
-            additional_overrides.update(oauth1_overrides)
-        else:
-            provider_auth_url, code_verifier = await self._oauth_flow_service.initiate_oauth2(
-                obj_in.short_name,
-                state,
-                client_id=oauth_auth.client_id or None,
-                template_configs=template_configs,
-                ctx=ctx,
-            )
-            if code_verifier:
-                additional_overrides["code_verifier"] = code_verifier
+        initiation_result = await self._oauth_flow_service.initiate_browser_flow(
+            short_name=obj_in.short_name,
+            oauth_type=entry.oauth_type,
+            state=state,
+            nested_client_id=oauth_auth.client_id,
+            nested_client_secret=oauth_auth.client_secret,
+            nested_consumer_key=oauth_auth.consumer_key,
+            nested_consumer_secret=oauth_auth.consumer_secret,
+            template_configs=template_configs,
+            ctx=ctx,
+        )
+        provider_auth_url = initiation_result.provider_auth_url
 
         async with UnitOfWork(db) as uow:
             collection = await self._get_collection(uow.session, obj_in.readable_collection_id, ctx)
@@ -441,12 +420,12 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
                 ctx=ctx,
                 uow=uow,
                 redirect_session_id=redirect_session_id,
-                client_id=client_id,
-                client_secret=client_secret,
-                oauth_client_mode=oauth_client_mode,
+                client_id=initiation_result.client_id,
+                client_secret=initiation_result.client_secret,
+                oauth_client_mode=initiation_result.oauth_client_mode,
                 redirect_url=obj_in.redirect_url,
                 template_configs=template_configs,
-                additional_overrides=additional_overrides,
+                additional_overrides=initiation_result.additional_overrides,
             )
             await uow.session.flush()
             source_conn.connection_init_session_id = init_session.id

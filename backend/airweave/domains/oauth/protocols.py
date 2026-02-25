@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from airweave.api.context import ApiContext
 from airweave.core.logging import ContextualLogger
 from airweave.db.unit_of_work import UnitOfWork
-from airweave.domains.oauth.types import OAuth1TokenResponse
+from airweave.domains.oauth.types import OAuth1TokenResponse, OAuthBrowserInitiationResult
 from airweave.models.connection import Connection
 from airweave.models.connection_init_session import ConnectionInitSession
 from airweave.models.integration_credential import IntegrationCredential
@@ -287,6 +287,22 @@ class OAuthFlowServiceProtocol(Protocol):
         ctx: ApiContext,
     ) -> Tuple[str, Dict[str, str]]:
         """Start OAuth1 flow. Returns (provider_auth_url, oauth1_overrides)."""
+        ...
+
+    async def initiate_browser_flow(
+        self,
+        *,
+        short_name: str,
+        oauth_type: Optional[str],
+        state: str,
+        nested_client_id: Optional[str],
+        nested_client_secret: Optional[str],
+        nested_consumer_key: Optional[str],
+        nested_consumer_secret: Optional[str],
+        template_configs: Optional[dict],
+        ctx: ApiContext,
+    ) -> OAuthBrowserInitiationResult:
+        """Start browser OAuth flow and return normalized init-session data."""
         ...
 
     async def complete_oauth2_callback(

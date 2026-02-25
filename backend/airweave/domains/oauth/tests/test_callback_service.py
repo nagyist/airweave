@@ -611,7 +611,7 @@ class TestCompleteOAuth2Connection:
             short_name="salesforce",
             name="Salesforce",
             auth_config_class="SalesforceAuth",
-            oauth_type="oauth2",
+            oauth_type="access_only",
         )
         source_repo.seed("salesforce", source)
 
@@ -667,7 +667,7 @@ class TestCompleteOAuth2Connection:
                 short_name="salesforce",
                 name="Salesforce",
                 auth_config_class="SalesforceAuth",
-                oauth_type="oauth2",
+                oauth_type="access_only",
             ),
         )
         session = _init_session(short_name="salesforce", payload={})
@@ -808,7 +808,7 @@ class TestCompleteConnectionCommon:
                 short_name="github",
                 name="GitHub",
                 auth_config_class="GitHubAuth",
-                oauth_type="oauth2",
+                oauth_type="access_only",
             )
             shell = _source_conn_shell()
             await svc._complete_connection_common(
@@ -868,7 +868,7 @@ class TestCompleteConnectionCommon:
                 short_name="github",
                 name="GitHub",
                 auth_config_class="GitHubAuth",
-                oauth_type="oauth2",
+                oauth_type="access_only",
             )
             shell = _source_conn_shell()
             await svc._complete_connection_common(
@@ -1214,21 +1214,74 @@ class TestFinalizeCallback:
             readable_collection_id="col-abc",
         )
 
-        sync_repo = AsyncMock()
-        sync_repo.get = AsyncMock(return_value=SimpleNamespace(id=sync_id))
+        from airweave import schemas
 
-        sync_job_repo = AsyncMock()
-        sync_job_repo.get_all_by_sync_id = AsyncMock(
-            return_value=[SimpleNamespace(id=uuid4(), status=SyncJobStatus.PENDING)]
+        sync_repo = FakeSyncRepository()
+        sync_repo.seed(
+            sync_id,
+            schemas.Sync(
+                id=sync_id,
+                name="test-sync",
+                source_connection_id=conn_id,
+                collection_id=uuid4(),
+                collection_readable_id="col-abc",
+                organization_id=ORG_ID,
+                created_at=NOW,
+                modified_at=NOW,
+                cron_schedule=None,
+                status="active",
+                source_connections=[],
+                destination_connections=[],
+                destination_connection_ids=[],
+            ),
         )
 
-        collection_repo = AsyncMock()
-        collection_repo.get_by_readable_id = AsyncMock(
-            return_value=SimpleNamespace(id=uuid4(), name="Col", readable_id="col-abc")
+        from airweave.models.sync_job import SyncJob
+
+        sync_job_repo = FakeSyncJobRepository()
+        sync_job_repo.seed_jobs_for_sync(
+            sync_id,
+            [
+                SyncJob(
+                    id=uuid4(),
+                    sync_id=sync_id,
+                    status=SyncJobStatus.PENDING,
+                    organization_id=ORG_ID,
+                    scheduled=False,
+                )
+            ],
         )
 
-        connection_repo = AsyncMock()
-        connection_repo.get = AsyncMock(return_value=SimpleNamespace(short_name="github"))
+        from airweave.models.collection import Collection
+
+        collection_repo = FakeCollectionRepository()
+        col = Collection(
+            id=uuid4(),
+            name="Col",
+            readable_id="col-abc",
+            organization_id=ORG_ID,
+            vector_size=768,
+            embedding_model_name="text-embedding-3-small",
+        )
+        col.created_at = NOW
+        col.modified_at = NOW
+        collection_repo.seed_readable("col-abc", col)
+
+        from airweave.models.connection import Connection
+
+        connection_repo = FakeConnectionRepository()
+        connection = Connection(
+            id=conn_id,
+            organization_id=ORG_ID,
+            name="github-conn",
+            readable_id="conn-github-abc",
+            short_name="github",
+            integration_type="source",
+            status=ConnectionStatus.ACTIVE,
+        )
+        connection.created_at = NOW
+        connection.modified_at = NOW
+        connection_repo.seed(conn_id, connection)
 
         temporal_svc = AsyncMock()
         temporal_svc.run_source_connection_workflow = AsyncMock()
@@ -1248,7 +1301,7 @@ class TestFinalizeCallback:
 
         await svc._finalize_callback(DB, source_conn, _ctx())
 
-        connection_repo.get.assert_awaited_once()
+        assert any(call[0] == "get" for call in connection_repo._calls)
         temporal_svc.run_source_connection_workflow.assert_awaited_once()
 
 

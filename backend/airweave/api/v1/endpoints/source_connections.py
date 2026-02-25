@@ -67,27 +67,13 @@ async def oauth_callback(
     This endpoint does not require authentication as it's accessed by users
     who are connecting their source.
     """
-    if oauth_token and oauth_verifier:
-        source_conn = await oauth_callback_svc.complete_oauth1_callback(
-            db,
-            oauth_token=oauth_token,
-            oauth_verifier=oauth_verifier,
-        )
-    elif state and code:
-        source_conn = await oauth_callback_svc.complete_oauth2_callback(
-            db,
-            state=state,
-            code=code,
-        )
-    else:
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                "Invalid OAuth callback: missing required parameters. "
-                "Expected either (state + code) for OAuth2 or "
-                "(oauth_token + oauth_verifier) for OAuth1"
-            ),
-        )
+    source_conn = await oauth_callback_svc.complete_oauth_callback(
+        db,
+        state=state,
+        code=code,
+        oauth_token=oauth_token,
+        oauth_verifier=oauth_verifier,
+    )
 
     redirect_url = source_conn.auth.redirect_url
 

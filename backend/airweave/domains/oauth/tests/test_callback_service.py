@@ -145,6 +145,54 @@ DB = AsyncMock()
 
 
 # ---------------------------------------------------------------------------
+# complete_oauth_callback
+# ---------------------------------------------------------------------------
+
+
+class TestCompleteOAuthCallback:
+    async def test_dispatches_oauth1_when_oauth1_params_present(self):
+        svc = _service()
+        expected = MagicMock()
+        svc.complete_oauth1_callback = AsyncMock(return_value=expected)
+        svc.complete_oauth2_callback = AsyncMock()
+
+        result = await svc.complete_oauth_callback(
+            DB,
+            oauth_token="token",
+            oauth_verifier="verifier",
+        )
+
+        assert result is expected
+        svc.complete_oauth1_callback.assert_awaited_once()
+        svc.complete_oauth2_callback.assert_not_called()
+
+    async def test_dispatches_oauth2_when_oauth2_params_present(self):
+        svc = _service()
+        expected = MagicMock()
+        svc.complete_oauth1_callback = AsyncMock()
+        svc.complete_oauth2_callback = AsyncMock(return_value=expected)
+
+        result = await svc.complete_oauth_callback(
+            DB,
+            state="state-abc",
+            code="code-abc",
+        )
+
+        assert result is expected
+        svc.complete_oauth2_callback.assert_awaited_once()
+        svc.complete_oauth1_callback.assert_not_called()
+
+    async def test_raises_400_when_no_valid_param_set(self):
+        svc = _service()
+
+        with pytest.raises(HTTPException) as exc:
+            await svc.complete_oauth_callback(DB)
+
+        assert exc.value.status_code == 400
+        assert "Invalid OAuth callback" in exc.value.detail
+
+
+# ---------------------------------------------------------------------------
 # complete_oauth2_callback
 # ---------------------------------------------------------------------------
 
@@ -1186,19 +1234,17 @@ class TestFinalizeCallback:
         with pytest.raises(ValueError, match="no connection_id"):
             await svc._finalize_callback(DB, source_conn, _ctx())
 
-    async def test_auth_completed_event_failure_is_non_fatal(self):
+    async def test_auth_completed_event_failure_is_fatal(self):
         response = MagicMock(id=uuid4(), short_name="github", readable_collection_id="col-abc")
         builder = AsyncMock()
         builder.build_response = AsyncMock(return_value=response)
         event_bus = AsyncMock()
         event_bus.publish = AsyncMock(side_effect=RuntimeError("pub-fail"))
         ctx = _ctx()
-        ctx.logger = MagicMock()
         source_conn = SimpleNamespace(sync_id=None, id=uuid4(), connection_id=uuid4())
         svc = _service(response_builder=builder, event_bus=event_bus)
-        result = await svc._finalize_callback(DB, source_conn, ctx)
-        assert result is response
-        ctx.logger.warning.assert_called()
+        with pytest.raises(RuntimeError, match="pub-fail"):
+            await svc._finalize_callback(DB, source_conn, ctx)
 
     async def test_pending_job_with_connection_executes_event_payload_path(self):
         response = MagicMock(id=uuid4(), short_name="github", readable_collection_id="col-abc")

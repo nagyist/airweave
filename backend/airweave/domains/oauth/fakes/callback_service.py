@@ -21,6 +21,33 @@ class FakeOAuthCallbackService:
     def seed_oauth1_result(self, result: SourceConnectionSchema) -> None:
         self._oauth1_result = result
 
+    async def complete_oauth_callback(
+        self,
+        db: AsyncSession,
+        *,
+        state: Optional[str] = None,
+        code: Optional[str] = None,
+        oauth_token: Optional[str] = None,
+        oauth_verifier: Optional[str] = None,
+    ) -> SourceConnectionSchema:
+        if oauth_token and oauth_verifier:
+            return await self.complete_oauth1_callback(
+                db,
+                oauth_token=oauth_token,
+                oauth_verifier=oauth_verifier,
+            )
+
+        if state and code:
+            return await self.complete_oauth2_callback(
+                db,
+                state=state,
+                code=code,
+            )
+
+        raise ValueError(
+            "FakeOAuthCallbackService: missing callback params, expected OAuth1 or OAuth2 set"
+        )
+
     async def complete_oauth2_callback(
         self,
         db: AsyncSession,

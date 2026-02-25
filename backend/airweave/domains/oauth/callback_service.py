@@ -115,6 +115,39 @@ class OAuthCallbackService:
     # Public API
     # ------------------------------------------------------------------
 
+    async def complete_oauth_callback(
+        self,
+        db: AsyncSession,
+        *,
+        state: str | None = None,
+        code: str | None = None,
+        oauth_token: str | None = None,
+        oauth_verifier: str | None = None,
+    ) -> SourceConnectionSchema:
+        """Complete OAuth callback, auto-detecting OAuth1 vs OAuth2 params."""
+        if oauth_token and oauth_verifier:
+            return await self.complete_oauth1_callback(
+                db,
+                oauth_token=oauth_token,
+                oauth_verifier=oauth_verifier,
+            )
+
+        if state and code:
+            return await self.complete_oauth2_callback(
+                db,
+                state=state,
+                code=code,
+            )
+
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Invalid OAuth callback: missing required parameters. "
+                "Expected either (state + code) for OAuth2 or "
+                "(oauth_token + oauth_verifier) for OAuth1"
+            ),
+        )
+
     async def complete_oauth2_callback(
         self,
         db: AsyncSession,
@@ -607,17 +640,14 @@ class OAuthCallbackService:
                                 ctx=ctx,
                             )
 
-        try:
-            await self._event_bus.publish(
-                SourceConnectionLifecycleEvent.auth_completed(
-                    organization_id=ctx.organization.id,
-                    source_connection_id=source_conn_response.id,
-                    source_type=source_conn_response.short_name,
-                    collection_readable_id=source_conn_response.readable_collection_id,
-                )
+        await self._event_bus.publish(
+            SourceConnectionLifecycleEvent.auth_completed(
+                organization_id=ctx.organization.id,
+                source_connection_id=source_conn_response.id,
+                source_type=source_conn_response.short_name,
+                collection_readable_id=source_conn_response.readable_collection_id,
             )
-        except Exception as e:
-            ctx.logger.warning(f"Failed to publish auth_completed event: {e}")
+        )
 
         return source_conn_response
 

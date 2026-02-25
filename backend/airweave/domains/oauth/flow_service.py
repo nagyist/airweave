@@ -266,7 +266,7 @@ class OAuthFlowService:
     # Flow state persistence
     # ------------------------------------------------------------------
 
-    async def create_init_session(  # noqa: C901
+    async def create_init_session(
         self,
         db: AsyncSession,
         *,

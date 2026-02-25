@@ -360,6 +360,18 @@ class OAuthFlowServiceProtocol(Protocol):
 class OAuthCallbackServiceProtocol(Protocol):
     """Completes browser-based OAuth callback flows end-to-end."""
 
+    async def complete_oauth_callback(
+        self,
+        db: AsyncSession,
+        *,
+        state: Optional[str] = None,
+        code: Optional[str] = None,
+        oauth_token: Optional[str] = None,
+        oauth_verifier: Optional[str] = None,
+    ) -> SourceConnectionSchema:
+        """Complete OAuth callback by auto-detecting OAuth1 vs OAuth2 parameter set."""
+        ...
+
     async def complete_oauth2_callback(
         self,
         db: AsyncSession,

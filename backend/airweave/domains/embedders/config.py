@@ -1,8 +1,10 @@
 """Deployment-wide embedding configuration.
 
-Python constants — the single source of truth for what this deployment uses.
-Replaces both core/embedding_validation.py and platform/embedders/config.py
-for startup validation purposes.
+Reads from environment variables (.env) — no defaults.
+All three must be explicitly set: DENSE_EMBEDDER, EMBEDDING_DIMENSIONS, SPARSE_EMBEDDER.
+
+Startup validation ensures they exist in the registry, dimensions are valid,
+credentials are present, and the DB deployment metadata row is consistent.
 """
 
 from sqlalchemy import select
@@ -17,13 +19,18 @@ from airweave.domains.embedders.protocols import (
 from airweave.domains.embedders.types import DenseEmbedderEntry, SparseEmbedderEntry
 from airweave.models.vector_db_deployment_metadata import VectorDbDeploymentMetadata
 
+
+class EmbeddingConfigError(Exception):
+    """Hard error raised when embedding config is invalid or mismatched."""
+
+
 # ---------------------------------------------------------------------------
-# Constants — the single source of truth for the embedding stack
+# Read from environment — validated in validate_embedding_config() at startup
 # ---------------------------------------------------------------------------
 
-DENSE_EMBEDDER = "openai_text_embedding_3_large"
-EMBEDDING_DIMENSIONS = 3072
-SPARSE_EMBEDDER = "fastembed_bm25"
+DENSE_EMBEDDER: str = settings.DENSE_EMBEDDER or ""
+EMBEDDING_DIMENSIONS: int = settings.EMBEDDING_DIMENSIONS or 0
+SPARSE_EMBEDDER: str = settings.SPARSE_EMBEDDER or ""
 
 
 # ---------------------------------------------------------------------------
@@ -31,39 +38,70 @@ SPARSE_EMBEDDER = "fastembed_bm25"
 # ---------------------------------------------------------------------------
 
 
-class EmbeddingConfigError(Exception):
-    """Hard error raised when embedding config is invalid or mismatched."""
-
-
-async def validate_embedding_config(
-    db: AsyncSession,
+def validate_embedding_config_sync(
     *,
     dense_registry: DenseEmbedderRegistryProtocol,
     sparse_registry: SparseEmbedderRegistryProtocol,
 ) -> None:
-    """Validate the embedding configuration at startup.
+    """Validate env vars, registry lookups, dimensions, and credentials (no DB needed).
 
-    Steps:
-    1. Registry check — verify DENSE_EMBEDDER / SPARSE_EMBEDDER exist.
-    2. Dimensions check — verify EMBEDDING_DIMENSIONS is valid for the model.
-    3. Credentials check — verify required API keys are set.
-    4. DB reconciliation — compare against the vector_db_deployment_metadata table.
+    Called from the DI container factory *before* embedder instances are constructed,
+    so that missing/invalid config produces a clear error instead of a raw KeyError.
 
     Raises:
         EmbeddingConfigError on any mismatch.
     """
+    dense_names = [e.short_name for e in dense_registry.list_all()]
+    sparse_names = [e.short_name for e in sparse_registry.list_all()]
+
+    # Check required settings are present
+    if not DENSE_EMBEDDER:
+        raise EmbeddingConfigError(
+            f"Required environment variable 'DENSE_EMBEDDER' is not set. "
+            f"Add it to your .env file.\n  Available options: {', '.join(dense_names)}"
+        )
+    if not EMBEDDING_DIMENSIONS:
+        raise EmbeddingConfigError(
+            "Required environment variable 'EMBEDDING_DIMENSIONS' is not set. "
+            "Add it to your .env file."
+        )
+    if not SPARSE_EMBEDDER:
+        raise EmbeddingConfigError(
+            f"Required environment variable 'SPARSE_EMBEDDER' is not set. "
+            f"Add it to your .env file.\n  Available options: {', '.join(sparse_names)}"
+        )
+
+    # Check embedder names exist in registry
     try:
         dense_spec = dense_registry.get(DENSE_EMBEDDER)
     except KeyError:
-        raise EmbeddingConfigError(f"Dense embedder '{DENSE_EMBEDDER}' not found in registry.")
+        raise EmbeddingConfigError(
+            f"Dense embedder '{DENSE_EMBEDDER}' not found in registry. "
+            f"Available options: {', '.join(dense_names)}"
+        )
 
     try:
         sparse_spec = sparse_registry.get(SPARSE_EMBEDDER)
     except KeyError:
-        raise EmbeddingConfigError(f"Sparse embedder '{SPARSE_EMBEDDER}' not found in registry.")
+        raise EmbeddingConfigError(
+            f"Sparse embedder '{SPARSE_EMBEDDER}' not found in registry. "
+            f"Available options: {', '.join(sparse_names)}"
+        )
 
     _validate_dimensions(dense_spec)
     _validate_credentials(dense_spec, sparse_spec)
+
+
+async def validate_embedding_config(db: AsyncSession) -> None:
+    """Reconcile embedding config against the DB deployment metadata table.
+
+    The env-var / registry / dimensions / credentials checks are handled earlier
+    by validate_embedding_config_sync() during container initialization.
+    This async step only needs a DB session.
+
+    Raises:
+        EmbeddingConfigError on any mismatch.
+    """
     await _reconcile_db(db)
 
 

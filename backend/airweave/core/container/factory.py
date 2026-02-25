@@ -50,7 +50,12 @@ from airweave.domains.collections.vector_db_deployment_metadata_repository impor
 )
 from airweave.domains.connections.repository import ConnectionRepository
 from airweave.domains.credentials.repository import IntegrationCredentialRepository
-from airweave.domains.embedders.config import DENSE_EMBEDDER, EMBEDDING_DIMENSIONS, SPARSE_EMBEDDER
+from airweave.domains.embedders.config import (
+    DENSE_EMBEDDER,
+    EMBEDDING_DIMENSIONS,
+    SPARSE_EMBEDDER,
+    validate_embedding_config_sync,
+)
 from airweave.domains.embedders.dense.openai import OpenAIDenseEmbedder as DomainOpenAIDenseEmbedder
 from airweave.domains.embedders.protocols import DenseEmbedderProtocol, SparseEmbedderProtocol
 from airweave.domains.embedders.registry import DenseEmbedderRegistry, SparseEmbedderRegistry
@@ -225,6 +230,14 @@ def create_container(settings: Settings) -> Container:
     dense_embedder_registry.build()
     sparse_embedder_registry = SparseEmbedderRegistry()
     sparse_embedder_registry.build()
+
+    # Validate env vars, registry lookups, dimensions, and credentials
+    # before attempting to construct embedder instances.
+    # DB reconciliation happens later in main.py lifespan.
+    validate_embedding_config_sync(
+        dense_registry=dense_embedder_registry,
+        sparse_registry=sparse_embedder_registry,
+    )
 
     dense_embedder = _create_dense_embedder(settings, dense_embedder_registry)
     sparse_embedder = _create_sparse_embedder(sparse_embedder_registry)

@@ -23,11 +23,11 @@ from airweave.domains.collections.fakes.vector_db_deployment_metadata_repository
     FakeVectorDbDeploymentMetadataRepository,
 )
 from airweave.domains.collections.service import CollectionService
+from airweave.domains.embedders.fakes.registry import FakeDenseEmbedderRegistry
+from airweave.domains.embedders.types import DenseEmbedderEntry
 from airweave.domains.source_connections.fakes.repository import (
     FakeSourceConnectionRepository,
 )
-from airweave.domains.embedders.fakes.registry import FakeDenseEmbedderRegistry
-from airweave.domains.embedders.types import DenseEmbedderEntry
 from airweave.domains.syncs.fakes.sync_lifecycle_service import FakeSyncLifecycleService
 from airweave.models.collection import Collection
 from airweave.schemas.organization import Organization
@@ -63,9 +63,12 @@ def _collection(
     col.name = name
     col.readable_id = readable_id
     col.organization_id = ORG_ID
-    # Fields required by schemas.Collection.model_validate (used in delete snapshot)
-    col.vector_size = 1536
-    col.embedding_model_name = "text-embedding-3-small"
+    col.vector_db_deployment_metadata_id = DEPLOYMENT_METADATA_ID
+    # Relationship used by _to_response to derive vector_size / embedding_model_name
+    vd = MagicMock()
+    vd.embedding_dimensions = 3072
+    vd.dense_embedder = "openai_text_embedding_3_large"
+    col.vector_db_deployment_metadata = vd
     col.sync_config = None
     col.created_at = NOW
     col.modified_at = NOW
@@ -104,6 +107,20 @@ def _fake_dense_registry() -> FakeDenseEmbedderRegistry:
             provider="openai",
             api_model_name="text-embedding-3-large",
             max_dimensions=3072,
+            max_tokens=8191,
+            supports_matryoshka=True,
+            embedder_class_ref=object,
+        )
+    )
+    registry.seed(
+        DenseEmbedderEntry(
+            short_name="openai_text_embedding_3_small",
+            name="OpenAI text-embedding-3-small",
+            description="OpenAI small embedding model",
+            class_name="OpenAIDenseEmbedder",
+            provider="openai",
+            api_model_name="text-embedding-3-small",
+            max_dimensions=1536,
             max_tokens=8191,
             supports_matryoshka=True,
             embedder_class_ref=object,

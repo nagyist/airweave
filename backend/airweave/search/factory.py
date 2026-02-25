@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from airweave import crud
 from airweave.api.context import ApiContext
 from airweave.core.config import settings
+from airweave.domains.embedders.config import DENSE_EMBEDDER, EMBEDDING_DIMENSIONS
 from airweave.platform.destinations._base import BaseDestination
 from airweave.platform.embedders.config import get_provider_for_model
 from airweave.platform.locator import resource_locator
@@ -134,17 +135,12 @@ class SearchFactory:
         if not has_federated_sources and not has_vector_sources:
             raise ValueError("Collection has no sources")
 
-        # Use collection's stored vector_size for provider initialization
-        vector_size = collection.vector_size
-
-        # Fail-fast: vector_size must be set
-        if vector_size is None:
-            raise ValueError(f"Collection {collection.readable_id} has no vector_size set.")
+        vector_size = EMBEDDING_DIMENSIONS
 
         # Select providers for operations
         # Note: Skip embedding provider if destination embeds server-side (e.g., Vespa)
         api_keys = self._get_available_api_keys()
-        embedding_provider = get_provider_for_model(collection.embedding_model_name)
+        embedding_provider = get_provider_for_model(DENSE_EMBEDDER)
         providers = self._create_provider_for_each_operation(
             api_keys,
             params,
@@ -665,20 +661,6 @@ class SearchFactory:
             return await VespaDestination.create(
                 collection_id=collection.id,
                 organization_id=collection.organization_id,
-                vector_size=collection.vector_size,
-                logger=ctx.logger,
-            )
-        elif destination_override == "qdrant":
-            from airweave.platform.destinations.qdrant import QdrantDestination
-
-            ctx.logger.info(
-                f"[SearchFactory] Using Qdrant destination (override) for "
-                f"collection {collection.readable_id}"
-            )
-            return await QdrantDestination.create(
-                collection_id=collection.id,
-                organization_id=collection.organization_id,
-                vector_size=collection.vector_size,
                 logger=ctx.logger,
             )
         else:

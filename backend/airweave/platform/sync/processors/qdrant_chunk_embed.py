@@ -6,6 +6,7 @@ Used by: Qdrant, Pinecone, and similar vector DBs.
 import json
 from typing import TYPE_CHECKING, Any, Dict, List, Tuple
 
+from airweave.domains.embedders.config import DENSE_EMBEDDER, EMBEDDING_DIMENSIONS
 from airweave.platform.entities._base import BaseEntity, CodeFileEntity
 from airweave.platform.sync.exceptions import SyncFailureError
 from airweave.platform.sync.pipeline.text_builder import text_builder
@@ -221,19 +222,19 @@ class QdrantChunkEmbedProcessor(ContentProcessor):
         # Dense embeddings
         dense_texts = [e.textual_representation for e in chunk_entities]
         dense_embedder = get_dense_embedder(
-            vector_size=sync_context.collection.vector_size,
-            model_name=sync_context.collection.embedding_model_name,
+            vector_size=EMBEDDING_DIMENSIONS,
+            model_name=DENSE_EMBEDDER,
         )
         dense_embeddings = await dense_embedder.embed_many(dense_texts, sync_context)
         if (
             dense_embeddings
             and dense_embeddings[0] is not None
-            and len(dense_embeddings[0]) != sync_context.collection.vector_size
+            and len(dense_embeddings[0]) != EMBEDDING_DIMENSIONS
         ):
             raise SyncFailureError(
                 "[QdrantChunkEmbedProcessor] Dense embedding dimensions mismatch: "
                 f"got {len(dense_embeddings[0])}, "
-                f"expected {sync_context.collection.vector_size}."
+                f"expected {EMBEDDING_DIMENSIONS}."
             )
 
         # Sparse embeddings for hybrid search

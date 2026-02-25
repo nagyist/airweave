@@ -63,15 +63,15 @@ def _collection(
     col.name = name
     col.readable_id = readable_id
     col.organization_id = ORG_ID
-    col.vector_db_deployment_metadata_id = DEPLOYMENT_METADATA_ID
+    # Fields required by schemas.Collection.model_validate (used in delete snapshot)
+    col.vector_size = 1536
+    col.embedding_model_name = "text-embedding-3-small"
     col.sync_config = None
+    col.created_at = NOW
+    col.modified_at = NOW
     col.created_by_email = None
     col.modified_by_email = None
-
-    dep_meta = MagicMock()
-    dep_meta.embedding_dimensions = 3072
-    dep_meta.dense_embedder = "openai_text_embedding_3_large"
-    col.vector_db_deployment_metadata = dep_meta
+    col.status = "NEEDS SOURCE"
     return col
 
 

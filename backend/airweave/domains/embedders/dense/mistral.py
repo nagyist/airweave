@@ -61,6 +61,16 @@ class MistralDenseEmbedder:
     # Public interface
     # ------------------------------------------------------------------
 
+    @property
+    def model_name(self) -> str:
+        """The model identifier (e.g. "mistral-embed")."""
+        return self._model
+
+    @property
+    def dimensions(self) -> int:
+        """The output vector dimensionality."""
+        return self._dimensions
+
     async def embed(self, text: str) -> DenseEmbedding:
         """Embed a single text into a dense vector."""
         results = await self.embed_many([text])

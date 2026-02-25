@@ -18,6 +18,16 @@ class FakeDenseEmbedder:
         """Initialize with a fixed dimension size."""
         self._dimensions = dimensions
 
+    @property
+    def model_name(self) -> str:
+        """The model identifier."""
+        return "fake-dense"
+
+    @property
+    def dimensions(self) -> int:
+        """The output vector dimensionality."""
+        return self._dimensions
+
     async def embed(self, text: str) -> DenseEmbedding:
         """Return a zero-vector of the configured dimensions."""
         return DenseEmbedding(vector=[0.0] * self._dimensions)
@@ -40,6 +50,11 @@ class FakeSparseEmbedder:
         result = await fake.embed("hello")
         assert result.indices == []
     """
+
+    @property
+    def model_name(self) -> str:
+        """The model identifier."""
+        return "fake-sparse"
 
     async def embed(self, text: str) -> SparseEmbedding:
         """Return an empty sparse embedding."""

@@ -51,6 +51,11 @@ class FastEmbedSparseEmbedder:
     # Public interface
     # ------------------------------------------------------------------
 
+    @property
+    def model_name(self) -> str:
+        """The model identifier (e.g. "Qdrant/bm25")."""
+        return self._model_name
+
     async def embed(self, text: str) -> SparseEmbedding:
         """Embed a single text into a sparse vector."""
         results = await self.embed_many([text])

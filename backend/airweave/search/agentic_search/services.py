@@ -8,7 +8,6 @@ from __future__ import annotations
 from airweave.adapters.circuit_breaker import InMemoryCircuitBreaker
 from airweave.api.context import ApiContext
 from airweave.core.config import settings
-from airweave.domains.embedders.config import DENSE_EMBEDDER, EMBEDDING_DIMENSIONS, SPARSE_EMBEDDER
 from airweave.domains.embedders.protocols import DenseEmbedderProtocol, SparseEmbedderProtocol
 from airweave.search.agentic_search.config import (
     DatabaseImpl,
@@ -127,9 +126,9 @@ class AgenticSearchServices:
             f"  - Primary LLM: {llm_spec.api_model_name}\n"
             f"  - Tokenizer: {config.TOKENIZER_TYPE.value} / "
             f"{tokenizer_spec.encoding_name}\n"
-            f"  - Dense embedder: {DENSE_EMBEDDER} "
-            f"(vector_size={EMBEDDING_DIMENSIONS})\n"
-            f"  - Sparse embedder: {SPARSE_EMBEDDER}\n"
+            f"  - Dense embedder: {dense_embedder.model_name} "
+            f"(vector_size={dense_embedder.dimensions})\n"
+            f"  - Sparse embedder: {sparse_embedder.model_name}\n"
             f"  - Vector DB: {config.VECTOR_DB_PROVIDER.value}"
         )
 

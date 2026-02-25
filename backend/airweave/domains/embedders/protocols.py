@@ -18,6 +18,16 @@ from airweave.domains.embedders.types import (
 class DenseEmbedderProtocol(Protocol):
     """Protocol for dense embedding models."""
 
+    @property
+    def model_name(self) -> str:
+        """The model identifier (e.g. "text-embedding-3-large")."""
+        ...
+
+    @property
+    def dimensions(self) -> int:
+        """The output vector dimensionality."""
+        ...
+
     async def embed(self, text: str) -> DenseEmbedding:
         """Embed a single text into a dense vector."""
         ...
@@ -33,6 +43,11 @@ class DenseEmbedderProtocol(Protocol):
 
 class SparseEmbedderProtocol(Protocol):
     """Protocol for sparse embedding models."""
+
+    @property
+    def model_name(self) -> str:
+        """The model identifier (e.g. "Qdrant/bm25")."""
+        ...
 
     async def embed(self, text: str) -> SparseEmbedding:
         """Embed a single text into a sparse vector."""

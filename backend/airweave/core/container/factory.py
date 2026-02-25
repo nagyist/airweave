@@ -60,6 +60,7 @@ from airweave.domains.oauth.repository import (
     OAuthRedirectSessionRepository,
     OAuthSourceRepository,
 )
+from airweave.domains.organizations.repository import OrganizationRepository as OrgRepo
 from airweave.domains.source_connections.create import SourceConnectionCreationService
 from airweave.domains.source_connections.delete import SourceConnectionDeletionService
 from airweave.domains.source_connections.repository import SourceConnectionRepository
@@ -186,6 +187,18 @@ def create_container(settings: Settings) -> Container:
         source_registry=source_deps["source_registry"],
     )
     encryptor = FernetCredentialEncryptor(settings.ENCRYPTION_KEY)
+    init_session_repo = OAuthInitSessionRepository()
+
+    # OAuth flow service
+    # -----------------------------------------------------------------
+    oauth_flow_svc = OAuthFlowService(
+        oauth2_service=source_deps["oauth2_service"],
+        oauth1_service=source_deps["oauth1_service"],
+        integration_settings=integration_settings,
+        init_session_repo=init_session_repo,
+        redirect_session_repo=source_deps["redirect_session_repo"],
+        settings=settings,
+    )
 
     update_service = SourceConnectionUpdateService(
         sc_repo=source_deps["sc_repo"],
@@ -211,8 +224,7 @@ def create_container(settings: Settings) -> Container:
         sync_lifecycle=sync_deps["sync_lifecycle"],
         sync_record_service=sync_deps["sync_record_service"],
         response_builder=sync_deps["response_builder"],
-        oauth1_service=source_deps["oauth1_service"],
-        oauth2_service=source_deps["oauth2_service"],
+        oauth_flow_service=oauth_flow_svc,
         credential_encryptor=encryptor,
         temporal_workflow_service=sync_deps["temporal_workflow_service"],
         event_bus=event_bus,
@@ -242,20 +254,8 @@ def create_container(settings: Settings) -> Container:
         settings=settings,
     )
 
-    # OAuth flow + callback services
+    # OAuth callback service
     # -----------------------------------------------------------------
-    init_session_repo = OAuthInitSessionRepository()
-
-    oauth_flow_svc = OAuthFlowService(
-        oauth2_service=source_deps["oauth2_service"],
-        oauth1_service=source_deps["oauth1_service"],
-        integration_settings=integration_settings,
-        init_session_repo=init_session_repo,
-        redirect_session_repo=source_deps["redirect_session_repo"],
-        settings=settings,
-    )
-
-    from airweave.domains.organizations.repository import OrganizationRepository as OrgRepo
 
     oauth_callback_svc = OAuthCallbackService(
         oauth_flow_service=oauth_flow_svc,
@@ -478,13 +478,14 @@ def _create_source_services(settings: Settings) -> dict:
     sync_cursor_repo = SyncCursorRepository()
     sync_job_repo = SyncJobRepository()
     redirect_session_repo = OAuthRedirectSessionRepository()
+    source_repo = OAuthSourceRepository()
     oauth1_svc = OAuth1Service()
     oauth2_svc = OAuth2Service(
         settings=settings,
         conn_repo=OAuthConnectionRepository(),
         cred_repo=OAuthCredentialRepository(),
         encryptor=FernetCredentialEncryptor(settings.ENCRYPTION_KEY),
-        source_repo=OAuthSourceRepository(),
+        source_repo=source_repo,
     )
 
     source_service = SourceService(
@@ -510,6 +511,7 @@ def _create_source_services(settings: Settings) -> dict:
         "cred_repo": cred_repo,
         "oauth1_service": oauth1_svc,
         "oauth2_service": oauth2_svc,
+        "source_repo": source_repo,
         "redirect_session_repo": redirect_session_repo,
         "source_lifecycle_service": source_lifecycle_service,
         "sync_repo": sync_repo,

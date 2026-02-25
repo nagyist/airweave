@@ -34,6 +34,7 @@ from airweave.domains.source_connections.protocols import (
     SourceConnectionRepositoryProtocol,
 )
 from airweave.domains.sources.protocols import SourceRegistryProtocol
+from airweave.domains.sources.types import SourceRegistryEntry
 from airweave.domains.syncs.protocols import (
     SyncJobRepositoryProtocol,
     SyncLifecycleServiceProtocol,
@@ -134,22 +135,11 @@ class OAuthCallbackService:
         )
 
         source = await self._source_repo.get_by_short_name(db, short_name=init_session.short_name)
-        if source:
-            try:
-                entry = self._source_registry.get(init_session.short_name)
-                source_cls = entry.source_class_ref
-                source_instance = await source_cls.create(
-                    access_token=token_response.access_token, config=None
-                )
-                source_instance.set_logger(ctx.logger)
-                if hasattr(source_instance, "validate"):
-                    is_valid = await source_instance.validate()
-                    if not is_valid:
-                        ctx.logger.warning(
-                            f"OAuth2 token validation failed for {init_session.short_name}"
-                        )
-            except Exception as e:
-                ctx.logger.warning(f"OAuth2 token validation skipped: {e}")
+        await self._validate_oauth2_token_or_raise(
+            source=source,
+            access_token=token_response.access_token,
+            ctx=ctx,
+        )
 
         source_conn = await self._complete_oauth2_connection(
             db, source_conn_shell, init_session, token_response, ctx
@@ -439,6 +429,7 @@ class OAuthCallbackService:
             await uow.session.flush()
             await uow.session.refresh(connection)
 
+            entry: SourceRegistryEntry | Any
             try:
                 entry = self._source_registry.get(source.short_name)
                 source_class = entry.source_class_ref
@@ -446,7 +437,7 @@ class OAuthCallbackService:
                 from airweave.platform.locator import resource_locator
 
                 source_class = resource_locator.get_source(source)
-                entry = None
+                entry = self._build_source_entry_fallback(source, source_class)
 
             is_federated = getattr(source_class, "federated_search", False)
 
@@ -482,9 +473,6 @@ class OAuthCallbackService:
                 destination_ids = await self._sync_record_service.resolve_destination_ids(
                     uow.session, ctx
                 )
-
-                if entry is None:
-                    entry = self._source_registry.get(source.short_name)
 
                 sync_result = await self._sync_lifecycle.provision_sync(
                     uow.session,
@@ -526,6 +514,52 @@ class OAuthCallbackService:
             await uow.session.refresh(source_conn)
 
         return source_conn
+
+    async def _validate_oauth2_token_or_raise(
+        self,
+        *,
+        source: Any,
+        access_token: str,
+        ctx: ApiContext,
+    ) -> None:
+        """Validate OAuth2 token using source implementation; fail callback if invalid."""
+        if not source:
+            return
+
+        try:
+            try:
+                source_cls = self._source_registry.get(source.short_name).source_class_ref
+            except KeyError:
+                from airweave.platform.locator import resource_locator
+
+                source_cls = resource_locator.get_source(source)
+
+            source_instance = await source_cls.create(access_token=access_token, config=None)
+            source_instance.set_logger(ctx.logger)
+
+            if hasattr(source_instance, "validate"):
+                is_valid = await source_instance.validate()
+                if not is_valid:
+                    raise HTTPException(status_code=400, detail="OAuth token is invalid")
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Token validation failed: {e}") from e
+
+    @staticmethod
+    def _build_source_entry_fallback(source: Any, source_class: type) -> Any:
+        """Create minimal source entry when source is missing from registry."""
+        return type(
+            "FallbackSourceEntry",
+            (),
+            {
+                "short_name": source.short_name,
+                "supports_continuous": getattr(source_class, "supports_continuous", False),
+                "federated_search": getattr(source_class, "federated_search", False),
+                "source_class_ref": source_class,
+                "name": getattr(source, "name", source.short_name),
+            },
+        )()
 
     # ------------------------------------------------------------------
     # Private: finalization (response + sync trigger)

@@ -51,8 +51,8 @@ class FakeOAuthFlowService:
         short_name: str,
         state: str,
         *,
-        consumer_key: str,
-        consumer_secret: str,
+        consumer_key: Optional[str] = None,
+        consumer_secret: Optional[str] = None,
         ctx: ApiContext,
     ) -> Tuple[str, Dict[str, str]]:
         self._calls.append(("initiate_oauth1", short_name, state))
@@ -95,12 +95,13 @@ class FakeOAuthFlowService:
         redirect_session_id: Optional[UUID] = None,
         client_id: Optional[str] = None,
         client_secret: Optional[str] = None,
+        oauth_client_mode: Optional[str] = None,
         redirect_url: Optional[str] = None,
         template_configs: Optional[dict] = None,
         additional_overrides: Optional[Dict[str, Any]] = None,
     ) -> Any:
         self._calls.append(("create_init_session", short_name, state))
-        return None
+        return type("InitSession", (), {"id": uuid4()})()
 
     async def create_proxy_url(
         self,

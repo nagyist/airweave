@@ -46,6 +46,7 @@ class OAuthFlowService:
         redirect_session_repo: OAuthRedirectSessionRepositoryProtocol,
         settings: Settings,
     ) -> None:
+        """Store dependencies for OAuth initiation/callback/session orchestration."""
         self._oauth2_service = oauth2_service
         self._oauth1_service = oauth1_service
         self._integration_settings = integration_settings
@@ -82,16 +83,21 @@ class OAuthFlowService:
 
         api_callback = f"{self._settings.api_url}/source-connections/callback"
 
-        (
-            provider_auth_url,
-            code_verifier,
-        ) = await self._oauth2_service.generate_auth_url_with_redirect(
-            oauth_settings,
-            redirect_uri=api_callback,
-            client_id=client_id,
-            state=state,
-            template_configs=template_configs,
-        )
+        try:
+            (
+                provider_auth_url,
+                code_verifier,
+            ) = await self._oauth2_service.generate_auth_url_with_redirect(
+                oauth_settings,
+                redirect_uri=api_callback,
+                client_id=client_id,
+                state=state,
+                template_configs=template_configs,
+            )
+        except ValueError as exc:
+            from fastapi import HTTPException
+
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
 
         if code_verifier:
             ctx.logger.debug(f"Generated PKCE challenge for {short_name} (code_verifier stored)")
@@ -103,8 +109,8 @@ class OAuthFlowService:
         short_name: str,
         state: str,
         *,
-        consumer_key: str,
-        consumer_secret: str,
+        consumer_key: Optional[str] = None,
+        consumer_secret: Optional[str] = None,
         ctx: ApiContext,
     ) -> Tuple[str, Dict[str, str]]:
         """Start OAuth1 flow: get request token and build authorization URL.
@@ -132,10 +138,20 @@ class OAuthFlowService:
 
         api_callback = f"{self._settings.api_url}/source-connections/callback"
 
+        effective_consumer_key = consumer_key or oauth_settings.consumer_key
+        effective_consumer_secret = consumer_secret or oauth_settings.consumer_secret
+        if not effective_consumer_key or not effective_consumer_secret:
+            from fastapi import HTTPException
+
+            raise HTTPException(
+                status_code=422,
+                detail="Custom OAuth requires both client_id and client_secret or neither",
+            )
+
         request_token_response = await self._oauth1_service.get_request_token(
             request_token_url=oauth_settings.request_token_url,
-            consumer_key=consumer_key,
-            consumer_secret=consumer_secret,
+            consumer_key=effective_consumer_key,
+            consumer_secret=effective_consumer_secret,
             callback_url=api_callback,
             logger=ctx.logger,
         )
@@ -143,8 +159,8 @@ class OAuthFlowService:
         oauth1_overrides: Dict[str, str] = {
             "oauth_token": request_token_response.oauth_token,
             "oauth_token_secret": request_token_response.oauth_token_secret,
-            "consumer_key": consumer_key,
-            "consumer_secret": consumer_secret,
+            "consumer_key": effective_consumer_key,
+            "consumer_secret": effective_consumer_secret,
         }
 
         provider_auth_url = self._oauth1_service.build_authorization_url(
@@ -226,6 +242,7 @@ class OAuthFlowService:
         redirect_session_id: Optional[UUID] = None,
         client_id: Optional[str] = None,
         client_secret: Optional[str] = None,
+        oauth_client_mode: Optional[str] = None,
         redirect_url: Optional[str] = None,
         template_configs: Optional[dict] = None,
         additional_overrides: Optional[Dict[str, Any]] = None,
@@ -234,14 +251,14 @@ class OAuthFlowService:
 
         Caller pre-extracts BYOC creds; this method never sees SourceConnectionCreate.
         """
-        oauth_client_mode = "platform_default"
-        if client_id and client_secret:
-            oauth_client_mode = "byoc"
+        effective_client_mode = oauth_client_mode
+        if not effective_client_mode:
+            effective_client_mode = "byoc" if (client_id and client_secret) else "platform_default"
 
         overrides: Dict[str, Any] = {
             "client_id": client_id,
             "client_secret": client_secret,
-            "oauth_client_mode": oauth_client_mode,
+            "oauth_client_mode": effective_client_mode,
             "redirect_url": redirect_url or self._settings.app_url,
             "oauth_redirect_uri": f"{self._settings.api_url}/source-connections/callback",
             "template_configs": template_configs,

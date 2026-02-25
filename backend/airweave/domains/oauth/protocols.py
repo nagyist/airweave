@@ -283,8 +283,8 @@ class OAuthFlowServiceProtocol(Protocol):
         short_name: str,
         state: str,
         *,
-        consumer_key: str,
-        consumer_secret: str,
+        consumer_key: Optional[str] = None,
+        consumer_secret: Optional[str] = None,
         ctx: ApiContext,
     ) -> Tuple[str, Dict[str, str]]:
         """Start OAuth1 flow. Returns (provider_auth_url, oauth1_overrides)."""
@@ -323,6 +323,7 @@ class OAuthFlowServiceProtocol(Protocol):
         redirect_session_id: Optional[UUID] = None,
         client_id: Optional[str] = None,
         client_secret: Optional[str] = None,
+        oauth_client_mode: Optional[str] = None,
         redirect_url: Optional[str] = None,
         template_configs: Optional[dict] = None,
         additional_overrides: Optional[Dict[str, Any]] = None,

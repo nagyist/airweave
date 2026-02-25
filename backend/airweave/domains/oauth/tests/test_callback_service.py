@@ -175,6 +175,114 @@ class TestCompleteOAuth2Callback:
         assert exc.value.status_code == 404
         assert "shell" in exc.value.detail.lower()
 
+    async def test_invalid_oauth2_token_fails_fast_with_400(self):
+        init_repo = FakeOAuthInitSessionRepository()
+        session = _init_session()
+        init_repo.seed_by_state("state-abc", session)
+
+        org_repo = FakeOrganizationRepository()
+        org_repo.seed(ORG_ID, _organization())
+
+        sc_repo = FakeSourceConnectionRepository()
+        shell = _source_conn_shell()
+        sc_repo.seed(shell.id, shell)
+        sc_repo.seed_init_session(SESSION_ID, session)
+
+        source_repo = FakeOAuthSourceRepository()
+        source_repo.seed(
+            "github",
+            SimpleNamespace(short_name="github", name="GitHub", auth_config_class="GitHubAuth"),
+        )
+
+        oauth_flow = AsyncMock()
+        oauth_flow.complete_oauth2_callback = AsyncMock(
+            return_value=SimpleNamespace(access_token="bad-token")
+        )
+
+        class _InvalidSource:
+            def set_logger(self, _logger):
+                return None
+
+            async def validate(self):
+                return False
+
+        class _SourceClass:
+            @staticmethod
+            async def create(access_token, config):  # noqa: ARG004
+                return _InvalidSource()
+
+        registry = MagicMock()
+        registry.get.return_value = SimpleNamespace(source_class_ref=_SourceClass, short_name="github")
+
+        svc = _service(
+            init_session_repo=init_repo,
+            organization_repo=org_repo,
+            sc_repo=sc_repo,
+            source_repo=source_repo,
+            oauth_flow_service=oauth_flow,
+            source_registry=registry,
+        )
+        with pytest.raises(HTTPException) as exc:
+            await svc.complete_oauth2_callback(DB, state="state-abc", code="c")
+
+        assert exc.value.status_code == 400
+        assert "token" in exc.value.detail.lower()
+        assert all(call[0] != "mark_completed" for call in init_repo._calls)
+
+    async def test_validation_exception_fails_fast_with_400(self):
+        init_repo = FakeOAuthInitSessionRepository()
+        session = _init_session()
+        init_repo.seed_by_state("state-abc", session)
+
+        org_repo = FakeOrganizationRepository()
+        org_repo.seed(ORG_ID, _organization())
+
+        sc_repo = FakeSourceConnectionRepository()
+        shell = _source_conn_shell()
+        sc_repo.seed(shell.id, shell)
+        sc_repo.seed_init_session(SESSION_ID, session)
+
+        source_repo = FakeOAuthSourceRepository()
+        source_repo.seed(
+            "github",
+            SimpleNamespace(short_name="github", name="GitHub", auth_config_class="GitHubAuth"),
+        )
+
+        oauth_flow = AsyncMock()
+        oauth_flow.complete_oauth2_callback = AsyncMock(
+            return_value=SimpleNamespace(access_token="token")
+        )
+
+        class _BrokenSource:
+            def set_logger(self, _logger):
+                return None
+
+            async def validate(self):
+                raise RuntimeError("provider error")
+
+        class _SourceClass:
+            @staticmethod
+            async def create(access_token, config):  # noqa: ARG004
+                return _BrokenSource()
+
+        registry = MagicMock()
+        registry.get.return_value = SimpleNamespace(source_class_ref=_SourceClass, short_name="github")
+
+        svc = _service(
+            init_session_repo=init_repo,
+            organization_repo=org_repo,
+            sc_repo=sc_repo,
+            source_repo=source_repo,
+            oauth_flow_service=oauth_flow,
+            source_registry=registry,
+        )
+        with pytest.raises(HTTPException) as exc:
+            await svc.complete_oauth2_callback(DB, state="state-abc", code="c")
+
+        assert exc.value.status_code == 400
+        assert "validation failed" in exc.value.detail.lower()
+        assert all(call[0] != "mark_completed" for call in init_repo._calls)
+
 
 # ---------------------------------------------------------------------------
 # complete_oauth1_callback

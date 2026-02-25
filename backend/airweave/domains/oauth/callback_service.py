@@ -9,12 +9,14 @@ from typing import Any, Dict
 from uuid import UUID, uuid4
 
 from fastapi import HTTPException
+from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import schemas
 from airweave.api.context import ApiContext
 from airweave.core.events.source_connection import SourceConnectionLifecycleEvent
 from airweave.core.events.sync import SyncLifecycleEvent
+from airweave.core.logging import logger
 from airweave.core.protocols.encryption import CredentialEncryptor
 from airweave.core.protocols.event_bus import EventBus
 from airweave.core.shared_models import AuthMethod, ConnectionStatus, SyncJobStatus
@@ -43,9 +45,13 @@ from airweave.domains.syncs.protocols import (
 from airweave.domains.temporal.protocols import TemporalWorkflowServiceProtocol
 from airweave.models.connection_init_session import ConnectionInitSession, ConnectionInitStatus
 from airweave.models.integration_credential import IntegrationType
+from airweave.platform.auth.schemas import OAuth1Settings
+from airweave.platform.auth.settings import integration_settings
 from airweave.schemas.source_connection import (
     AuthenticationMethod,
     ScheduleConfig,
+)
+from airweave.schemas.source_connection import (
     SourceConnection as SourceConnectionSchema,
 )
 
@@ -179,9 +185,6 @@ class OAuthCallbackService:
         if not source_conn_shell:
             raise HTTPException(status_code=404, detail="Source connection shell not found")
 
-        from airweave.platform.auth.schemas import OAuth1Settings
-        from airweave.platform.auth.settings import integration_settings
-
         oauth_settings = await integration_settings.get_by_short_name(init_session.short_name)
 
         if not isinstance(oauth_settings, OAuth1Settings):
@@ -212,8 +215,6 @@ class OAuthCallbackService:
         self, db: AsyncSession, init_session: ConnectionInitSession
     ) -> ApiContext:
         """Reconstruct ApiContext from stored session data."""
-        from airweave.core.logging import logger
-
         organization = await self._organization_repo.get_by_id(
             db, organization_id=init_session.organization_id, skip_access_validation=True
         )
@@ -275,9 +276,6 @@ class OAuthCallbackService:
             auth_fields["consumer_key"] = consumer_key
         if consumer_secret:
             auth_fields["consumer_secret"] = consumer_secret
-
-        from airweave.platform.auth.schemas import OAuth1Settings
-        from airweave.platform.auth.settings import integration_settings
 
         try:
             platform_settings = await integration_settings.get_by_short_name(
@@ -429,15 +427,8 @@ class OAuthCallbackService:
             await uow.session.flush()
             await uow.session.refresh(connection)
 
-            entry: SourceRegistryEntry | Any
-            try:
-                entry = self._source_registry.get(source.short_name)
-                source_class = entry.source_class_ref
-            except KeyError:
-                from airweave.platform.locator import resource_locator
-
-                source_class = resource_locator.get_source(source)
-                entry = self._build_source_entry_fallback(source, source_class)
+            entry: SourceRegistryEntry = self._source_registry.get(source.short_name)
+            source_class = entry.source_class_ref
 
             is_federated = getattr(source_class, "federated_search", False)
 
@@ -527,12 +518,7 @@ class OAuthCallbackService:
             return
 
         try:
-            try:
-                source_cls = self._source_registry.get(source.short_name).source_class_ref
-            except KeyError:
-                from airweave.platform.locator import resource_locator
-
-                source_cls = resource_locator.get_source(source)
+            source_cls = self._source_registry.get(source.short_name).source_class_ref
 
             source_instance = await source_cls.create(access_token=access_token, config=None)
             source_instance.set_logger(ctx.logger)
@@ -545,21 +531,6 @@ class OAuthCallbackService:
             raise
         except Exception as e:
             raise HTTPException(status_code=400, detail=f"Token validation failed: {e}") from e
-
-    @staticmethod
-    def _build_source_entry_fallback(source: Any, source_class: type) -> Any:
-        """Create minimal source entry when source is missing from registry."""
-        return type(
-            "FallbackSourceEntry",
-            (),
-            {
-                "short_name": source.short_name,
-                "supports_continuous": getattr(source_class, "supports_continuous", False),
-                "federated_search": getattr(source_class, "federated_search", False),
-                "source_class_ref": source_class,
-                "name": getattr(source, "name", source.short_name),
-            },
-        )()
 
     # ------------------------------------------------------------------
     # Private: finalization (response + sync trigger)
@@ -679,8 +650,6 @@ class OAuthCallbackService:
             return model.model_dump()
 
         except Exception as e:
-            from pydantic import ValidationError
-
             if isinstance(e, ValidationError):
                 errors = "; ".join(
                     [

@@ -397,9 +397,10 @@ class TestCompleteOAuth1Callback:
             async def get_by_short_name(_short_name):
                 return SimpleNamespace()
 
-        from airweave.platform.auth import settings as auth_settings_module
-
-        monkeypatch.setattr(auth_settings_module, "integration_settings", _SettingsModule())
+        monkeypatch.setattr(
+            "airweave.domains.oauth.callback_service.integration_settings",
+            _SettingsModule(),
+        )
 
         svc = _service(
             init_session_repo=init_repo,
@@ -438,9 +439,10 @@ class TestCompleteOAuth1Callback:
                     consumer_secret="s",
                 )
 
-        from airweave.platform.auth import settings as auth_settings_module
-
-        monkeypatch.setattr(auth_settings_module, "integration_settings", _SettingsModule())
+        monkeypatch.setattr(
+            "airweave.domains.oauth.callback_service.integration_settings",
+            _SettingsModule(),
+        )
 
         oauth_flow = FakeOAuthFlowService()
         oauth_flow.seed_oauth1_response(OAuth1TokenResponse(oauth_token="at", oauth_token_secret="as"))
@@ -682,9 +684,10 @@ class TestCompleteOAuth1Connection:
             async def get_by_short_name(_short_name):
                 raise RuntimeError("settings unavailable")
 
-        from airweave.platform.auth import settings as auth_settings_module
-
-        monkeypatch.setattr(auth_settings_module, "integration_settings", _RaisingSettingsModule())
+        monkeypatch.setattr(
+            "airweave.domains.oauth.callback_service.integration_settings",
+            _RaisingSettingsModule(),
+        )
         await svc._complete_oauth1_connection(DB, _source_conn_shell(), session, token, _ctx())
         call = svc._complete_connection_common.call_args
         assert call.args[6] == AuthenticationMethod.OAUTH_BROWSER
@@ -1002,19 +1005,10 @@ class TestFinalizeCallback:
         ctx.logger.warning.assert_called()
 
 
-class TestTokenValidationAndFallback:
+class TestTokenValidation:
     async def test_validate_token_returns_early_when_source_missing(self):
         svc = _service()
         await svc._validate_oauth2_token_or_raise(source=None, access_token="x", ctx=_ctx())
-
-    async def test_build_source_entry_fallback_sets_expected_fields(self):
-        source = SimpleNamespace(short_name="github", name="GitHub")
-        source_class = SimpleNamespace(supports_continuous=True, federated_search=True)
-        entry = OAuthCallbackService._build_source_entry_fallback(source, source_class)
-        assert entry.short_name == "github"
-        assert entry.name == "GitHub"
-        assert entry.supports_continuous is True
-        assert entry.federated_search is True
 
 
 # ---------------------------------------------------------------------------

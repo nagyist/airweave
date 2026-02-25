@@ -115,9 +115,8 @@ class LocalDenseEmbedder:
 
     async def _embed_sub_batch(self, batch: list[str]) -> list[DenseEmbedding]:
         """Embed a sub-batch by fanning out individual HTTP calls."""
-        async with self._semaphore:
-            tasks = [self._embed_single(text) for text in batch]
-            return list(await asyncio.gather(*tasks))
+        tasks = [self._embed_single(text) for text in batch]
+        return list(await asyncio.gather(*tasks))
 
     async def _embed_single(self, text: str) -> DenseEmbedding:
         """Make a single HTTP call to the inference container.
@@ -129,46 +128,47 @@ class LocalDenseEmbedder:
             EmbedderResponseError: On missing 'vector' key.
             EmbedderDimensionError: On dimension mismatch.
         """
-        try:
-            response = await self._client.post(
-                f"{self._inference_url}/vectors",
-                json={"text": text},
-            )
-            response.raise_for_status()
-            data = response.json()
-        except httpx.TimeoutException as e:
-            raise EmbedderTimeoutError(
-                f"Local embedding request timed out: {e}",
-                provider=_PROVIDER,
-            ) from e
-        except httpx.ConnectError as e:
-            raise EmbedderConnectionError(
-                f"Local embedding connection failed: {e}",
-                provider=_PROVIDER,
-            ) from e
-        except httpx.HTTPStatusError as e:
-            raise EmbedderProviderError(
-                f"Local embedding service error (status {e.response.status_code}): "
-                f"{e.response.text}",
-                provider=_PROVIDER,
-                retryable=e.response.status_code >= 500,
-            ) from e
-        except httpx.RequestError as e:
-            raise EmbedderConnectionError(
-                f"Local embedding connection failed: {e}",
-                provider=_PROVIDER,
-            ) from e
+        async with self._semaphore:
+            try:
+                response = await self._client.post(
+                    f"{self._inference_url}/vectors",
+                    json={"text": text},
+                )
+                response.raise_for_status()
+                data = response.json()
+            except httpx.TimeoutException as e:
+                raise EmbedderTimeoutError(
+                    f"Local embedding request timed out: {e}",
+                    provider=_PROVIDER,
+                ) from e
+            except httpx.ConnectError as e:
+                raise EmbedderConnectionError(
+                    f"Local embedding connection failed: {e}",
+                    provider=_PROVIDER,
+                ) from e
+            except httpx.HTTPStatusError as e:
+                raise EmbedderProviderError(
+                    f"Local embedding service error (status {e.response.status_code}): "
+                    f"{e.response.text}",
+                    provider=_PROVIDER,
+                    retryable=e.response.status_code >= 500,
+                ) from e
+            except httpx.RequestError as e:
+                raise EmbedderConnectionError(
+                    f"Local embedding connection failed: {e}",
+                    provider=_PROVIDER,
+                ) from e
 
-        if "vector" not in data:
-            raise EmbedderResponseError(
-                "Invalid response from local embedding service: missing 'vector' key"
-            )
+            if "vector" not in data:
+                raise EmbedderResponseError(
+                    "Invalid response from local embedding service: missing 'vector' key"
+                )
 
-        vector = data["vector"]
-        if len(vector) != self._dimensions:
-            raise EmbedderDimensionError(
-                expected=self._dimensions,
-                actual=len(vector),
-            )
+            vector = data["vector"]
+            if len(vector) != self._dimensions:
+                raise EmbedderDimensionError(
+                    expected=self._dimensions,
+                    actual=len(vector),
+                )
 
-        return DenseEmbedding(vector=vector)
+            return DenseEmbedding(vector=vector)

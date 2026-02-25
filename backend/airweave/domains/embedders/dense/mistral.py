@@ -35,6 +35,7 @@ class MistralDenseEmbedder:
 
     _MAX_BATCH_SIZE: int = 128
     _MAX_CONCURRENT_REQUESTS: int = 5
+    _MAX_TOKENS_PER_TEXT: int = 8000
     _MAX_TOKENS_PER_REQUEST: int = 8000
 
     def __init__(
@@ -112,10 +113,10 @@ class MistralDenseEmbedder:
                 raise EmbedderInputError(f"Text at index {i} is empty or blank")
 
             token_count = self._tokenizer.count_tokens(text)
-            if token_count > self._MAX_TOKENS_PER_REQUEST:
+            if token_count > self._MAX_TOKENS_PER_TEXT:
                 raise EmbedderInputError(
                     f"Text at index {i} has {token_count} tokens, "
-                    f"exceeding the limit of {self._MAX_TOKENS_PER_REQUEST}"
+                    f"exceeding the limit of {self._MAX_TOKENS_PER_TEXT}"
                 )
 
     # ------------------------------------------------------------------
@@ -188,6 +189,11 @@ class MistralDenseEmbedder:
         except httpx.ConnectError as e:
             raise EmbedderConnectionError(
                 f"Mistral connection failed: {e}",
+                provider=_PROVIDER,
+            ) from e
+        except httpx.RequestError as e:
+            raise EmbedderConnectionError(
+                f"Mistral request failed: {e}",
                 provider=_PROVIDER,
             ) from e
 

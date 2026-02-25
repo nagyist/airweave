@@ -5,7 +5,7 @@ and runtime holds mutable state and service references.
 """
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, List
+from typing import TYPE_CHECKING, List, Optional
 
 if TYPE_CHECKING:
     from airweave.core.guard_rail_service import GuardRailService
@@ -27,9 +27,9 @@ class SyncRuntime:
 
     source: "BaseSource"
     cursor: "SyncCursor"
-    dense_embedder: "DenseEmbedderProtocol" = None
-    sparse_embedder: "SparseEmbedderProtocol" = None
+    dense_embedder: Optional["DenseEmbedderProtocol"] = None
+    sparse_embedder: Optional["SparseEmbedderProtocol"] = None
     destinations: List["BaseDestination"] = field(default_factory=list)
-    entity_tracker: "EntityTracker" = None
-    state_publisher: "SyncStatePublisher" = None
-    guard_rail: "GuardRailService" = None
+    entity_tracker: Optional["EntityTracker"] = None
+    state_publisher: Optional["SyncStatePublisher"] = None
+    guard_rail: Optional["GuardRailService"] = None

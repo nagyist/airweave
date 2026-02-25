@@ -11,10 +11,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from airweave import crud, schemas
 from airweave.api import deps
 from airweave.api.context import ApiContext
+from airweave.api.deps import Inject
 from airweave.api.router import TrailingSlashRouter
 from airweave.core.shared_models import ConnectionStatus, IntegrationType
 from airweave.core.sync_service import sync_service
 from airweave.db.unit_of_work import UnitOfWork
+from airweave.domains.embedders.protocols import DenseEmbedderProtocol, SparseEmbedderProtocol
 from airweave.platform.auth.settings import integration_settings
 
 router = TrailingSlashRouter()
@@ -76,6 +78,8 @@ async def test_sync(
     short_name: str,
     background_tasks: BackgroundTasks,
     ctx: ApiContext = Depends(deps.get_context),
+    dense_embedder: DenseEmbedderProtocol = Inject(DenseEmbedderProtocol),
+    sparse_embedder: SparseEmbedderProtocol = Inject(SparseEmbedderProtocol),
 ) -> schemas.SyncJob:
     """Run a sync for a specific source by short_name.
 
@@ -89,6 +93,8 @@ async def test_sync(
         short_name: The short name of the source to sync
         background_tasks: The background tasks
         ctx: The API context
+        dense_embedder: The dense embedder protocol instance
+        sparse_embedder: The sparse embedder protocol instance
 
     Returns:
     --------
@@ -148,6 +154,8 @@ async def test_sync(
         collection=collection_schema,
         source_connection=source_connection_schema,
         ctx=ctx,
+        dense_embedder=dense_embedder,
+        sparse_embedder=sparse_embedder,
     )
 
     return sync_job_schema

@@ -6,10 +6,10 @@ Add new models here — the domain registry reads this at startup.
 
 from dataclasses import dataclass
 
-from airweave.platform.embedders.fastembed import SparseEmbedder
-from airweave.platform.embedders.local import LocalDenseEmbedder
-from airweave.platform.embedders.mistral import MistralDenseEmbedder
-from airweave.platform.embedders.openai import OpenAIDenseEmbedder
+from airweave.domains.embedders.dense.local import LocalDenseEmbedder
+from airweave.domains.embedders.dense.mistral import MistralDenseEmbedder
+from airweave.domains.embedders.dense.openai import OpenAIDenseEmbedder
+from airweave.domains.embedders.sparse.fastembed import FastEmbedSparseEmbedder
 
 
 @dataclass(frozen=True)
@@ -99,7 +99,7 @@ SPARSE_EMBEDDERS: list[SparseEmbedderSpec] = [
         description="Sparse BM25 embeddings via FastEmbed (Qdrant/bm25 model)",
         provider="fastembed",
         api_model_name="Qdrant/bm25",
-        embedder_class=SparseEmbedder,
+        embedder_class=FastEmbedSparseEmbedder,
         required_setting=None,
     ),
 ]

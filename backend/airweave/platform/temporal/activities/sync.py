@@ -25,6 +25,8 @@ if TYPE_CHECKING:
 
 from temporalio import activity
 
+from airweave.domains.embedders.protocols import DenseEmbedderProtocol, SparseEmbedderProtocol
+
 # =============================================================================
 # Run Sync Activity
 # =============================================================================
@@ -46,6 +48,8 @@ class RunSyncActivity:
     """
 
     event_bus: "EventBus"
+    dense_embedder: DenseEmbedderProtocol
+    sparse_embedder: SparseEmbedderProtocol
 
     @activity.defn(name="run_sync_activity")
     async def run(  # noqa: C901
@@ -414,6 +418,8 @@ class RunSyncActivity:
                 access_token=access_token,
                 force_full_sync=force_full_sync,
                 execution_config=execution_config,
+                dense_embedder=self.dense_embedder,
+                sparse_embedder=self.sparse_embedder,
             )
         except NotFoundException as e:
             if "Source connection record not found" in str(e) or "Connection not found" in str(e):

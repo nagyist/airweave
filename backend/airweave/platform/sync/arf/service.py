@@ -38,7 +38,6 @@ from typing import TYPE_CHECKING, Any, AsyncGenerator, Dict, List, Optional
 
 import aiofiles
 
-from airweave.domains.embedders.config import DENSE_EMBEDDER, EMBEDDING_DIMENSIONS
 from airweave.platform.storage.exceptions import StorageNotFoundError
 from airweave.platform.storage.protocol import StorageBackend
 from airweave.platform.sync.arf.schema import SyncManifest
@@ -464,8 +463,8 @@ class ArfService:
                 created_at=now,
                 updated_at=now,
                 sync_jobs=[job_id],
-                vector_size=EMBEDDING_DIMENSIONS,
-                embedding_model_name=DENSE_EMBEDDER,
+                vector_size=runtime.dense_embedder.dimensions,
+                embedding_model_name=runtime.dense_embedder.model_name,
             )
             await self.storage.write_json(manifest_path, manifest.model_dump())
 

@@ -13,6 +13,7 @@ from airweave.core.shared_models import SyncJobStatus
 from airweave.core.sync_job_service import sync_job_service
 from airweave.db.session import get_db_context
 from airweave.db.unit_of_work import UnitOfWork
+from airweave.domains.embedders.protocols import DenseEmbedderProtocol, SparseEmbedderProtocol
 from airweave.models.sync import Sync
 from airweave.models.sync_job import SyncJob
 from airweave.platform.sync.config import SyncConfig
@@ -99,6 +100,8 @@ class SyncService:
         collection: schemas.CollectionRecord,
         source_connection: schemas.Connection,
         ctx: ApiContext,
+        dense_embedder: DenseEmbedderProtocol,
+        sparse_embedder: SparseEmbedderProtocol,
         access_token: Optional[str] = None,
         force_full_sync: bool = False,
         execution_config: Optional[SyncConfig] = None,
@@ -117,6 +120,8 @@ class SyncService:
             force_full_sync (bool): If True, forces a full sync with orphaned entity deletion.
             execution_config (Optional[SyncConfig]): Optional execution config
                 for controlling sync behavior (destination filtering, handler toggles, etc.)
+            dense_embedder: Domain dense embedder instance.
+            sparse_embedder: Domain sparse embedder instance.
 
         Returns:
         -------
@@ -135,6 +140,8 @@ class SyncService:
                     access_token=access_token,
                     force_full_sync=force_full_sync,
                     execution_config=execution_config,
+                    dense_embedder=dense_embedder,
+                    sparse_embedder=sparse_embedder,
                 )
         except Exception as e:
             ctx.logger.error(f"Error during sync orchestrator creation: {e}")

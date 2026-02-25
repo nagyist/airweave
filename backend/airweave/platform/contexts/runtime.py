@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, List
 
 if TYPE_CHECKING:
     from airweave.core.guard_rail_service import GuardRailService
+    from airweave.domains.embedders.protocols import DenseEmbedderProtocol, SparseEmbedderProtocol
     from airweave.platform.destinations._base import BaseDestination
     from airweave.platform.sources._base import BaseSource
     from airweave.platform.sync.cursor import SyncCursor
@@ -26,6 +27,8 @@ class SyncRuntime:
 
     source: "BaseSource"
     cursor: "SyncCursor"
+    dense_embedder: "DenseEmbedderProtocol" = None
+    sparse_embedder: "SparseEmbedderProtocol" = None
     destinations: List["BaseDestination"] = field(default_factory=list)
     entity_tracker: "EntityTracker" = None
     state_publisher: "SyncStatePublisher" = None

@@ -19,13 +19,14 @@ from airweave.domains.embedders.exceptions import (
     EmbedderResponseError,
     EmbedderTimeoutError,
 )
+from airweave.domains.embedders.protocols import DenseEmbedderProtocol
 from airweave.domains.embedders.types import DenseEmbedding
 from airweave.platform.tokenizers import get_tokenizer
 
 _PROVIDER = "mistral"
 
 
-class MistralDenseEmbedder:
+class MistralDenseEmbedder(DenseEmbedderProtocol):
     """Mistral dense embedder satisfying DenseEmbedderProtocol.
 
     Handles batching, concurrency, token validation, input/response

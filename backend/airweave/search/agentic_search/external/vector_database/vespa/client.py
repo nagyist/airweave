@@ -354,7 +354,9 @@ class VespaVectorDB:
 
         return params
 
-    def _convert_sparse_to_tensor(self, sparse_emb: SparseEmbedding) -> Optional[Dict[str, Any]]:
+    def _convert_sparse_to_tensor(
+        self, sparse_emb: SparseEmbedding
+    ) -> Optional[Dict[str, Dict[str, float]]]:
         """Convert SparseEmbedding to Vespa tensor format.
 
         Args:

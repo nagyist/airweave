@@ -15,12 +15,13 @@ from airweave.domains.embedders.exceptions import (
     EmbedderProviderError,
     EmbedderResponseError,
 )
+from airweave.domains.embedders.protocols import SparseEmbedderProtocol
 from airweave.domains.embedders.types import SparseEmbedding
 
 _PROVIDER = "fastembed"
 
 
-class FastEmbedSparseEmbedder:
+class FastEmbedSparseEmbedder(SparseEmbedderProtocol):
     """FastEmbed sparse embedder satisfying SparseEmbedderProtocol.
 
     Runs a local BM25 sparse embedding model via fastembed. The model is

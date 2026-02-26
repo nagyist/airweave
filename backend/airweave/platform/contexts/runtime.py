@@ -25,11 +25,14 @@ class SyncRuntime:
     Held by SyncOrchestrator and injected into pipeline/handler constructors.
     """
 
+    # Required — always set by factory
     source: "BaseSource"
     cursor: "SyncCursor"
+    entity_tracker: "EntityTracker"
+    state_publisher: "SyncStatePublisher"
+    guard_rail: "GuardRailService"
+
+    # Optional / defaulted
     dense_embedder: Optional["DenseEmbedderProtocol"] = None
     sparse_embedder: Optional["SparseEmbedderProtocol"] = None
     destinations: List["BaseDestination"] = field(default_factory=list)
-    entity_tracker: Optional["EntityTracker"] = None
-    state_publisher: Optional["SyncStatePublisher"] = None
-    guard_rail: Optional["GuardRailService"] = None

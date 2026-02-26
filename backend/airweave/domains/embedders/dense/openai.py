@@ -20,12 +20,13 @@ from airweave.domains.embedders.exceptions import (
     EmbedderResponseError,
     EmbedderTimeoutError,
 )
+from airweave.domains.embedders.protocols import DenseEmbedderProtocol
 from airweave.domains.embedders.types import DenseEmbedding
 
 _PROVIDER = "openai"
 
 
-class OpenAIDenseEmbedder:
+class OpenAIDenseEmbedder(DenseEmbedderProtocol):
     """OpenAI dense embedder satisfying DenseEmbedderProtocol.
 
     Handles batching, concurrency, token validation, input/response
@@ -88,14 +89,17 @@ class OpenAIDenseEmbedder:
         if not texts:
             return []
 
-        self._validate_inputs(texts)
+        token_counts = self._validate_inputs(texts)
 
         sub_batches = [
-            texts[i : i + self._MAX_TEXTS_PER_SUB_BATCH]
+            (
+                texts[i : i + self._MAX_TEXTS_PER_SUB_BATCH],
+                token_counts[i : i + self._MAX_TEXTS_PER_SUB_BATCH],
+            )
             for i in range(0, len(texts), self._MAX_TEXTS_PER_SUB_BATCH)
         ]
 
-        tasks = [self._embed_sub_batch(batch) for batch in sub_batches]
+        tasks = [self._embed_sub_batch(batch, counts) for batch, counts in sub_batches]
         nested_results = await asyncio.gather(*tasks)
 
         return [embedding for batch_result in nested_results for embedding in batch_result]
@@ -108,13 +112,17 @@ class OpenAIDenseEmbedder:
     # Validation
     # ------------------------------------------------------------------
 
-    def _validate_inputs(self, texts: list[str]) -> None:
-        """Validate all input texts.
+    def _validate_inputs(self, texts: list[str]) -> list[int]:
+        """Validate all input texts and return per-text token counts.
+
+        Returns:
+            List of token counts, one per input text.
 
         Raises:
             EmbedderInputError: If any text is empty/blank or exceeds the
                 per-text token limit.
         """
+        token_counts: list[int] = []
         for i, text in enumerate(texts):
             if not text or not text.strip():
                 raise EmbedderInputError(f"Text at index {i} is empty or blank")
@@ -125,20 +133,24 @@ class OpenAIDenseEmbedder:
                     f"Text at index {i} has {token_count} tokens, "
                     f"exceeding the limit of {self._MAX_TOKENS_PER_TEXT}"
                 )
+            token_counts.append(token_count)
+        return token_counts
 
     # ------------------------------------------------------------------
     # Batching
     # ------------------------------------------------------------------
 
-    async def _embed_sub_batch(self, batch: list[str]) -> list[DenseEmbedding]:
+    async def _embed_sub_batch(
+        self, batch: list[str], token_counts: list[int]
+    ) -> list[DenseEmbedding]:
         """Embed a sub-batch, splitting recursively if tokens exceed the limit."""
-        total_tokens = sum(len(self._encoder.encode(text, allowed_special="all")) for text in batch)
+        total_tokens = sum(token_counts)
 
         if total_tokens > self._MAX_TOKENS_PER_REQUEST and len(batch) > 1:
             mid = len(batch) // 2
             left, right = await asyncio.gather(
-                self._embed_sub_batch(batch[:mid]),
-                self._embed_sub_batch(batch[mid:]),
+                self._embed_sub_batch(batch[:mid], token_counts[:mid]),
+                self._embed_sub_batch(batch[mid:], token_counts[mid:]),
             )
             return left + right
 

@@ -22,10 +22,12 @@ from airweave.api import deps
 from airweave.api.context import ApiContext
 from airweave.api.deps import Inject
 from airweave.api.router import TrailingSlashRouter
+from airweave.core.context import SystemContext
 from airweave.core.context_cache_service import context_cache
 from airweave.core.exceptions import InvalidStateError, NotFoundException
 from airweave.core.organization_service import organization_service
 from airweave.core.protocols.payment import PaymentGatewayProtocol
+from airweave.core.shared_models import AuthMethod
 from airweave.core.shared_models import FeatureFlag as FeatureFlagEnum
 from airweave.core.temporal_service import temporal_service
 from airweave.crud.crud_organization_billing import organization_billing
@@ -679,7 +681,7 @@ async def upgrade_organization_to_enterprise(  # noqa: C901
         await db.flush()
 
         # Create system context for billing operations
-        internal_ctx = ApiContext.for_system(org_schema, "admin_upgrade")
+        internal_ctx = SystemContext(org_schema, auth_method=AuthMethod.INTERNAL_SYSTEM)
 
         # Create Stripe customer
         customer = await payment_gw.create_customer(

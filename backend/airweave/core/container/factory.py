@@ -497,21 +497,32 @@ def _create_dense_embedder(
     and the registry to look up the spec and construct the correct embedder.
     """
     from airweave.domains.embedders.dense.local import LocalDenseEmbedder
+    from airweave.domains.embedders.dense.mistral import MistralDenseEmbedder
+    from airweave.domains.embedders.dense.openai import OpenAIDenseEmbedder
 
     spec = registry.get(DENSE_EMBEDDER)
 
+    if spec.embedder_class is OpenAIDenseEmbedder:
+        return OpenAIDenseEmbedder(
+            api_key=settings.OPENAI_API_KEY,
+            model=spec.api_model_name,
+            dimensions=EMBEDDING_DIMENSIONS,
+        )
+
+    if spec.embedder_class is MistralDenseEmbedder:
+        return MistralDenseEmbedder(
+            api_key=settings.MISTRAL_API_KEY,
+            model=spec.api_model_name,
+            dimensions=EMBEDDING_DIMENSIONS,
+        )
+
     if spec.embedder_class is LocalDenseEmbedder:
-        return spec.embedder_class(
+        return LocalDenseEmbedder(
             inference_url=settings.TEXT2VEC_INFERENCE_URL,
             dimensions=EMBEDDING_DIMENSIONS,
         )
 
-    api_key = getattr(settings, spec.required_setting) if spec.required_setting else None
-    return spec.embedder_class(
-        api_key=api_key,
-        model=spec.api_model_name,
-        dimensions=EMBEDDING_DIMENSIONS,
-    )
+    raise ValueError(f"Unknown dense embedder class: {spec.embedder_class}")
 
 
 def _create_sparse_embedder(registry: SparseEmbedderRegistry) -> SparseEmbedderProtocol:

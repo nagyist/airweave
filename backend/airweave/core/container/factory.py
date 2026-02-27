@@ -502,27 +502,27 @@ def _create_dense_embedder(
 
     spec = registry.get(DENSE_EMBEDDER)
 
-    if spec.embedder_class is OpenAIDenseEmbedder:
+    if spec.embedder_class_ref is OpenAIDenseEmbedder:
         return OpenAIDenseEmbedder(
             api_key=settings.OPENAI_API_KEY,
             model=spec.api_model_name,
             dimensions=EMBEDDING_DIMENSIONS,
         )
 
-    if spec.embedder_class is MistralDenseEmbedder:
+    if spec.embedder_class_ref is MistralDenseEmbedder:
         return MistralDenseEmbedder(
             api_key=settings.MISTRAL_API_KEY,
             model=spec.api_model_name,
             dimensions=EMBEDDING_DIMENSIONS,
         )
 
-    if spec.embedder_class is LocalDenseEmbedder:
+    if spec.embedder_class_ref is LocalDenseEmbedder:
         return LocalDenseEmbedder(
             inference_url=settings.TEXT2VEC_INFERENCE_URL,
             dimensions=EMBEDDING_DIMENSIONS,
         )
 
-    raise ValueError(f"Unknown dense embedder class: {spec.embedder_class}")
+    raise ValueError(f"Unknown dense embedder class: {spec.embedder_class_ref}")
 
 
 def _create_sparse_embedder(registry: SparseEmbedderRegistry) -> SparseEmbedderProtocol:

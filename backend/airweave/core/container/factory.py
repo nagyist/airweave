@@ -56,7 +56,6 @@ from airweave.domains.embedders.config import (
     SPARSE_EMBEDDER,
     validate_embedding_config_sync,
 )
-from airweave.domains.embedders.dense.openai import OpenAIDenseEmbedder as DomainOpenAIDenseEmbedder
 from airweave.domains.embedders.protocols import DenseEmbedderProtocol, SparseEmbedderProtocol
 from airweave.domains.embedders.registry import DenseEmbedderRegistry, SparseEmbedderRegistry
 from airweave.domains.embedders.sparse.fastembed import (
@@ -497,10 +496,18 @@ def _create_dense_embedder(
     Uses the domain config constants (DENSE_EMBEDDER, EMBEDDING_DIMENSIONS)
     and the registry to look up the spec and construct the correct embedder.
     """
-    spec = registry.get(DENSE_EMBEDDER)
-    api_key = getattr(settings, spec.required_setting) if spec.required_setting else None
+    from airweave.domains.embedders.dense.local import LocalDenseEmbedder
 
-    return DomainOpenAIDenseEmbedder(
+    spec = registry.get(DENSE_EMBEDDER)
+
+    if spec.embedder_class is LocalDenseEmbedder:
+        return spec.embedder_class(
+            inference_url=settings.TEXT2VEC_INFERENCE_URL,
+            dimensions=EMBEDDING_DIMENSIONS,
+        )
+
+    api_key = getattr(settings, spec.required_setting) if spec.required_setting else None
+    return spec.embedder_class(
         api_key=api_key,
         model=spec.api_model_name,
         dimensions=EMBEDDING_DIMENSIONS,

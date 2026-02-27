@@ -2,6 +2,10 @@
 
 import pytest
 
+from airweave.platform.entities.sharepoint2019v2 import (
+    SharePoint2019V2FileDeletionEntity,
+    SharePoint2019V2ItemDeletionEntity,
+)
 from airweave.platform.sources.sharepoint2019v2.source import SharePoint2019V2Source
 
 
@@ -50,3 +54,63 @@ class TestSupportsIncrementalAcl:
         # Verify the method checks the class, not the instance.
         assert hasattr(SharePoint2019V2Source, "supports_continuous")
         assert SharePoint2019V2Source.supports_continuous is True
+
+
+class TestDeletionEntities:
+    """Tests for deletion entity construction during incremental sync.
+
+    Deletion entities must include deletion_status and breadcrumbs
+    to pass BaseEntity validation.
+    """
+
+    def test_file_deletion_entity_valid(self):
+        """FileDeletionEntity should accept deletion_status and breadcrumbs."""
+        entity = SharePoint2019V2FileDeletionEntity(
+            list_id="87b63068-d1f6-4cef-8b80-1759e2b538fb",
+            item_id=12345,
+            sp_entity_id="sp2019v2:file:87b63068:12345",
+            label="Deleted file 12345 from 87b63068",
+            deletion_status="removed",
+            breadcrumbs=[],
+        )
+        assert entity.deletion_status == "removed"
+        assert entity.breadcrumbs == []
+        assert entity.list_id == "87b63068-d1f6-4cef-8b80-1759e2b538fb"
+        assert entity.item_id == 12345
+
+    def test_item_deletion_entity_valid(self):
+        """ItemDeletionEntity should accept deletion_status and breadcrumbs."""
+        entity = SharePoint2019V2ItemDeletionEntity(
+            list_id="87b63068-d1f6-4cef-8b80-1759e2b538fb",
+            item_id=67890,
+            sp_entity_id="sp2019v2:item:87b63068:67890",
+            label="Deleted item 67890 from 87b63068",
+            deletion_status="removed",
+            breadcrumbs=[],
+        )
+        assert entity.deletion_status == "removed"
+        assert entity.breadcrumbs == []
+        assert entity.list_id == "87b63068-d1f6-4cef-8b80-1759e2b538fb"
+        assert entity.item_id == 67890
+
+    def test_file_deletion_entity_missing_deletion_status_fails(self):
+        """FileDeletionEntity without deletion_status should raise ValidationError."""
+        with pytest.raises(Exception):
+            SharePoint2019V2FileDeletionEntity(
+                list_id="87b63068",
+                item_id=1,
+                sp_entity_id="sp2019v2:file:87b63068:1",
+                label="Deleted file",
+                breadcrumbs=[],
+            )
+
+    def test_file_deletion_entity_missing_breadcrumbs_fails(self):
+        """FileDeletionEntity without breadcrumbs should raise ValidationError."""
+        with pytest.raises(Exception):
+            SharePoint2019V2FileDeletionEntity(
+                list_id="87b63068",
+                item_id=1,
+                sp_entity_id="sp2019v2:file:87b63068:1",
+                label="Deleted file",
+                deletion_status="removed",
+            )

@@ -652,6 +652,8 @@ class SharePoint2019V2Source(BaseSource):
                                 item_id=item_id,
                                 sp_entity_id=sp_entity_id,
                                 label=f"Deleted file {item_id} from {list_id}",
+                                deletion_status="removed",
+                                breadcrumbs=[],
                             )
                         else:
                             sp_entity_id = f"sp2019v2:item:{list_id}:{item_id}"
@@ -660,6 +662,8 @@ class SharePoint2019V2Source(BaseSource):
                                 item_id=item_id,
                                 sp_entity_id=sp_entity_id,
                                 label=f"Deleted item {item_id} from {list_id}",
+                                deletion_status="removed",
+                                breadcrumbs=[],
                             )
                         changes_processed += 1
                         continue

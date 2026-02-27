@@ -1067,4 +1067,4 @@ class SharePoint2019V2Source(BaseSource):
 
     def supports_incremental_acl(self) -> bool:
         """Whether this source supports incremental ACL sync via DirSync."""
-        return self.has_ad_config and getattr(self, "_supports_continuous", False)
+        return self.has_ad_config and getattr(self.__class__, "supports_continuous", False)

@@ -26,6 +26,7 @@ from airweave.core.context import SystemContext
 from airweave.core.context_cache_service import context_cache
 from airweave.core.exceptions import InvalidStateError, NotFoundException
 from airweave.core.organization_service import organization_service
+from airweave.core.protocols import PubSub
 from airweave.core.protocols.payment import PaymentGatewayProtocol
 from airweave.core.shared_models import AuthMethod
 from airweave.core.shared_models import FeatureFlag as FeatureFlagEnum
@@ -33,8 +34,13 @@ from airweave.core.temporal_service import temporal_service
 from airweave.crud.crud_organization_billing import organization_billing
 from airweave.db.unit_of_work import UnitOfWork
 from airweave.domains.billing.operations import BillingOperations
+from airweave.domains.billing.repository import (
+    BillingPeriodRepository,
+    OrganizationBillingRepository,
+)
 from airweave.domains.embedders.protocols import DenseEmbedderProtocol, SparseEmbedderProtocol
 from airweave.domains.source_connections.protocols import SourceConnectionServiceProtocol
+from airweave.domains.usage.repository import UsageRepository
 from airweave.integrations.auth0_management import auth0_management_client
 from airweave.models.organization import Organization
 from airweave.models.organization_billing import OrganizationBilling
@@ -699,7 +705,12 @@ async def upgrade_organization_to_enterprise(  # noqa: C901
             )
 
         # Use billing operations to create record (handles $0 subscription)
-        billing_ops = BillingOperations(payment_gateway=payment_gw)
+        billing_ops = BillingOperations(
+            billing_repo=OrganizationBillingRepository(),
+            period_repo=BillingPeriodRepository(),
+            usage_repo=UsageRepository(),
+            payment_gateway=payment_gw,
+        )
         async with UnitOfWork(db) as uow:
             await billing_ops.create_billing_record(
                 db=db,
@@ -1258,6 +1269,7 @@ async def admin_search_collection(
         AdminSearchDestination.QDRANT,
         description="Search destination: 'qdrant' (default) or 'vespa'",
     ),
+    pubsub: PubSub = Inject(PubSub),
     dense_embedder: DenseEmbedderProtocol = Inject(DenseEmbedderProtocol),
     sparse_embedder: SparseEmbedderProtocol = Inject(SparseEmbedderProtocol),
 ) -> schemas.SearchResponse:
@@ -1274,6 +1286,7 @@ async def admin_search_collection(
         db: Database session
         ctx: API context
         destination: Search destination ('qdrant' or 'vespa')
+        pubsub: PubSub adapter for event streaming
         dense_embedder: Domain dense embedder for generating neural embeddings
         sparse_embedder: Domain sparse embedder for generating BM25 embeddings
 
@@ -1293,6 +1306,7 @@ async def admin_search_collection(
         search_request=search_request,
         db=db,
         ctx=ctx,
+        pubsub=pubsub,
         dense_embedder=dense_embedder,
         sparse_embedder=sparse_embedder,
         destination=destination.value,
@@ -1314,6 +1328,7 @@ async def admin_search_collection_as_user(
         AdminSearchDestination.VESPA,
         description="Search destination: 'qdrant' or 'vespa' (default)",
     ),
+    pubsub: PubSub = Inject(PubSub),
     dense_embedder: DenseEmbedderProtocol = Inject(DenseEmbedderProtocol),
     sparse_embedder: SparseEmbedderProtocol = Inject(SparseEmbedderProtocol),
 ) -> schemas.SearchResponse:
@@ -1329,6 +1344,7 @@ async def admin_search_collection_as_user(
         db: Database session
         ctx: API context
         destination: Search destination ('qdrant' or 'vespa')
+        pubsub: PubSub adapter for event streaming
         dense_embedder: Domain dense embedder for generating neural embeddings
         sparse_embedder: Domain sparse embedder for generating BM25 embeddings
 
@@ -1348,6 +1364,7 @@ async def admin_search_collection_as_user(
         search_request=search_request,
         db=db,
         ctx=ctx,
+        pubsub=pubsub,
         user_principal=user_principal,
         dense_embedder=dense_embedder,
         sparse_embedder=sparse_embedder,
@@ -1853,7 +1870,7 @@ async def admin_delete_sync(
         sync_id: The sync ID to delete
         db: Database session
         ctx: API context
-        sc_service: Source connection service for deletion logic
+        sc_service: Source connection service for deletion
 
     Returns:
         Success message with deleted sync ID

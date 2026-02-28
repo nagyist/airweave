@@ -275,6 +275,12 @@ class AccessControlPipeline:
         Calls source.get_acl_changes() with the stored cookie to get only
         changed memberships. Applies ADDs via upsert and REMOVEs via delete.
 
+        When using DirSync with BASIC flags (0x0) -- which happens when the AD
+        server doesn't support the INCREMENTAL_VALUES flag -- DirSync returns
+        the FULL member list for each changed group as all ADDs with zero
+        REMOVEs. In this case, we reconcile against the database to detect
+        members that were removed.
+
         Falls back to full sync on failure.
 
         Args:
@@ -317,31 +323,13 @@ class AccessControlPipeline:
         removes = 0
         group_deletes = 0
 
-        async with get_db_context() as db:
-            for change in result.changes:
-                if change.change_type == ACLChangeType.ADD:
-                    await crud.access_control_membership.upsert(
-                        db,
-                        member_id=change.member_id,
-                        member_type=change.member_type,
-                        group_id=change.group_id,
-                        group_name=change.group_name or "",
-                        organization_id=sync_context.organization_id,
-                        source_connection_id=sync_context.source_connection_id,
-                        source_name=getattr(source, "_short_name", "unknown"),
-                    )
-                    adds += 1
+        # Check if DirSync used INCREMENTAL_VALUES (deltas) or BASIC (full lists)
+        uses_incremental_values = getattr(result, "incremental_values", False)
 
-                elif change.change_type == ACLChangeType.REMOVE:
-                    await crud.access_control_membership.delete_by_key(
-                        db,
-                        member_id=change.member_id,
-                        member_type=change.member_type,
-                        group_id=change.group_id,
-                        source_connection_id=sync_context.source_connection_id,
-                        organization_id=sync_context.organization_id,
-                    )
-                    removes += 1
+        async with get_db_context() as db:
+            adds, removes = await self._apply_membership_changes(
+                db, result, source, sync_context, uses_incremental_values
+            )
 
             # Handle deleted AD groups -- immediately remove all memberships
             # so that revoked access is reflected without waiting for a full sync
@@ -369,6 +357,131 @@ class AccessControlPipeline:
         self._update_cursor_after_incremental(sync_context, runtime, result)
 
         return adds + removes + group_deletes
+
+    async def _apply_membership_changes(
+        self,
+        db,
+        result,
+        source,
+        sync_context: "SyncContext",
+        uses_incremental_values: bool,
+    ) -> Tuple[int, int]:
+        """Apply ADD and REMOVE membership changes from DirSync results.
+
+        When using BASIC flags (no INCREMENTAL_VALUES), also tracks the full
+        member set per group for subsequent reconciliation.
+
+        Returns:
+            Tuple of (adds_count, removes_count).
+        """
+        adds = 0
+        removes = 0
+        dirsync_members_by_group: dict[str, set[Tuple[str, str]]] = {}
+
+        for change in result.changes:
+            if change.change_type == ACLChangeType.ADD:
+                await crud.access_control_membership.upsert(
+                    db,
+                    member_id=change.member_id,
+                    member_type=change.member_type,
+                    group_id=change.group_id,
+                    group_name=change.group_name or "",
+                    organization_id=sync_context.organization_id,
+                    source_connection_id=sync_context.source_connection_id,
+                    source_name=getattr(source, "_short_name", "unknown"),
+                )
+                adds += 1
+
+                # Track members per group for reconciliation (BASIC flags only)
+                if not uses_incremental_values:
+                    if change.group_id not in dirsync_members_by_group:
+                        dirsync_members_by_group[change.group_id] = set()
+                    dirsync_members_by_group[change.group_id].add(
+                        (change.member_id, change.member_type)
+                    )
+
+            elif change.change_type == ACLChangeType.REMOVE:
+                await crud.access_control_membership.delete_by_key(
+                    db,
+                    member_id=change.member_id,
+                    member_type=change.member_type,
+                    group_id=change.group_id,
+                    source_connection_id=sync_context.source_connection_id,
+                    organization_id=sync_context.organization_id,
+                )
+                removes += 1
+
+        # Reconcile: only needed with BASIC flags (no INCREMENTAL_VALUES),
+        # where DirSync returns the FULL member list as all ADDs. We diff
+        # against DB to detect removed members. With INCREMENTAL_VALUES,
+        # removals are returned explicitly (member;range=0-0) so no
+        # reconciliation is needed.
+        if result.modified_group_ids and not uses_incremental_values:
+            removes += await self._reconcile_modified_groups(
+                db,
+                modified_group_ids=result.modified_group_ids,
+                dirsync_members_by_group=dirsync_members_by_group,
+                sync_context=sync_context,
+            )
+
+        return adds, removes
+
+    async def _reconcile_modified_groups(
+        self,
+        db,
+        *,
+        modified_group_ids: Set[str],
+        dirsync_members_by_group: dict[str, set[Tuple[str, str]]],
+        sync_context: "SyncContext",
+    ) -> int:
+        """Reconcile DB memberships against full member lists from DirSync.
+
+        When DirSync uses BASIC flags (0x0), it returns the complete current
+        member list for each changed group. Any DB membership not in the
+        DirSync list must have been removed and should be deleted.
+
+        Args:
+            db: Database session
+            modified_group_ids: Groups that DirSync reported as changed
+            dirsync_members_by_group: Current members per group from DirSync
+            sync_context: Sync context for IDs and logging
+
+        Returns:
+            Number of stale memberships removed
+        """
+        existing = await crud.access_control_membership.get_memberships_by_groups(
+            db,
+            group_ids=list(modified_group_ids),
+            source_connection_id=sync_context.source_connection_id,
+            organization_id=sync_context.organization_id,
+        )
+
+        # Extract data before any deletes — delete_by_key flushes the session
+        # which expires ORM objects, causing MissingGreenlet on next access.
+        existing_tuples = [(m.group_id, m.member_id, m.member_type) for m in existing]
+
+        removes = 0
+        for group_id, member_id, member_type in existing_tuples:
+            current_members = dirsync_members_by_group.get(group_id, set())
+            if (member_id, member_type) not in current_members:
+                await crud.access_control_membership.delete_by_key(
+                    db,
+                    member_id=member_id,
+                    member_type=member_type,
+                    group_id=group_id,
+                    source_connection_id=sync_context.source_connection_id,
+                    organization_id=sync_context.organization_id,
+                )
+                removes += 1
+                sync_context.logger.debug(f"Reconciliation: removed {member_id} from {group_id}")
+
+        if removes > 0:
+            sync_context.logger.info(
+                f"Reconciliation: removed {removes} stale memberships "
+                f"from {len(modified_group_ids)} modified groups"
+            )
+
+        return removes
 
     # -------------------------------------------------------------------------
     # Cursor management

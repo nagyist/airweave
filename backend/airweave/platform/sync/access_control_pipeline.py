@@ -275,6 +275,12 @@ class AccessControlPipeline:
         Calls source.get_acl_changes() with the stored cookie to get only
         changed memberships. Applies ADDs via upsert and REMOVEs via delete.
 
+        When using DirSync with BASIC flags (0x0) -- which happens when the AD
+        server doesn't support the INCREMENTAL_VALUES flag -- DirSync returns
+        the FULL member list for each changed group as all ADDs with zero
+        REMOVEs. In this case, we reconcile against the database to detect
+        members that were removed.
+
         Falls back to full sync on failure.
 
         Args:
@@ -318,30 +324,7 @@ class AccessControlPipeline:
         group_deletes = 0
 
         async with get_db_context() as db:
-            for change in result.changes:
-                if change.change_type == ACLChangeType.ADD:
-                    await crud.access_control_membership.upsert(
-                        db,
-                        member_id=change.member_id,
-                        member_type=change.member_type,
-                        group_id=change.group_id,
-                        group_name=change.group_name or "",
-                        organization_id=sync_context.organization_id,
-                        source_connection_id=sync_context.source_connection_id,
-                        source_name=getattr(source, "_short_name", "unknown"),
-                    )
-                    adds += 1
-
-                elif change.change_type == ACLChangeType.REMOVE:
-                    await crud.access_control_membership.delete_by_key(
-                        db,
-                        member_id=change.member_id,
-                        member_type=change.member_type,
-                        group_id=change.group_id,
-                        source_connection_id=sync_context.source_connection_id,
-                        organization_id=sync_context.organization_id,
-                    )
-                    removes += 1
+            adds, removes = await self._apply_membership_changes(db, result, source, sync_context)
 
             # Handle deleted AD groups -- immediately remove all memberships
             # so that revoked access is reflected without waiting for a full sync
@@ -369,6 +352,48 @@ class AccessControlPipeline:
         self._update_cursor_after_incremental(sync_context, runtime, result)
 
         return adds + removes + group_deletes
+
+    async def _apply_membership_changes(
+        self,
+        db,
+        result,
+        source,
+        sync_context: "SyncContext",
+    ) -> Tuple[int, int]:
+        """Apply ADD and REMOVE membership changes from DirSync results.
+
+        Returns:
+            Tuple of (adds_count, removes_count).
+        """
+        adds = 0
+        removes = 0
+
+        for change in result.changes:
+            if change.change_type == ACLChangeType.ADD:
+                await crud.access_control_membership.upsert(
+                    db,
+                    member_id=change.member_id,
+                    member_type=change.member_type,
+                    group_id=change.group_id,
+                    group_name=change.group_name or "",
+                    organization_id=sync_context.organization_id,
+                    source_connection_id=sync_context.source_connection_id,
+                    source_name=getattr(source, "_short_name", "unknown"),
+                )
+                adds += 1
+
+            elif change.change_type == ACLChangeType.REMOVE:
+                await crud.access_control_membership.delete_by_key(
+                    db,
+                    member_id=change.member_id,
+                    member_type=change.member_type,
+                    group_id=change.group_id,
+                    source_connection_id=sync_context.source_connection_id,
+                    organization_id=sync_context.organization_id,
+                )
+                removes += 1
+
+        return adds, removes
 
     # -------------------------------------------------------------------------
     # Cursor management

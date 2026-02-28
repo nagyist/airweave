@@ -1,10 +1,19 @@
 """Unit tests for the SharePoint 2019 V2 source connector."""
 
+from unittest.mock import AsyncMock, MagicMock
+
 import pytest
 
 from airweave.platform.entities.sharepoint2019v2 import (
     SharePoint2019V2FileDeletionEntity,
     SharePoint2019V2ItemDeletionEntity,
+)
+from airweave.platform.sources.sharepoint2019v2.ldap import (
+    DIRSYNC_FLAGS_BASIC,
+    DIRSYNC_FLAGS_FULL,
+    DirSyncPermissionError,
+    DirSyncResult,
+    LDAPClient,
 )
 from airweave.platform.sources.sharepoint2019v2.source import SharePoint2019V2Source
 
@@ -114,3 +123,87 @@ class TestDeletionEntities:
                 label="Deleted file",
                 deletion_status="removed",
             )
+
+
+class TestDirSyncFlagFallback:
+    """Tests for DirSync error 12 (unavailableCriticalExtension) handling.
+
+    Some AD servers don't support the LDAP_DIRSYNC_INCREMENTAL_VALUES flag
+    (0x80000000) and return error 12. The code should fall back to basic
+    flags (0) on this error.
+    """
+
+    @pytest.fixture
+    def ldap_client(self):
+        """Create an LDAPClient with mocked logger."""
+        client = LDAPClient(
+            server="ldaps://server:636",
+            username="admin",
+            password="pass",
+            domain="DOMAIN",
+            search_base="DC=DOMAIN,DC=local",
+            logger=MagicMock(),
+        )
+        return client
+
+    def test_error_12_raises_dirsync_permission_error(self, ldap_client):
+        """Error code 12 should raise DirSyncPermissionError to trigger fallback."""
+        conn = MagicMock()
+        conn.search.return_value = False
+        conn.result = {"result": 12, "description": "unavailableCriticalExtension"}
+
+        with pytest.raises(DirSyncPermissionError, match="flag not supported"):
+            ldap_client._execute_dirsync_search(
+                conn, cookie=b"", is_initial=True, flags=DIRSYNC_FLAGS_FULL
+            )
+
+    def test_error_8_raises_dirsync_permission_error(self, ldap_client):
+        """Error code 8 (strong auth required) should also raise DirSyncPermissionError."""
+        conn = MagicMock()
+        conn.search.return_value = False
+        conn.result = {"result": 8, "description": "strongAuthRequired"}
+
+        with pytest.raises(DirSyncPermissionError, match="stronger auth"):
+            ldap_client._execute_dirsync_search(
+                conn, cookie=b"", is_initial=True, flags=DIRSYNC_FLAGS_FULL
+            )
+
+    def test_other_errors_return_empty_result(self, ldap_client):
+        """Non-permission errors should return empty DirSyncResult."""
+        conn = MagicMock()
+        conn.search.return_value = False
+        conn.result = {"result": 1, "description": "operationsError"}
+
+        result = ldap_client._execute_dirsync_search(
+            conn, cookie=b"test", is_initial=False, flags=DIRSYNC_FLAGS_BASIC
+        )
+        assert isinstance(result, DirSyncResult)
+        assert result.new_cookie == b"test"
+        assert len(result.changes) == 0
+
+    @pytest.mark.asyncio
+    async def test_flag_fallback_retries_with_basic(self, ldap_client):
+        """_execute_dirsync_query_with_flags should retry with basic flags on error 12."""
+        call_count = 0
+        expected_result = DirSyncResult(
+            new_cookie=b"new_cookie",
+            changes=[],
+            modified_group_ids=set(),
+            deleted_group_ids=set(),
+        )
+
+        async def mock_query(cookie, is_initial, flags):
+            nonlocal call_count
+            call_count += 1
+            if flags == DIRSYNC_FLAGS_FULL:
+                raise DirSyncPermissionError("flag not supported")
+            return expected_result
+
+        ldap_client._execute_dirsync_query = mock_query
+        ldap_client.connect = AsyncMock()
+
+        result = await ldap_client._execute_dirsync_query_with_flags(
+            cookie=b"", is_initial=True, flags=DIRSYNC_FLAGS_FULL
+        )
+        assert call_count == 2
+        assert result.new_cookie == b"new_cookie"

@@ -150,8 +150,8 @@ async def test_incremental_sync_three_phases(api_client: httpx.AsyncClient):
 
     Phase 3: No-op sync with same config (entity_count=10)
       - Source reads cursor (last_entity_index=9)
-      - No new entities to generate (only container re-emitted)
-      - entities_inserted = 0
+      - No new entities to generate (only container re-emitted with same content)
+      - entities_inserted = 0, entities_updated = 0 (container hash unchanged = KEEP)
     """
     global _cleanup_connection_ids, _cleanup_collection_readable_id
 
@@ -293,7 +293,8 @@ async def test_incremental_sync_three_phases(api_client: httpx.AsyncClient):
 
     # Phase 3 assertions:
     # - 0 new entities inserted (cursor is at last_entity_index=9, entity_count=10)
-    # - Container is re-emitted so at least 1 update
+    # - 0 entities updated: container is re-emitted with identical content,
+    #   so the entity pipeline resolves it as KEEP (same hash), not UPDATE.
     p3_inserted = phase3_job["entities_inserted"]
     p3_updated = phase3_job["entities_updated"]
 
@@ -301,11 +302,10 @@ async def test_incremental_sync_three_phases(api_client: httpx.AsyncClient):
         f"Phase 3: expected 0 entities inserted (no new data), got {p3_inserted}. "
         f"If {p3_inserted} > 0, the cursor was not properly persisted."
     )
-    # Container re-emitted = updated
-    assert p3_updated >= 1, (
-        f"Phase 3: expected at least 1 entity updated (container), got {p3_updated}"
+    assert p3_updated == 0, (
+        f"Phase 3: expected 0 entities updated (all unchanged = KEEP), got {p3_updated}"
     )
-    print(f"[phase3] PASS: {p3_inserted} entities inserted, {p3_updated} updated")
+    print(f"[phase3] PASS: {p3_inserted} entities inserted, {p3_updated} updated (all KEEP)")
 
     # =========================================================================
     # Verify total entity count via job history
@@ -328,7 +328,14 @@ async def test_force_full_sync_ignores_cursor(api_client: httpx.AsyncClient):
     """Test that force_full_sync=true ignores the cursor and does a full re-sync.
 
     1. Create connection with entity_count=5 -> sync (6 entities inserted)
-    2. Trigger force_full_sync -> should re-insert 0 and update 6 (all entities re-emitted)
+    2. Reduce entity_count to 3 + force_full_sync=true
+       - Without force_full_sync: cursor says last_entity_index=4, start=5, no new entities
+       - With force_full_sync: cursor skipped, full sync from index 0, yields 4 entities
+         (container + 3 data). Entities at indices 3-4 become orphans and are deleted.
+
+    This proves force_full_sync actually ignores the cursor because:
+    - If cursor were used, 0 entities would be emitted (start_index=5, entity_count=3)
+    - With cursor skipped, all 3 data entities are re-emitted from index 0
     """
     global _cleanup_connection_ids, _cleanup_collection_readable_id
 
@@ -343,7 +350,7 @@ async def test_force_full_sync_ignores_cursor(api_client: httpx.AsyncClient):
     readable_id = collection["readable_id"]
     _cleanup_collection_readable_id = readable_id
 
-    # Create connection and initial sync
+    # Create connection and initial sync with entity_count=5
     connection_data = {
         "name": f"Force Sync Test {int(time.time())}",
         "short_name": "incremental_stub",
@@ -370,7 +377,19 @@ async def test_force_full_sync_ignores_cursor(api_client: httpx.AsyncClient):
     )
     print(f"[phase1] Initial sync: {phase1_job['entities_inserted']} inserted")
 
-    # Trigger force full sync (without changing config)
+    # Reduce entity_count to 3, then force full sync.
+    # force_full_sync skips cursor loading, so source does a full sync from
+    # index 0 with entity_count=3: re-emits container + entities 0,1,2.
+    # Entities 3 and 4 are not re-emitted -> orphan cleanup deletes them.
+    update_response = await client.patch(
+        f"/source-connections/{connection_id}",
+        json={"config": {"seed": 99, "entity_count": 3}},
+    )
+    assert update_response.status_code == 200, (
+        f"Failed to update config: {update_response.text}"
+    )
+    print("[phase2] Updated entity_count from 5 to 3")
+
     run_response = await client.post(
         f"/source-connections/{connection_id}/run?force_full_sync=true"
     )
@@ -383,18 +402,25 @@ async def test_force_full_sync_ignores_cursor(api_client: httpx.AsyncClient):
     assert sync_ok, "Force full sync failed"
 
     phase2_job = await get_last_job_details(client, connection_id)
-    print(f"[phase2] Force sync: inserted={phase2_job['entities_inserted']}, "
-          f"updated={phase2_job['entities_updated']}")
+    print(
+        f"[phase2] Force sync: inserted={phase2_job['entities_inserted']}, "
+        f"updated={phase2_job['entities_updated']}, "
+        f"deleted={phase2_job['entities_deleted']}"
+    )
 
-    # After force full sync with same data:
-    # All entities are re-emitted and should match existing ones -> updated, not inserted
     p2_inserted = phase2_job["entities_inserted"]
-    p2_updated = phase2_job["entities_updated"]
+    p2_deleted = phase2_job["entities_deleted"]
 
+    # Container + entities 0,1,2 are re-emitted with identical content -> KEEP (0 inserts).
+    # If the cursor were used, we'd get 0 emitted entities entirely (start_index > entity_count).
+    # The fact that we get 0 inserts (not a failure) AND deletions proves the cursor was skipped.
     assert p2_inserted == 0, (
-        f"Force full sync: expected 0 new inserts (same data), got {p2_inserted}"
+        f"Force full sync: expected 0 new inserts (entities 0-2 unchanged), got {p2_inserted}"
     )
-    assert p2_updated == 6, (
-        f"Force full sync: expected 6 updates (all re-emitted), got {p2_updated}"
+    # Entities at indices 3 and 4 should be deleted as orphans
+    assert p2_deleted == 2, (
+        f"Force full sync: expected 2 deletions (orphaned entities at indices 3-4), "
+        f"got {p2_deleted}. If 0, the cursor may not have been skipped "
+        f"(no entities re-emitted = no orphan detection)."
     )
-    print("[phase2] PASS: Force full sync correctly re-processed all entities")
+    print("[phase2] PASS: Force full sync correctly orphaned removed entities")

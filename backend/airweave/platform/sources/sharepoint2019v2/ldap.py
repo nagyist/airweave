@@ -831,7 +831,7 @@ class LDAPClient:
             result = await self._execute_dirsync_query_with_flags(
                 cookie=cookie,
                 is_initial=is_initial,
-                flags=DIRSYNC_FLAGS_FULL,
+                flags=DIRSYNC_FLAGS_BASIC,
             )
 
             all_changes.extend(result.changes)
@@ -992,6 +992,10 @@ class LDAPClient:
             if result_code == 8:  # LDAP_STRONG_AUTH_REQUIRED
                 raise DirSyncPermissionError(
                     f"DirSync requires stronger auth or privileges: {description}"
+                )
+            if result_code == 12:  # unavailableCriticalExtension
+                raise DirSyncPermissionError(
+                    f"DirSync flag not supported by server (try basic flags): {description}"
                 )
             self.logger.warning(f"DirSync search failed: {result_code} {description}")
             # Return empty result with same cookie (retry next time)

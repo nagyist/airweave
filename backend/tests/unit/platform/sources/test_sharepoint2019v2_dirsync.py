@@ -1049,3 +1049,194 @@ class TestTombstoneEdgeCases:
         assert "ad:group1" in deleted
         assert "ad:group2" in deleted
         assert len(deleted) == 2
+
+
+# =========================================================================
+# _get_entry_members: edge cases for range attribute parsing
+# =========================================================================
+
+
+class FakeEntryNoneAttr:
+    """Entry that returns None for specific attributes (simulates missing range attrs).
+
+    The standard FakeEntry always returns FakeAttr([]), which never hits the
+    `range_attr is None` guard (line 1238). This variant returns None for
+    attributes listed in `none_attrs`.
+    """
+
+    def __init__(self, attrs: dict, entry_dn: str = "", none_attrs: set = None):
+        self._attrs = attrs
+        self.entry_dn = entry_dn
+        self._none_attrs = none_attrs or set()
+
+    @property
+    def entry_attributes(self):
+        return list(self._attrs.keys())
+
+    @property
+    def entry_attributes_as_dict(self):
+        return {k: list(v) for k, v in self._attrs.items()}
+
+    def __getattr__(self, name):
+        if name.startswith("_") or name in ("entry_dn", "entry_attributes",
+                                             "entry_attributes_as_dict"):
+            raise AttributeError(name)
+        if name in self._none_attrs:
+            return None
+        if name in self._attrs:
+            return FakeAttr(self._attrs[name])
+        return FakeAttr([])
+
+
+class FakeAttrStringValue:
+    """Attribute that returns a string .value and None .values (hits isinstance str branch)."""
+
+    def __init__(self, val: str):
+        self.values = None
+        self.value = val
+
+
+class FakeEntryStringRangeAttr:
+    """Entry whose range attribute returns a string value (not a list).
+
+    Hits the `isinstance(range_vals, str)` branch at line 1245.
+    """
+
+    def __init__(self, attrs: dict, entry_dn: str = "", string_attrs: dict = None):
+        self._attrs = attrs
+        self.entry_dn = entry_dn
+        self._string_attrs = string_attrs or {}
+
+    @property
+    def entry_attributes(self):
+        return list(self._attrs.keys())
+
+    @property
+    def entry_attributes_as_dict(self):
+        return {k: list(v) for k, v in self._attrs.items()}
+
+    def __getattr__(self, name):
+        if name.startswith("_") or name in ("entry_dn", "entry_attributes",
+                                             "entry_attributes_as_dict"):
+            raise AttributeError(name)
+        if name in self._string_attrs:
+            return FakeAttrStringValue(self._string_attrs[name])
+        if name in self._attrs:
+            return FakeAttr(self._attrs[name])
+        return FakeAttr([])
+
+
+class TestGetEntryMembersEdgeCases:
+    """Edge cases for _get_entry_members range attribute parsing."""
+
+    def test_range_attr_is_none_skipped(self, ldap_client):
+        """When getattr(entry, range_attr) returns None, skip that attribute."""
+        entry = FakeEntryNoneAttr(
+            attrs={
+                "member": [],
+                "member;range=1-1": ["CN=user1,DC=test"],  # listed but returns None
+            },
+            none_attrs={"member;range=1-1"},
+        )
+        added, removed = ldap_client._get_entry_members(entry, incremental_mode=True)
+        # Should not crash, and user1 should NOT be in added (attr was None)
+        assert added == []
+        assert removed == []
+
+    def test_range_vals_is_string_wrapped_to_list(self, ldap_client):
+        """When range_vals is a single string (not list), it should be wrapped."""
+        entry = FakeEntryStringRangeAttr(
+            attrs={
+                "member": [],
+                "member;range=1-1": [],  # in entry_attributes but use string_attrs
+            },
+            string_attrs={"member;range=1-1": "CN=string_user,DC=test"},
+        )
+        added, removed = ldap_client._get_entry_members(entry, incremental_mode=True)
+        assert "CN=string_user,DC=test" in added
+        assert removed == []
+
+    def test_unknown_range_format_treated_as_add(self, ldap_client):
+        """member;range=9-9 (unknown format) should log warning and treat as add."""
+        entry = FakeEntry({
+            "member": [],
+            "member;range=9-9": ["CN=weird_user,DC=test"],
+        })
+        added, removed = ldap_client._get_entry_members(entry, incremental_mode=True)
+        assert "CN=weird_user,DC=test" in added
+        assert removed == []
+        ldap_client.logger.warning.assert_called_once()
+
+    def test_range_attr_raises_attribute_error_skipped(self, ldap_client):
+        """If accessing a range attribute raises AttributeError, it should be skipped."""
+        class RaisingEntry:
+            entry_dn = ""
+            entry_attributes = ["member", "member;range=1-1"]
+            entry_attributes_as_dict = {"member": [], "member;range=1-1": []}
+
+            @property
+            def member(self):
+                return FakeAttr([])
+
+            def __getattr__(self, name):
+                if name == "member;range=1-1":
+                    raise AttributeError("simulated error")
+                raise AttributeError(name)
+
+        # The issue is that "member;range=1-1" isn't a valid Python attr name,
+        # so we test via a different approach: patch getattr to raise
+        entry = FakeEntryNoneAttr(
+            attrs={
+                "member": [],
+                "member;range=1-1": ["CN=user,DC=test"],
+            },
+        )
+        # Override to raise TypeError instead (also caught)
+        original_getattr = entry.__class__.__getattr__
+
+        def raising_getattr(self, name):
+            if name == "member;range=1-1":
+                raise TypeError("simulated")
+            return original_getattr(self, name)
+
+        entry.__class__ = type("RaisingEntry", (FakeEntryNoneAttr,), {
+            "__getattr__": raising_getattr,
+            "entry_attributes": property(lambda self: list(self._attrs.keys())),
+            "entry_attributes_as_dict": property(
+                lambda self: {k: list(v) for k, v in self._attrs.items()}
+            ),
+        })
+
+        added, removed = ldap_client._get_entry_members(entry, incremental_mode=True)
+        # Should skip the problematic attr gracefully
+        assert removed == []
+
+    def test_range_vals_none_skipped(self, ldap_client):
+        """When range attr has neither .values nor .value, skip it."""
+
+        class NoneValuesAttr:
+            values = None
+            value = None
+
+        class NoneValEntry:
+            entry_dn = ""
+
+            @property
+            def entry_attributes(self):
+                return ["member", "member;range=1-1"]
+
+            @property
+            def entry_attributes_as_dict(self):
+                return {"member": [], "member;range=1-1": []}
+
+            def __getattr__(self, name):
+                if name == "member":
+                    return FakeAttr([])
+                if name == "member;range=1-1":
+                    return NoneValuesAttr()
+                raise AttributeError(name)
+
+        entry = NoneValEntry()
+        added, removed = ldap_client._get_entry_members(entry, incremental_mode=True)
+        assert added == []
+        assert removed == []

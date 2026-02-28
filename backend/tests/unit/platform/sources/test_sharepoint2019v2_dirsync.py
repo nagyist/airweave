@@ -551,7 +551,7 @@ class TestDirSyncResultIncrementalValues:
             call_idx += 1
             return result
 
-        client._execute_dirsync_query_with_flags = mock_query
+        client._execute_dirsync_query = mock_query
 
         result = await client.get_membership_changes(cookie_b64="dGVzdA==")
         assert result.incremental_values is True
@@ -575,7 +575,7 @@ class TestDirSyncResultIncrementalValues:
                 more_results=False,
             )
 
-        client._execute_dirsync_query_with_flags = mock_query
+        client._execute_dirsync_query = mock_query
 
         result = await client.get_membership_changes(cookie_b64="dGVzdA==")
         assert result.incremental_values is False
@@ -723,46 +723,18 @@ class TestIncrementalModeDetection:
 # _execute_dirsync_query_with_flags: fallback logic
 # =========================================================================
 
-class TestDirSyncFlagFallbackFlow:
-    """Tests for _execute_dirsync_query_with_flags retry behaviour.
+class TestDirSyncNoFlagFallback:
+    """Tests that DirSyncPermissionError propagates without silent fallback.
 
-    When FULL flags (INCREMENTAL_VALUES) fail with DirSyncPermissionError,
-    the method should reconnect and retry with BASIC flags (0x0).
+    When AD rejects FULL flags (INCREMENTAL_VALUES), the error propagates up to
+    _process_incremental which falls back to a full sync. There is no silent
+    retry with BASIC flags, because BASIC flags can only add members (never
+    remove), leading to stale membership accumulation.
     """
 
     @pytest.mark.asyncio
-    async def test_fallback_retries_with_basic_flags(self):
-        """FULL flags → DirSyncPermissionError → retry with BASIC."""
-        client = LDAPClient(
-            server="ldaps://server:636",
-            username="admin",
-            password="pass",
-            domain="DOMAIN",
-            search_base="DC=DOMAIN,DC=local",
-            logger=MagicMock(),
-        )
-
-        calls = []
-
-        async def mock_query(cookie, is_initial, flags):
-            calls.append(flags)
-            if flags == DIRSYNC_FLAGS_FULL:
-                raise DirSyncPermissionError("unsupported")
-            return DirSyncResult(new_cookie=b"ok", incremental_values=False)
-
-        client._execute_dirsync_query = mock_query
-        client.connect = AsyncMock()
-
-        result = await client._execute_dirsync_query_with_flags(
-            cookie=b"test", is_initial=False, flags=DIRSYNC_FLAGS_FULL
-        )
-        assert calls == [DIRSYNC_FLAGS_FULL, DIRSYNC_FLAGS_BASIC]
-        assert result.incremental_values is False
-        client.connect.assert_called_once_with(force_reconnect=True)
-
-    @pytest.mark.asyncio
-    async def test_basic_flags_permission_error_not_retried(self):
-        """BASIC flags → DirSyncPermissionError → re-raised (no fallback)."""
+    async def test_permission_error_propagates(self):
+        """DirSyncPermissionError is not caught — it propagates to the caller."""
         client = LDAPClient(
             server="ldaps://server:636",
             username="admin",
@@ -773,18 +745,16 @@ class TestDirSyncFlagFallbackFlow:
         )
 
         async def mock_query(cookie, is_initial, flags):
-            raise DirSyncPermissionError("no rights")
+            raise DirSyncPermissionError("unsupported flag")
 
         client._execute_dirsync_query = mock_query
 
         with pytest.raises(DirSyncPermissionError):
-            await client._execute_dirsync_query_with_flags(
-                cookie=b"test", is_initial=False, flags=DIRSYNC_FLAGS_BASIC
-            )
+            await client.get_membership_changes(cookie_b64="")
 
     @pytest.mark.asyncio
-    async def test_success_on_first_try_no_fallback(self):
-        """FULL flags succeed → no fallback, no reconnect."""
+    async def test_success_returns_result_directly(self):
+        """Successful FULL flags query returns result without retry."""
         client = LDAPClient(
             server="ldaps://server:636",
             username="admin",
@@ -795,16 +765,15 @@ class TestDirSyncFlagFallbackFlow:
         )
 
         async def mock_query(cookie, is_initial, flags):
-            return DirSyncResult(new_cookie=b"ok", incremental_values=True)
+            assert flags == DIRSYNC_FLAGS_FULL
+            return DirSyncResult(
+                new_cookie=b"ok", incremental_values=True, more_results=False
+            )
 
         client._execute_dirsync_query = mock_query
-        client.connect = AsyncMock()
 
-        result = await client._execute_dirsync_query_with_flags(
-            cookie=b"test", is_initial=False, flags=DIRSYNC_FLAGS_FULL
-        )
+        result = await client.get_membership_changes(cookie_b64="")
         assert result.incremental_values is True
-        client.connect.assert_not_called()
 
 
 # =========================================================================
@@ -863,7 +832,7 @@ class TestGetMembershipChangesPagination:
             call_idx += 1
             return result
 
-        client._execute_dirsync_query_with_flags = mock_query
+        client._execute_dirsync_query = mock_query
 
         result = await client.get_membership_changes(cookie_b64="dGVzdA==")
         assert len(result.changes) == 2
@@ -892,7 +861,7 @@ class TestGetMembershipChangesPagination:
             captured_args["flags"] = flags
             return DirSyncResult(new_cookie=b"first", more_results=False)
 
-        client._execute_dirsync_query_with_flags = mock_query
+        client._execute_dirsync_query = mock_query
 
         await client.get_membership_changes(cookie_b64="")
         assert captured_args["is_initial"] is True
@@ -916,14 +885,14 @@ class TestGetMembershipChangesPagination:
             captured_args["is_initial"] = is_initial
             return DirSyncResult(new_cookie=b"next", more_results=False)
 
-        client._execute_dirsync_query_with_flags = mock_query
+        client._execute_dirsync_query = mock_query
 
         await client.get_membership_changes(cookie_b64="dGVzdA==")
         assert captured_args["is_initial"] is False
 
     @pytest.mark.asyncio
-    async def test_incremental_values_false_when_fallback_used(self):
-        """If any page falls back to BASIC, incremental_values should be False."""
+    async def test_incremental_values_propagated_across_pages(self):
+        """incremental_values=True on any page means True for the aggregate result."""
         client = LDAPClient(
             server="ldaps://server:636",
             username="admin",
@@ -933,14 +902,12 @@ class TestGetMembershipChangesPagination:
             logger=MagicMock(),
         )
 
-        # First page uses FULL (incremental_values=True)
-        # Second page falls back to BASIC (incremental_values=False)
         page_results = [
             DirSyncResult(
                 new_cookie=b"c1", incremental_values=True, more_results=True,
             ),
             DirSyncResult(
-                new_cookie=b"c2", incremental_values=False, more_results=False,
+                new_cookie=b"c2", incremental_values=True, more_results=False,
             ),
         ]
         call_idx = 0
@@ -951,11 +918,9 @@ class TestGetMembershipChangesPagination:
             call_idx += 1
             return r
 
-        client._execute_dirsync_query_with_flags = mock_query
+        client._execute_dirsync_query = mock_query
 
         result = await client.get_membership_changes(cookie_b64="dGVzdA==")
-        # used_incremental_values = True or False = True
-        # (at least one page used incremental_values)
         assert result.incremental_values is True
 
 

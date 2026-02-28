@@ -182,28 +182,13 @@ class TestDirSyncFlagFallback:
         assert len(result.changes) == 0
 
     @pytest.mark.asyncio
-    async def test_flag_fallback_retries_with_basic(self, ldap_client):
-        """_execute_dirsync_query_with_flags should retry with basic flags on error 12."""
-        call_count = 0
-        expected_result = DirSyncResult(
-            new_cookie=b"new_cookie",
-            changes=[],
-            modified_group_ids=set(),
-            deleted_group_ids=set(),
-        )
+    async def test_permission_error_propagates_no_fallback(self, ldap_client):
+        """DirSyncPermissionError propagates — no silent retry with basic flags."""
 
         async def mock_query(cookie, is_initial, flags):
-            nonlocal call_count
-            call_count += 1
-            if flags == DIRSYNC_FLAGS_FULL:
-                raise DirSyncPermissionError("flag not supported")
-            return expected_result
+            raise DirSyncPermissionError("flag not supported")
 
         ldap_client._execute_dirsync_query = mock_query
-        ldap_client.connect = AsyncMock()
 
-        result = await ldap_client._execute_dirsync_query_with_flags(
-            cookie=b"", is_initial=True, flags=DIRSYNC_FLAGS_FULL
-        )
-        assert call_count == 2
-        assert result.new_cookie == b"new_cookie"
+        with pytest.raises(DirSyncPermissionError):
+            await ldap_client.get_membership_changes(cookie_b64="")

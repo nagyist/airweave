@@ -1,14 +1,13 @@
-"""Unit tests for AccessControlPipeline incremental ACL reconciliation.
+"""Unit tests for AccessControlPipeline incremental ACL processing.
 
-Tests the reconciliation path that runs when DirSync uses BASIC flags (0x0)
-instead of INCREMENTAL_VALUES. With BASIC flags, DirSync returns full member
-lists as all ADDs with zero REMOVEs, so the pipeline must diff against the DB
-to detect removed members.
+Tests the incremental sync path:
+- _apply_membership_changes: Applies ADDs and REMOVEs from DirSync results
+- _process_incremental: Full incremental flow including deleted group handling,
+  cookie updates, and fallback to full sync on failure
 
-Key methods under test:
-- _reconcile_modified_groups: Diffs DB memberships against DirSync to find stale entries
-- _apply_membership_changes: Applies ADDs/REMOVEs and triggers reconciliation for BASIC flags
-- _process_incremental: Full incremental flow including deleted group handling
+Note: Reconciliation (diffing DB vs DirSync for BASIC flags) was intentionally
+removed because _resolve_member_dn_sync failures would cause false deletions.
+Removed members are cleaned up during the next full sync instead.
 """
 
 from dataclasses import dataclass, field
@@ -65,15 +64,6 @@ class FakeDirSyncResult:
     cookie_b64: str = "new_cookie"
 
 
-@dataclass
-class FakeMembership:
-    """Mimics ORM AccessControlMembership for get_memberships_by_groups results."""
-
-    group_id: str
-    member_id: str
-    member_type: str
-
-
 def _make_change(change_type, member_id, member_type, group_id, group_name=None):
     """Helper to build a MembershipChange."""
     return MembershipChange(
@@ -95,186 +85,16 @@ def _make_pipeline():
 
 
 # ---------------------------------------------------------------------------
-# Tests: _reconcile_modified_groups
-# ---------------------------------------------------------------------------
-
-
-class TestReconcileModifiedGroups:
-    """Tests for the reconciliation logic that detects and removes stale memberships."""
-
-    @pytest.mark.asyncio
-    async def test_removes_stale_members_not_in_dirsync(self):
-        """Members in DB but not in DirSync result should be deleted."""
-        pipeline = _make_pipeline()
-        ctx = FakeSyncContext()
-        db = MagicMock()
-
-        # DB has 3 members in group-A: alice, bob, charlie
-        existing = [
-            FakeMembership("group-A", "alice@acme.com", "user"),
-            FakeMembership("group-A", "bob@acme.com", "user"),
-            FakeMembership("group-A", "charlie@acme.com", "user"),
-        ]
-
-        # DirSync only reports alice and charlie — bob was removed
-        dirsync_members = {
-            "group-A": {("alice@acme.com", "user"), ("charlie@acme.com", "user")}
-        }
-
-        with patch("airweave.platform.sync.access_control_pipeline.crud") as mock_crud:
-            mock_crud.access_control_membership.get_memberships_by_groups = AsyncMock(
-                return_value=existing
-            )
-            mock_crud.access_control_membership.delete_by_key = AsyncMock()
-
-            removes = await pipeline._reconcile_modified_groups(
-                db,
-                modified_group_ids={"group-A"},
-                dirsync_members_by_group=dirsync_members,
-                sync_context=ctx,
-            )
-
-        assert removes == 1
-        mock_crud.access_control_membership.delete_by_key.assert_called_once_with(
-            db,
-            member_id="bob@acme.com",
-            member_type="user",
-            group_id="group-A",
-            source_connection_id=ctx.source_connection_id,
-            organization_id=ctx.organization_id,
-        )
-
-    @pytest.mark.asyncio
-    async def test_no_removals_when_all_members_present(self):
-        """No deletions when DirSync and DB agree on membership."""
-        pipeline = _make_pipeline()
-        ctx = FakeSyncContext()
-        db = MagicMock()
-
-        existing = [
-            FakeMembership("group-A", "alice@acme.com", "user"),
-            FakeMembership("group-A", "bob@acme.com", "user"),
-        ]
-        dirsync_members = {
-            "group-A": {("alice@acme.com", "user"), ("bob@acme.com", "user")}
-        }
-
-        with patch("airweave.platform.sync.access_control_pipeline.crud") as mock_crud:
-            mock_crud.access_control_membership.get_memberships_by_groups = AsyncMock(
-                return_value=existing
-            )
-            mock_crud.access_control_membership.delete_by_key = AsyncMock()
-
-            removes = await pipeline._reconcile_modified_groups(
-                db,
-                modified_group_ids={"group-A"},
-                dirsync_members_by_group=dirsync_members,
-                sync_context=ctx,
-            )
-
-        assert removes == 0
-        mock_crud.access_control_membership.delete_by_key.assert_not_called()
-
-    @pytest.mark.asyncio
-    async def test_reconciles_multiple_groups(self):
-        """Reconciliation handles multiple groups, removing stale members from each."""
-        pipeline = _make_pipeline()
-        ctx = FakeSyncContext()
-        db = MagicMock()
-
-        # Group-A: alice stays, bob removed
-        # Group-B: charlie stays, dave removed
-        existing = [
-            FakeMembership("group-A", "alice@acme.com", "user"),
-            FakeMembership("group-A", "bob@acme.com", "user"),
-            FakeMembership("group-B", "charlie@acme.com", "user"),
-            FakeMembership("group-B", "dave@acme.com", "user"),
-        ]
-        dirsync_members = {
-            "group-A": {("alice@acme.com", "user")},
-            "group-B": {("charlie@acme.com", "user")},
-        }
-
-        with patch("airweave.platform.sync.access_control_pipeline.crud") as mock_crud:
-            mock_crud.access_control_membership.get_memberships_by_groups = AsyncMock(
-                return_value=existing
-            )
-            mock_crud.access_control_membership.delete_by_key = AsyncMock()
-
-            removes = await pipeline._reconcile_modified_groups(
-                db,
-                modified_group_ids={"group-A", "group-B"},
-                dirsync_members_by_group=dirsync_members,
-                sync_context=ctx,
-            )
-
-        assert removes == 2
-        assert mock_crud.access_control_membership.delete_by_key.call_count == 2
-
-    @pytest.mark.asyncio
-    async def test_empty_db_means_no_removals(self):
-        """No stale removals when DB has no existing memberships for the groups."""
-        pipeline = _make_pipeline()
-        ctx = FakeSyncContext()
-        db = MagicMock()
-
-        with patch("airweave.platform.sync.access_control_pipeline.crud") as mock_crud:
-            mock_crud.access_control_membership.get_memberships_by_groups = AsyncMock(
-                return_value=[]
-            )
-            mock_crud.access_control_membership.delete_by_key = AsyncMock()
-
-            removes = await pipeline._reconcile_modified_groups(
-                db,
-                modified_group_ids={"group-A"},
-                dirsync_members_by_group={"group-A": {("alice@acme.com", "user")}},
-                sync_context=ctx,
-            )
-
-        assert removes == 0
-
-    @pytest.mark.asyncio
-    async def test_group_not_in_dirsync_results_removes_all_members(self):
-        """If a modified group has no DirSync entries, all its DB members are stale."""
-        pipeline = _make_pipeline()
-        ctx = FakeSyncContext()
-        db = MagicMock()
-
-        # Group-A is modified but DirSync returned no ADD entries for it
-        # (e.g., all members removed from the group)
-        existing = [
-            FakeMembership("group-A", "alice@acme.com", "user"),
-            FakeMembership("group-A", "bob@acme.com", "user"),
-        ]
-
-        with patch("airweave.platform.sync.access_control_pipeline.crud") as mock_crud:
-            mock_crud.access_control_membership.get_memberships_by_groups = AsyncMock(
-                return_value=existing
-            )
-            mock_crud.access_control_membership.delete_by_key = AsyncMock()
-
-            removes = await pipeline._reconcile_modified_groups(
-                db,
-                modified_group_ids={"group-A"},
-                dirsync_members_by_group={},  # empty — no ADDs for group-A
-                sync_context=ctx,
-            )
-
-        assert removes == 2
-        assert mock_crud.access_control_membership.delete_by_key.call_count == 2
-
-
-# ---------------------------------------------------------------------------
 # Tests: _apply_membership_changes
 # ---------------------------------------------------------------------------
 
 
 class TestApplyMembershipChanges:
-    """Tests for _apply_membership_changes with both INCREMENTAL and BASIC flags."""
+    """Tests for _apply_membership_changes ADD/REMOVE processing."""
 
     @pytest.mark.asyncio
-    async def test_incremental_values_applies_adds_and_removes(self):
-        """With incremental_values=True, ADDs are upserted and REMOVEs are deleted."""
+    async def test_applies_adds_and_removes(self):
+        """ADDs are upserted and REMOVEs are deleted."""
         pipeline = _make_pipeline()
         ctx = FakeSyncContext()
         db = MagicMock()
@@ -287,36 +107,33 @@ class TestApplyMembershipChanges:
                 _make_change(ACLChangeType.ADD, "charlie@acme.com", "user", "group-B"),
             ],
             modified_group_ids={"group-A", "group-B"},
-            incremental_values=True,
         )
 
         with patch("airweave.platform.sync.access_control_pipeline.crud") as mock_crud:
             mock_crud.access_control_membership.upsert = AsyncMock()
             mock_crud.access_control_membership.delete_by_key = AsyncMock()
-            # Should NOT call get_memberships_by_groups (no reconciliation)
-            mock_crud.access_control_membership.get_memberships_by_groups = AsyncMock()
 
             adds, removes = await pipeline._apply_membership_changes(
-                db, result, source, ctx, uses_incremental_values=True
+                db, result, source, ctx
             )
 
         assert adds == 2
         assert removes == 1
         assert mock_crud.access_control_membership.upsert.call_count == 2
         assert mock_crud.access_control_membership.delete_by_key.call_count == 1
-        # No reconciliation with incremental values
-        mock_crud.access_control_membership.get_memberships_by_groups.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_basic_flags_triggers_reconciliation(self):
-        """With incremental_values=False, reconciliation is triggered after applying ADDs."""
+    async def test_basic_flags_does_not_reconcile(self):
+        """With BASIC flags (incremental_values=False), no reconciliation occurs.
+
+        Reconciliation was removed because _resolve_member_dn_sync failures
+        would cause false deletions of valid memberships.
+        """
         pipeline = _make_pipeline()
         ctx = FakeSyncContext()
         db = MagicMock()
         source = SimpleNamespace(_short_name="sp2019v2")
 
-        # BASIC flags: DirSync returns full member list as ADDs only
-        # group-A: alice and charlie in DirSync, bob was removed
         result = FakeDirSyncResult(
             changes=[
                 _make_change(ACLChangeType.ADD, "alice@acme.com", "user", "group-A"),
@@ -326,56 +143,18 @@ class TestApplyMembershipChanges:
             incremental_values=False,
         )
 
-        # DB has alice, bob, charlie — bob should be removed by reconciliation
-        existing = [
-            FakeMembership("group-A", "alice@acme.com", "user"),
-            FakeMembership("group-A", "bob@acme.com", "user"),
-            FakeMembership("group-A", "charlie@acme.com", "user"),
-        ]
-
-        with patch("airweave.platform.sync.access_control_pipeline.crud") as mock_crud:
-            mock_crud.access_control_membership.upsert = AsyncMock()
-            mock_crud.access_control_membership.delete_by_key = AsyncMock()
-            mock_crud.access_control_membership.get_memberships_by_groups = AsyncMock(
-                return_value=existing
-            )
-
-            adds, removes = await pipeline._apply_membership_changes(
-                db, result, source, ctx, uses_incremental_values=False
-            )
-
-        assert adds == 2
-        assert removes == 1  # bob removed by reconciliation
-        # Reconciliation was called
-        mock_crud.access_control_membership.get_memberships_by_groups.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_basic_flags_no_reconciliation_when_no_modified_groups(self):
-        """Even with BASIC flags, skip reconciliation if modified_group_ids is empty."""
-        pipeline = _make_pipeline()
-        ctx = FakeSyncContext()
-        db = MagicMock()
-        source = SimpleNamespace(_short_name="sp2019v2")
-
-        result = FakeDirSyncResult(
-            changes=[
-                _make_change(ACLChangeType.ADD, "alice@acme.com", "user", "group-A"),
-            ],
-            modified_group_ids=set(),  # empty
-            incremental_values=False,
-        )
-
         with patch("airweave.platform.sync.access_control_pipeline.crud") as mock_crud:
             mock_crud.access_control_membership.upsert = AsyncMock()
             mock_crud.access_control_membership.delete_by_key = AsyncMock()
             mock_crud.access_control_membership.get_memberships_by_groups = AsyncMock()
 
             adds, removes = await pipeline._apply_membership_changes(
-                db, result, source, ctx, uses_incremental_values=False
+                db, result, source, ctx
             )
 
-        assert adds == 1
+        assert adds == 2
         assert removes == 0
+        # No reconciliation — get_memberships_by_groups never called
         mock_crud.access_control_membership.get_memberships_by_groups.assert_not_called()
 
     @pytest.mark.asyncio
@@ -393,14 +172,13 @@ class TestApplyMembershipChanges:
                 ),
             ],
             modified_group_ids=set(),
-            incremental_values=True,
         )
 
         with patch("airweave.platform.sync.access_control_pipeline.crud") as mock_crud:
             mock_crud.access_control_membership.upsert = AsyncMock()
 
             await pipeline._apply_membership_changes(
-                db, result, source, ctx, uses_incremental_values=True
+                db, result, source, ctx
             )
 
         mock_crud.access_control_membership.upsert.assert_called_once_with(
@@ -413,6 +191,27 @@ class TestApplyMembershipChanges:
             source_connection_id=ctx.source_connection_id,
             source_name="sp2019v2",
         )
+
+    @pytest.mark.asyncio
+    async def test_empty_changes_returns_zero(self):
+        """No changes means zero adds and removes."""
+        pipeline = _make_pipeline()
+        ctx = FakeSyncContext()
+        db = MagicMock()
+        source = SimpleNamespace(_short_name="sp2019v2")
+
+        result = FakeDirSyncResult(changes=[], modified_group_ids=set())
+
+        with patch("airweave.platform.sync.access_control_pipeline.crud") as mock_crud:
+            mock_crud.access_control_membership.upsert = AsyncMock()
+            mock_crud.access_control_membership.delete_by_key = AsyncMock()
+
+            adds, removes = await pipeline._apply_membership_changes(
+                db, result, source, ctx
+            )
+
+        assert adds == 0
+        assert removes == 0
 
 
 # ---------------------------------------------------------------------------
@@ -550,8 +349,8 @@ class TestProcessIncremental:
         assert runtime.cursor.data["acl_dirsync_cookie"] == "final_cookie"
 
     @pytest.mark.asyncio
-    async def test_incremental_values_flag_skips_reconciliation(self):
-        """With incremental_values=True, no reconciliation happens even with modified groups."""
+    async def test_basic_flags_does_not_reconcile_in_full_flow(self):
+        """With BASIC flags, _process_incremental only applies ADDs (no reconciliation)."""
         pipeline = _make_pipeline()
         ctx = FakeSyncContext()
         runtime = FakeRuntime(
@@ -568,7 +367,7 @@ class TestProcessIncremental:
             ],
             modified_group_ids={"group-A"},
             deleted_group_ids=set(),
-            incremental_values=True,
+            incremental_values=False,
         )
         source.get_acl_changes.return_value = result
 
@@ -583,54 +382,6 @@ class TestProcessIncremental:
 
             total = await pipeline._process_incremental(source, ctx, runtime)
 
+        # Only the 1 ADD — no reconciliation removals
         assert total == 1
-        # Reconciliation was NOT triggered
         mock_crud.access_control_membership.get_memberships_by_groups.assert_not_called()
-
-    @pytest.mark.asyncio
-    async def test_basic_flags_triggers_reconciliation_in_full_flow(self):
-        """With incremental_values=False, _process_incremental reconciles against DB."""
-        pipeline = _make_pipeline()
-        ctx = FakeSyncContext()
-        runtime = FakeRuntime(
-            cursor=FakeCursor(data={"acl_dirsync_cookie": "old"})
-        )
-        source = SimpleNamespace(
-            _short_name="sp2019v2",
-            get_acl_changes=AsyncMock(),
-        )
-
-        # BASIC flags: full member list as ADDs only
-        result = FakeDirSyncResult(
-            changes=[
-                _make_change(ACLChangeType.ADD, "alice@acme.com", "user", "group-A"),
-            ],
-            modified_group_ids={"group-A"},
-            deleted_group_ids=set(),
-            incremental_values=False,
-        )
-        source.get_acl_changes.return_value = result
-
-        # DB has alice + bob — bob is stale
-        existing = [
-            FakeMembership("group-A", "alice@acme.com", "user"),
-            FakeMembership("group-A", "bob@acme.com", "user"),
-        ]
-
-        with patch("airweave.platform.sync.access_control_pipeline.crud") as mock_crud, \
-             patch("airweave.platform.sync.access_control_pipeline.get_db_context") as mock_db_ctx:
-            mock_db = MagicMock()
-            mock_db_ctx.return_value.__aenter__ = AsyncMock(return_value=mock_db)
-            mock_db_ctx.return_value.__aexit__ = AsyncMock(return_value=False)
-
-            mock_crud.access_control_membership.upsert = AsyncMock()
-            mock_crud.access_control_membership.delete_by_key = AsyncMock()
-            mock_crud.access_control_membership.get_memberships_by_groups = AsyncMock(
-                return_value=existing
-            )
-
-            total = await pipeline._process_incremental(source, ctx, runtime)
-
-        # 1 add + 1 reconciliation remove = 2
-        assert total == 2
-        mock_crud.access_control_membership.get_memberships_by_groups.assert_called_once()

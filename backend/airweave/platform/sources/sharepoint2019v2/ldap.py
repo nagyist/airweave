@@ -839,7 +839,10 @@ class LDAPClient:
 
         while True:
             page += 1
-            result = await self._execute_dirsync_query_with_flags(
+            # Use FULL flags (includes INCREMENTAL_VALUES). If the server
+            # rejects these flags, DirSyncPermissionError propagates up to
+            # _process_incremental which falls back to a full sync.
+            result = await self._execute_dirsync_query(
                 cookie=cookie,
                 is_initial=is_initial,
                 flags=DIRSYNC_FLAGS_FULL,
@@ -874,37 +877,6 @@ class LDAPClient:
             more_results=False,
             incremental_values=used_incremental_values,
         )
-
-    async def _execute_dirsync_query_with_flags(
-        self,
-        cookie: bytes,
-        is_initial: bool,
-        flags: int,
-    ) -> DirSyncResult:
-        """Execute DirSync with given flags, falling back to basic on permission error.
-
-        Reconnects the LDAP connection before retrying with reduced flags,
-        since AD may leave the connection in an unusable state after rejecting
-        a critical extension.
-
-        Args:
-            cookie: DirSync cookie bytes.
-            is_initial: Whether this is the first sync (no prior cookie).
-            flags: DirSync flags bitmask.
-
-        Returns:
-            DirSyncResult with changes.
-        """
-        try:
-            return await self._execute_dirsync_query(cookie, is_initial, flags)
-        except DirSyncPermissionError:
-            if flags != DIRSYNC_FLAGS_BASIC:
-                self.logger.warning(
-                    "DirSync with full flags failed, reconnecting and retrying with basic flags"
-                )
-                await self.connect(force_reconnect=True)
-                return await self._execute_dirsync_query(cookie, is_initial, DIRSYNC_FLAGS_BASIC)
-            raise
 
     async def _execute_dirsync_query(
         self,

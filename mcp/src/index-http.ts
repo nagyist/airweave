@@ -51,6 +51,8 @@ if (oauthEnabled) {
     app.get('/oauth/callback', createAuth0CallbackHandler(auth0Provider));
 }
 
+type ReqWithAuth = express.Request & { auth?: AuthInfo; _authMethod?: 'oauth' | 'api-key' };
+
 /**
  * Extract Bearer token per RFC 6750.
  * RFC 7235 Section 2.1 / RFC 9110 Section 11.1: auth scheme is case-insensitive.
@@ -61,17 +63,42 @@ function extractBearerToken(header: string | undefined): string | undefined {
     return header.slice(7);
 }
 
-/**
- * Extract API key from request headers.
- */
 function extractApiKey(req: express.Request): string | undefined {
     return (req.headers['x-api-key'] as string) ||
         extractBearerToken(req.headers['authorization'] as string) ||
         undefined;
 }
 
-function extractMcpCredential(req: express.Request & { auth?: AuthInfo }): string | undefined {
-    return req.auth?.token || extractApiKey(req);
+/**
+ * Per-request auth resolution middleware.
+ *
+ * 1. X-API-Key header → always API key, no JWT verification attempted.
+ * 2. Authorization: Bearer <token> with OAuth enabled → try JWT verification.
+ *    If valid JWT → OAuth path (req.auth set, _authMethod = 'oauth').
+ *    If JWT verification fails → treat as API key (_authMethod = 'api-key').
+ * 3. No credential → _authMethod stays undefined; handler returns 401.
+ */
+async function resolveAuth(req: ReqWithAuth, _res: express.Response, next: express.NextFunction) {
+    if (req.headers['x-api-key']) {
+        req._authMethod = 'api-key';
+        return next();
+    }
+
+    const bearer = extractBearerToken(req.headers['authorization'] as string);
+    if (bearer && oauthEnabled && auth0Provider) {
+        try {
+            req.auth = await auth0Provider.verifyAccessToken(bearer);
+            req._authMethod = 'oauth';
+        } catch {
+            req._authMethod = 'api-key';
+        }
+        return next();
+    }
+
+    if (bearer) {
+        req._authMethod = 'api-key';
+    }
+    next();
 }
 
 // Health check endpoint
@@ -125,13 +152,14 @@ app.get('/', (req, res) => {
 });
 
 // Main MCP endpoint - fully stateless, fresh server per request
-app.post('/mcp', async (req: express.Request & { auth?: AuthInfo }, res) => {
+app.post('/mcp', resolveAuth, async (req: ReqWithAuth, res) => {
     const startTime = Date.now();
 
     try {
-        const apiKey = extractMcpCredential(req);
+        const isOAuth = req._authMethod === 'oauth';
+        const credential = isOAuth ? req.auth!.token : extractApiKey(req);
 
-        if (!apiKey) {
+        if (!credential) {
             trackMcpError(undefined, {
                 errorCode: -32001,
                 errorMessage: 'Authentication required'
@@ -155,10 +183,9 @@ app.post('/mcp', async (req: express.Request & { auth?: AuthInfo }, res) => {
         const method = req.body?.method || 'unknown';
 
         let organizationId: string | undefined;
-        const isOAuthRequest = oauthEnabled && !req.headers['x-api-key'];
-        if (isOAuthRequest) {
+        if (isOAuth) {
             try {
-                organizationId = await resolveOrganizationForCollection(apiKey, baseUrl, collection);
+                organizationId = await resolveOrganizationForCollection(credential, baseUrl, collection);
                 console.log(`[${new Date().toISOString()}] Resolved org=${organizationId} for collection=${collection}`);
             } catch (err) {
                 console.error(`[${new Date().toISOString()}] Org resolution failed:`, err);
@@ -174,7 +201,7 @@ app.post('/mcp', async (req: express.Request & { auth?: AuthInfo }, res) => {
             }
         }
 
-        const config: AirweaveConfig = { apiKey, collection, baseUrl, organizationId };
+        const config: AirweaveConfig = { apiKey: credential, collection, baseUrl, organizationId };
         const server = createMcpServer(config);
 
         const transport = new StreamableHTTPServerTransport({
@@ -182,15 +209,14 @@ app.post('/mcp', async (req: express.Request & { auth?: AuthInfo }, res) => {
         });
 
         await server.connect(transport);
-        await transport.handleRequest(req as express.Request & { auth?: AuthInfo }, res, req.body);
+        await transport.handleRequest(req as ReqWithAuth, res, req.body);
 
-        trackMcpRequest(apiKey, {
+        trackMcpRequest(credential, {
             method,
             collection,
             responseTimeMs: Date.now() - startTime
         });
 
-        // Clean up after the response is sent
         res.on('close', async () => {
             try {
                 await transport.close();

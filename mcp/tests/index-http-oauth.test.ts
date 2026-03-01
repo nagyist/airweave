@@ -1,9 +1,10 @@
 /**
- * Integration-style tests for the OAuth paths in index-http.ts.
+ * Integration-style tests for the dual-auth (API key + OAuth) paths in
+ * index-http.ts.
  *
  * Because index-http.ts has side effects at module scope (creates app, calls
- * startServer), we faithfully replicate its auth logic in a test-local Express
- * app. This lets us verify the exact heuristics and edge cases without
+ * startServer), we faithfully replicate its auth resolution logic in a
+ * test-local Express app. This lets us verify the exact behavior without
  * importing the live module.
  */
 
@@ -11,7 +12,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import express from 'express';
 import request from 'supertest';
 
-// ---- Replicated logic from index-http.ts ----
+// ---- Replicated types and helpers from index-http.ts ----
 
 interface AuthInfo {
     token: string;
@@ -19,6 +20,8 @@ interface AuthInfo {
     scopes: string[];
     expiresAt?: number;
 }
+
+type ReqWithAuth = express.Request & { auth?: AuthInfo; _authMethod?: 'oauth' | 'api-key' };
 
 function extractBearerToken(header: string | undefined): string | undefined {
     if (!header || header.length < 8) return undefined;
@@ -32,34 +35,39 @@ function extractApiKey(req: express.Request): string | undefined {
         undefined;
 }
 
-function extractMcpCredential(req: express.Request & { auth?: AuthInfo }): string | undefined {
-    return req.auth?.token || extractApiKey(req);
-}
-
-// ---- Test helpers ----
-
-type ReqWithAuth = express.Request & { auth?: AuthInfo };
+// ---- Test app factory ----
 
 function createOAuthApp(opts: {
     oauthEnabled: boolean;
     resolveOrg?: (token: string, collection: string) => Promise<string>;
-    verifyToken?: (token: string) => AuthInfo | null;
+    verifyAccessToken?: (token: string) => Promise<AuthInfo>;
 }): express.Application {
     const app = express();
     app.use(express.json());
 
-    if (opts.oauthEnabled && opts.verifyToken) {
-        app.use((req: ReqWithAuth, _res, next) => {
-            const bearer = extractBearerToken(req.headers['authorization'] as string);
-            if (bearer) {
-                const authInfo = opts.verifyToken!(bearer);
-                if (authInfo) {
-                    req.auth = authInfo;
-                }
+    // Replicate resolveAuth middleware from index-http.ts
+    const resolveAuth = async (req: ReqWithAuth, _res: express.Response, next: express.NextFunction) => {
+        if (req.headers['x-api-key']) {
+            req._authMethod = 'api-key';
+            return next();
+        }
+
+        const bearer = extractBearerToken(req.headers['authorization'] as string);
+        if (bearer && opts.oauthEnabled && opts.verifyAccessToken) {
+            try {
+                req.auth = await opts.verifyAccessToken(bearer);
+                req._authMethod = 'oauth';
+            } catch {
+                req._authMethod = 'api-key';
             }
-            next();
-        });
-    }
+            return next();
+        }
+
+        if (bearer) {
+            req._authMethod = 'api-key';
+        }
+        next();
+    };
 
     app.get('/health', (_req, res) => {
         res.json({ status: 'healthy' });
@@ -73,10 +81,11 @@ function createOAuthApp(opts: {
         });
     });
 
-    app.post('/mcp', async (req: ReqWithAuth, res) => {
-        const apiKey = extractMcpCredential(req);
+    app.post('/mcp', resolveAuth, async (req: ReqWithAuth, res) => {
+        const isOAuth = req._authMethod === 'oauth';
+        const credential = isOAuth ? req.auth!.token : extractApiKey(req);
 
-        if (!apiKey) {
+        if (!credential) {
             res.status(401).json({
                 jsonrpc: '2.0',
                 error: { code: -32001, message: 'Authentication required' },
@@ -88,10 +97,9 @@ function createOAuthApp(opts: {
         const collection = (req.headers['x-collection-readable-id'] as string) || 'default';
 
         let organizationId: string | undefined;
-        const isOAuthRequest = opts.oauthEnabled && !req.headers['x-api-key'];
-        if (isOAuthRequest && opts.resolveOrg) {
+        if (isOAuth && opts.resolveOrg) {
             try {
-                organizationId = await opts.resolveOrg(apiKey, collection);
+                organizationId = await opts.resolveOrg(credential, collection);
             } catch (err) {
                 res.status(400).json({
                     jsonrpc: '2.0',
@@ -106,10 +114,10 @@ function createOAuthApp(opts: {
         }
 
         res.json({
-            credential: apiKey,
+            credential,
             collection,
             organizationId,
-            isOAuthRequest,
+            authMethod: req._authMethod,
             hadAuthInfo: !!req.auth,
         });
     });
@@ -119,7 +127,7 @@ function createOAuthApp(opts: {
 
 // ---- Tests ----
 
-describe('index-http OAuth integration', () => {
+describe('index-http dual auth', () => {
     describe('health and info endpoints', () => {
         it('health returns 200 regardless of OAuth config', async () => {
             const app = createOAuthApp({ oauthEnabled: true });
@@ -142,146 +150,123 @@ describe('index-http OAuth integration', () => {
         });
     });
 
-    describe('extractMcpCredential', () => {
-        it('prefers req.auth.token over X-API-Key', async () => {
+    describe('API key auth (X-API-Key header)', () => {
+        it('accepts X-API-Key without attempting JWT verification', async () => {
+            const verifyAccessToken = vi.fn();
+
             const app = createOAuthApp({
                 oauthEnabled: true,
-                verifyToken: (tok) => ({
-                    token: tok,
-                    clientId: 'c',
-                    scopes: [],
-                }),
+                verifyAccessToken,
             });
 
             const res = await request(app)
                 .post('/mcp')
-                .set('Authorization', 'Bearer oauth-jwt')
-                .set('X-API-Key', 'plain-api-key')
-                .send({});
-
-            expect(res.body.credential).toBe('oauth-jwt');
-        });
-
-        it('falls back to X-API-Key when no req.auth', async () => {
-            const app = createOAuthApp({ oauthEnabled: false });
-            const res = await request(app)
-                .post('/mcp')
-                .set('X-API-Key', 'my-key')
-                .send({});
-
-            expect(res.body.credential).toBe('my-key');
-        });
-
-        it('falls back to Bearer token when no req.auth and no X-API-Key', async () => {
-            const app = createOAuthApp({ oauthEnabled: false });
-            const res = await request(app)
-                .post('/mcp')
-                .set('Authorization', 'Bearer my-bearer-key')
-                .send({});
-
-            expect(res.body.credential).toBe('my-bearer-key');
-        });
-
-        it('returns 401 when no credential at all', async () => {
-            const app = createOAuthApp({ oauthEnabled: false });
-            const res = await request(app).post('/mcp').send({});
-            expect(res.status).toBe(401);
-        });
-    });
-
-    describe('(Concern #1) isOAuthRequest heuristic', () => {
-        it('skips org resolution when X-API-Key header present even with OAuth token', async () => {
-            const resolveOrg = vi.fn().mockResolvedValue('org-123');
-
-            const app = createOAuthApp({
-                oauthEnabled: true,
-                resolveOrg,
-                verifyToken: (tok) => ({ token: tok, clientId: 'c', scopes: [] }),
-            });
-
-            const res = await request(app)
-                .post('/mcp')
-                .set('Authorization', 'Bearer oauth-jwt')
-                .set('X-API-Key', 'also-present')
+                .set('X-API-Key', 'my-api-key')
                 .send({});
 
             expect(res.status).toBe(200);
-            expect(res.body.isOAuthRequest).toBe(false);
-            expect(res.body.organizationId).toBeUndefined();
-            expect(resolveOrg).not.toHaveBeenCalled();
-        });
-
-        it('triggers org resolution when only OAuth token is present (no X-API-Key)', async () => {
-            const resolveOrg = vi.fn().mockResolvedValue('org-456');
-
-            const app = createOAuthApp({
-                oauthEnabled: true,
-                resolveOrg,
-                verifyToken: (tok) => ({ token: tok, clientId: 'c', scopes: [] }),
-            });
-
-            const res = await request(app)
-                .post('/mcp')
-                .set('Authorization', 'Bearer oauth-jwt')
-                .send({});
-
-            expect(res.status).toBe(200);
-            expect(res.body.isOAuthRequest).toBe(true);
-            expect(res.body.organizationId).toBe('org-456');
-            expect(resolveOrg).toHaveBeenCalledWith('oauth-jwt', 'default');
-        });
-    });
-
-    describe('(Concern #2) API-key via Bearer when OAuth is enabled', () => {
-        it('API-key user with Bearer header succeeds when verifyToken returns null', async () => {
-            const resolveOrg = vi.fn().mockResolvedValue('org-1');
-
-            const app = createOAuthApp({
-                oauthEnabled: true,
-                resolveOrg,
-                verifyToken: (_tok) => null,
-            });
-
-            const res = await request(app)
-                .post('/mcp')
-                .set('Authorization', 'Bearer plain-api-key-not-jwt')
-                .send({});
-
-            // The middleware did NOT set req.auth, so extractMcpCredential
-            // falls back to extractApiKey which parses the Bearer header.
-            expect(res.status).toBe(200);
-            expect(res.body.credential).toBe('plain-api-key-not-jwt');
+            expect(res.body.credential).toBe('my-api-key');
+            expect(res.body.authMethod).toBe('api-key');
             expect(res.body.hadAuthInfo).toBe(false);
-            // BUT isOAuthRequest is true (no X-API-Key header), so org resolution runs
-            // with a plain API key — this will fail in production because the backend
-            // expects a JWT for /organizations/. This documents the bug.
-            expect(res.body.isOAuthRequest).toBe(true);
-            expect(resolveOrg).toHaveBeenCalled();
+            expect(verifyAccessToken).not.toHaveBeenCalled();
         });
 
-        it('API-key user with X-API-Key header works normally even with OAuth enabled', async () => {
+        it('X-API-Key takes priority even when Authorization header also present', async () => {
             const resolveOrg = vi.fn();
 
             const app = createOAuthApp({
                 oauthEnabled: true,
                 resolveOrg,
-                verifyToken: (_tok) => null,
+                verifyAccessToken: async () => ({ token: 'jwt', clientId: 'c', scopes: [] }),
             });
 
             const res = await request(app)
                 .post('/mcp')
-                .set('X-API-Key', 'my-plain-api-key')
+                .set('X-API-Key', 'my-key')
+                .set('Authorization', 'Bearer some-jwt')
                 .send({});
 
             expect(res.status).toBe(200);
-            expect(res.body.credential).toBe('my-plain-api-key');
-            expect(res.body.isOAuthRequest).toBe(false);
+            expect(res.body.credential).toBe('my-key');
+            expect(res.body.authMethod).toBe('api-key');
+            expect(res.body.organizationId).toBeUndefined();
+            expect(resolveOrg).not.toHaveBeenCalled();
+        });
+    });
+
+    describe('OAuth auth (Bearer JWT)', () => {
+        it('verifies Bearer token as JWT and triggers org resolution', async () => {
+            const resolveOrg = vi.fn().mockResolvedValue('org-456');
+
+            const app = createOAuthApp({
+                oauthEnabled: true,
+                resolveOrg,
+                verifyAccessToken: async (tok) => ({
+                    token: tok,
+                    clientId: 'auth0-cid',
+                    scopes: ['openid'],
+                }),
+            });
+
+            const res = await request(app)
+                .post('/mcp')
+                .set('Authorization', 'Bearer valid-jwt-token')
+                .send({});
+
+            expect(res.status).toBe(200);
+            expect(res.body.credential).toBe('valid-jwt-token');
+            expect(res.body.authMethod).toBe('oauth');
+            expect(res.body.hadAuthInfo).toBe(true);
+            expect(res.body.organizationId).toBe('org-456');
+            expect(resolveOrg).toHaveBeenCalledWith('valid-jwt-token', 'default');
+        });
+    });
+
+    describe('Bearer token with failed JWT verification (API key fallback)', () => {
+        it('falls back to api-key when JWT verification throws', async () => {
+            const resolveOrg = vi.fn();
+
+            const app = createOAuthApp({
+                oauthEnabled: true,
+                resolveOrg,
+                verifyAccessToken: async () => { throw new Error('not a JWT'); },
+            });
+
+            const res = await request(app)
+                .post('/mcp')
+                .set('Authorization', 'Bearer plain-api-key')
+                .send({});
+
+            expect(res.status).toBe(200);
+            expect(res.body.credential).toBe('plain-api-key');
+            expect(res.body.authMethod).toBe('api-key');
+            expect(res.body.hadAuthInfo).toBe(false);
+            expect(res.body.organizationId).toBeUndefined();
             expect(resolveOrg).not.toHaveBeenCalled();
         });
     });
 
     describe('OAuth disabled mode', () => {
-        it('falls back to API key path with no OAuth middleware', async () => {
+        it('treats Bearer token as API key without attempting JWT verification', async () => {
+            const verifyAccessToken = vi.fn();
+
+            const app = createOAuthApp({
+                oauthEnabled: false,
+                verifyAccessToken,
+            });
+
+            const res = await request(app)
+                .post('/mcp')
+                .set('Authorization', 'Bearer my-key')
+                .send({});
+
+            expect(res.status).toBe(200);
+            expect(res.body.credential).toBe('my-key');
+            expect(res.body.authMethod).toBe('api-key');
+            expect(verifyAccessToken).not.toHaveBeenCalled();
+        });
+
+        it('X-API-Key works normally', async () => {
             const app = createOAuthApp({ oauthEnabled: false });
             const res = await request(app)
                 .post('/mcp')
@@ -289,19 +274,36 @@ describe('index-http OAuth integration', () => {
                 .send({});
 
             expect(res.status).toBe(200);
-            expect(res.body.isOAuthRequest).toBe(false);
+            expect(res.body.authMethod).toBe('api-key');
             expect(res.body.organizationId).toBeUndefined();
         });
     });
 
+    describe('no credentials', () => {
+        it('returns 401 when no auth headers present', async () => {
+            const app = createOAuthApp({ oauthEnabled: true });
+            const res = await request(app).post('/mcp').send({});
+            expect(res.status).toBe(401);
+        });
+
+        it('returns 401 for non-Bearer Authorization scheme', async () => {
+            const app = createOAuthApp({ oauthEnabled: true });
+            const res = await request(app)
+                .post('/mcp')
+                .set('Authorization', 'Basic dXNlcjpwYXNz')
+                .send({});
+            expect(res.status).toBe(401);
+        });
+    });
+
     describe('org resolution error handling', () => {
-        it('returns 400 when org resolution fails', async () => {
+        it('returns 400 when org resolution fails for OAuth user', async () => {
             const resolveOrg = vi.fn().mockRejectedValue(new Error('User not in any org'));
 
             const app = createOAuthApp({
                 oauthEnabled: true,
                 resolveOrg,
-                verifyToken: (tok) => ({ token: tok, clientId: 'c', scopes: [] }),
+                verifyAccessToken: async (tok) => ({ token: tok, clientId: 'c', scopes: [] }),
             });
 
             const res = await request(app)
@@ -313,6 +315,44 @@ describe('index-http OAuth integration', () => {
             expect(res.body.error.code).toBe(-32002);
             expect(res.body.error.message).toBe('User not in any org');
             expect(res.body.id).toBe('req-1');
+        });
+    });
+
+    describe('collection header forwarding', () => {
+        it('passes X-Collection-Readable-ID to org resolution', async () => {
+            const resolveOrg = vi.fn().mockResolvedValue('org-1');
+
+            const app = createOAuthApp({
+                oauthEnabled: true,
+                resolveOrg,
+                verifyAccessToken: async (tok) => ({ token: tok, clientId: 'c', scopes: [] }),
+            });
+
+            const res = await request(app)
+                .post('/mcp')
+                .set('Authorization', 'Bearer jwt')
+                .set('X-Collection-Readable-ID', 'my-collection')
+                .send({});
+
+            expect(res.status).toBe(200);
+            expect(resolveOrg).toHaveBeenCalledWith('jwt', 'my-collection');
+        });
+
+        it('defaults collection to "default" when header absent', async () => {
+            const resolveOrg = vi.fn().mockResolvedValue('org-1');
+
+            const app = createOAuthApp({
+                oauthEnabled: true,
+                resolveOrg,
+                verifyAccessToken: async (tok) => ({ token: tok, clientId: 'c', scopes: [] }),
+            });
+
+            await request(app)
+                .post('/mcp')
+                .set('Authorization', 'Bearer jwt')
+                .send({});
+
+            expect(resolveOrg).toHaveBeenCalledWith('jwt', 'default');
         });
     });
 });

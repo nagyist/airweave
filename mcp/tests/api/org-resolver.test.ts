@@ -282,22 +282,24 @@ describe('resolveOrganizationForCollection', () => {
         });
     });
 
-    describe('(Concern #8) probeCollection limit=5 edge case', () => {
-        it('misses collection when exact match is beyond first 5 results', async () => {
+    describe('probeCollection fetches without artificial limit', () => {
+        it('finds collection when many results are returned', async () => {
             const resolve = await loadResolver();
             mockOrgsResponse([{ id: 'org-1', name: 'O' }]);
-            // Return 5 results, none matching the target exactly
             mockCollectionProbe([
                 { readable_id: 'col-a' },
                 { readable_id: 'col-b' },
                 { readable_id: 'col-c' },
                 { readable_id: 'col-d' },
                 { readable_id: 'col-e' },
+                { readable_id: 'col-f' },
+                { readable_id: 'col-target' },
             ]);
 
-            await expect(
-                resolve('tok', 'https://api.test.com', 'col-target')
-            ).rejects.toThrow(/Collection "col-target" not found/);
+            const result = await resolve('tok', 'https://api.test.com', 'col-target');
+            expect(result).toBe('org-1');
+            const probeUrl = mockFetch.mock.calls[1][0] as string;
+            expect(probeUrl).not.toContain('limit=');
         });
     });
 });

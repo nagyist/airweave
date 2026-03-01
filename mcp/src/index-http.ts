@@ -25,7 +25,7 @@ import { initPostHog, shutdownPostHog, trackMcpRequest, trackMcpError } from './
 import { resolveOrganizationForCollection } from './api/org-resolver.js';
 import { Auth0OAuthProvider } from './auth/auth0-provider.js';
 import { createAuth0CallbackHandler } from './auth/auth0-callback.js';
-import { ensureRedisReady } from './auth/redis.js';
+import { ensureRedisReady, disconnectRedis } from './auth/redis.js';
 
 const app = express();
 app.set('trust proxy', 1);
@@ -295,6 +295,7 @@ async function startServer() {
     const shutdown = async (signal: string) => {
         console.log(`${signal} received. Shutting down...`);
         await shutdownPostHog();
+        await disconnectRedis();
         server.close(() => {
             console.log('HTTP server closed');
             process.exit(0);

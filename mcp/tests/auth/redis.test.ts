@@ -2,12 +2,14 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 const mockPing = vi.fn().mockResolvedValue('PONG');
 const mockConnect = vi.fn().mockResolvedValue(undefined);
+const mockQuit = vi.fn().mockResolvedValue('OK');
 
 let mockStatus = 'wait';
 
 const MockRedisInstance = {
     ping: mockPing,
     connect: mockConnect,
+    quit: mockQuit,
     get status() { return mockStatus; },
 };
 
@@ -101,6 +103,29 @@ describe('redis singleton', () => {
             await ensureRedisReady();
             expect(mockConnect).not.toHaveBeenCalled();
             expect(mockPing).not.toHaveBeenCalled();
+        });
+    });
+
+    describe('disconnectRedis', () => {
+        it('calls quit on ready client and resets singleton', async () => {
+            mockStatus = 'ready';
+            const { getRedisClient, disconnectRedis } = await loadModule();
+            getRedisClient();
+            await disconnectRedis();
+            expect(mockQuit).toHaveBeenCalledOnce();
+        });
+
+        it('skips quit when client is not ready', async () => {
+            mockStatus = 'wait';
+            const { getRedisClient, disconnectRedis } = await loadModule();
+            getRedisClient();
+            await disconnectRedis();
+            expect(mockQuit).not.toHaveBeenCalled();
+        });
+
+        it('is safe to call when no client exists', async () => {
+            const { disconnectRedis } = await loadModule();
+            await expect(disconnectRedis()).resolves.toBeUndefined();
         });
     });
 });

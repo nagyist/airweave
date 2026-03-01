@@ -49,7 +49,7 @@ async function probeCollection(
     orgId: string,
     collection: string,
 ): Promise<boolean> {
-    const url = `${baseUrl}/collections/?search=${encodeURIComponent(collection)}&limit=5`;
+    const url = `${baseUrl}/collections/?search=${encodeURIComponent(collection)}`;
     const res = await fetch(url, {
         headers: {
             'Authorization': `Bearer ${token}`,

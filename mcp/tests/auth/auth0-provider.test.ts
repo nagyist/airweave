@@ -409,14 +409,12 @@ describe('Auth0OAuthProvider', () => {
             expect(body.client_id).toBe('auth0-cid');
         });
 
-        it('(Concern #6) silently ignores non-OK response from Auth0', async () => {
+        it('throws on non-OK response from Auth0', async () => {
             mockFetch.mockResolvedValueOnce({ ok: false, status: 500 });
             const provider = await createProvider();
-            // Current implementation does not check response — this should NOT throw.
-            // When the bug is fixed, change this to: rejects.toThrow()
             await expect(
                 provider.revokeToken(fakeClient(), { token: 'tok', token_type_hint: 'refresh_token' })
-            ).resolves.toBeUndefined();
+            ).rejects.toThrow('Auth0 token revocation failed with status 500');
         });
     });
 

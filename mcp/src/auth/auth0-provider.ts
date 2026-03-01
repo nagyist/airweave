@@ -166,7 +166,7 @@ export class Auth0OAuthProvider implements OAuthServerProvider {
         request: OAuthTokenRevocationRequest
     ): Promise<void> {
         const revokeUrl = new URL(`https://${this.auth0Domain}/oauth/revoke`);
-        await fetch(revokeUrl, {
+        const response = await fetch(revokeUrl, {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
             body: JSON.stringify({
@@ -175,6 +175,9 @@ export class Auth0OAuthProvider implements OAuthServerProvider {
                 token: request.token,
             }),
         });
+        if (!response.ok) {
+            throw new Error(`Auth0 token revocation failed with status ${response.status}`);
+        }
     }
 
     async exchangeAuth0CodeForLocalCode(

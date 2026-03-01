@@ -39,3 +39,10 @@ export async function ensureRedisReady(): Promise<void> {
     await redis.connect();
     await redis.ping();
 }
+
+export async function disconnectRedis(): Promise<void> {
+    if (client && client.status === 'ready') {
+        await client.quit();
+    }
+    client = null;
+}

@@ -85,21 +85,34 @@ export async function resolveOrganizationForCollection(
         throw new Error('User does not belong to any organization');
     }
 
-    for (const org of orgs) {
-        const found = await probeCollection(token, baseUrl, org.id, collection);
-        if (found) {
-            storeCache(key, org.id);
-            return org.id;
-        }
+    const results = await Promise.all(
+        orgs.map(async (org) => ({
+            orgId: org.id,
+            name: org.name,
+            found: await probeCollection(token, baseUrl, org.id, collection),
+        }))
+    );
+
+    const match = results.find(r => r.found);
+    if (match) {
+        storeCache(key, match.orgId);
+        return match.orgId;
     }
 
-    const tried = orgs.map(o => `${o.name} (${o.id})`).join(', ');
+    const tried = results.map(r => `${r.name} (${r.orgId})`).join(', ');
     throw new Error(
         `Collection "${collection}" not found in any of the user's organizations: ${tried}`,
     );
 }
 
 function storeCache(key: string, orgId: string): void {
-    if (cache.size >= MAX_CACHE_ENTRIES) evictExpired();
+    if (cache.size >= MAX_CACHE_ENTRIES) {
+        evictExpired();
+        // If still at capacity after TTL eviction, drop the oldest entry (LRU).
+        if (cache.size >= MAX_CACHE_ENTRIES) {
+            const oldest = cache.keys().next().value;
+            if (oldest !== undefined) cache.delete(oldest);
+        }
+    }
     cache.set(key, { orgId, expiresAt: Date.now() + CACHE_TTL_MS });
 }

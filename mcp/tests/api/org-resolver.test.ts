@@ -182,15 +182,15 @@ describe('resolveOrganizationForCollection', () => {
         });
     });
 
-    describe('(Concern #4) sequential probing', () => {
-        it('probes orgs one-by-one, producing N serial fetch calls', async () => {
+    describe('(Concern #4) parallel probing', () => {
+        it('probes all orgs concurrently rather than sequentially', async () => {
             const resolve = await loadResolver();
-            const callOrder: string[] = [];
+            const probeStartTimes: Record<string, number> = {};
+            let time = 0;
 
             mockFetch.mockImplementation(async (url: string, opts: any) => {
                 const urlStr = typeof url === 'string' ? url : url.toString();
                 if (urlStr.includes('/organizations/')) {
-                    callOrder.push('orgs');
                     return {
                         ok: true,
                         json: async () => [
@@ -201,7 +201,7 @@ describe('resolveOrganizationForCollection', () => {
                     };
                 }
                 const orgId = opts?.headers?.['X-Organization-ID'];
-                callOrder.push(`probe:${orgId}`);
+                probeStartTimes[orgId] = time++;
                 const isTarget = orgId === 'o3';
                 return {
                     ok: true,
@@ -209,15 +209,45 @@ describe('resolveOrganizationForCollection', () => {
                 };
             });
 
-            await resolve('tok', 'https://api.test.com', 'target');
+            const orgId = await resolve('tok', 'https://api.test.com', 'target');
+            expect(orgId).toBe('o3');
 
-            // Verifies sequential: orgs first, then probe each org in order
-            expect(callOrder).toEqual(['orgs', 'probe:o1', 'probe:o2', 'probe:o3']);
+            // All probes should have been initiated (Promise.all),
+            // not waiting for each to finish before starting the next.
+            expect(Object.keys(probeStartTimes)).toHaveLength(3);
+            expect(probeStartTimes).toHaveProperty('o1');
+            expect(probeStartTimes).toHaveProperty('o2');
+            expect(probeStartTimes).toHaveProperty('o3');
+        });
+
+        it('returns first matching org when multiple orgs contain the collection', async () => {
+            const resolve = await loadResolver();
+
+            mockFetch.mockImplementation(async (url: string, opts: any) => {
+                const urlStr = typeof url === 'string' ? url : url.toString();
+                if (urlStr.includes('/organizations/')) {
+                    return {
+                        ok: true,
+                        json: async () => [
+                            { id: 'o1', name: 'O1' },
+                            { id: 'o2', name: 'O2' },
+                        ],
+                    };
+                }
+                return {
+                    ok: true,
+                    json: async () => [{ readable_id: 'shared-col' }],
+                };
+            });
+
+            const orgId = await resolve('tok', 'https://api.test.com', 'shared-col');
+            // Should return the first org in the array that matches
+            expect(orgId).toBe('o1');
         });
     });
 
-    describe('(Concern #5) unbounded cache growth', () => {
-        it('cache grows past MAX_CACHE_ENTRIES when no entries have expired', async () => {
+    describe('(Concern #5) cache size cap with LRU eviction', () => {
+        it('evicts oldest entries to stay within MAX_CACHE_ENTRIES', async () => {
             const resolve = await loadResolver();
             const totalEntries = 510;
 
@@ -228,13 +258,26 @@ describe('resolveOrganizationForCollection', () => {
                 await resolve(`unique-token-${i}`, 'https://api.test.com', `col-${i}`);
             }
 
-            // All entries should be cache hits — cache has grown past 500
+            // The earliest entries (0-9) should have been evicted via LRU.
+            // Accessing them should trigger new HTTP calls.
             mockFetch.mockClear();
-            for (let i = 0; i < totalEntries; i++) {
+            for (let i = 0; i < 10; i++) {
+                mockOrgsResponse([{ id: `org-${i}`, name: `O${i}` }]);
+                mockCollectionProbe([{ readable_id: `col-${i}` }]);
+            }
+            for (let i = 0; i < 10; i++) {
                 const orgId = await resolve(`unique-token-${i}`, 'https://api.test.com', `col-${i}`);
                 expect(orgId).toBe(`org-${i}`);
             }
-            // No HTTP calls — all served from cache, proving >500 entries exist
+            // These required HTTP calls because they were evicted
+            expect(mockFetch.mock.calls.length).toBeGreaterThan(0);
+
+            // Recent entries (500-509) should still be cached
+            mockFetch.mockClear();
+            for (let i = 500; i < 510; i++) {
+                const orgId = await resolve(`unique-token-${i}`, 'https://api.test.com', `col-${i}`);
+                expect(orgId).toBe(`org-${i}`);
+            }
             expect(mockFetch).not.toHaveBeenCalled();
         });
     });

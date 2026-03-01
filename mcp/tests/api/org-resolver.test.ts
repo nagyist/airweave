@@ -182,7 +182,7 @@ describe('resolveOrganizationForCollection', () => {
         });
     });
 
-    describe('(Concern #4) parallel probing', () => {
+    describe('parallel probing', () => {
         it('probes all orgs concurrently rather than sequentially', async () => {
             const resolve = await loadResolver();
             const probeStartTimes: Record<string, number> = {};
@@ -246,7 +246,7 @@ describe('resolveOrganizationForCollection', () => {
         });
     });
 
-    describe('(Concern #5) cache size cap with LRU eviction', () => {
+    describe('cache size cap with LRU eviction', () => {
         it('evicts oldest entries to stay within MAX_CACHE_ENTRIES', async () => {
             const resolve = await loadResolver();
             const totalEntries = 510;

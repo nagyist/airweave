@@ -60,7 +60,7 @@ describe('auth0 callback handler', () => {
         expect(location.searchParams.get('state')).toBe('client-state-abc');
     });
 
-    it('(Concern #9) redirect URL does not contain token data', async () => {
+    it('redirect URL does not contain token data', async () => {
         mockProvider.exchangeAuth0CodeForLocalCode.mockResolvedValue({
             code: 'local-code',
             redirectUri: 'https://client.example.com/callback',

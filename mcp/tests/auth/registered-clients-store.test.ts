@@ -71,7 +71,7 @@ describe('RedisRegisteredClientsStore', () => {
             expect(result).toBeUndefined();
         });
 
-        it('(Concern #7) returns undefined after TTL expiry (simulated)', async () => {
+        it('returns undefined after TTL expiry (simulated)', async () => {
             const client = fakeClient({ client_id: 'c-expiry' });
             await clientsStore.registerClient(client);
             store.delete('mcp:oauth:clients:c-expiry');

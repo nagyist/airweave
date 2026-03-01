@@ -449,7 +449,7 @@ describe('Auth0OAuthProvider', () => {
             expect(result.state).toBe('original-state');
         });
 
-        it('(Concern #9) returns tokens field (unused by callback handler)', async () => {
+        it('returns tokens field (unused by callback handler)', async () => {
             const provider = await createProvider();
             const res = { redirect: vi.fn() } as any;
 

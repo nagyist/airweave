@@ -9,6 +9,11 @@ import type {
 import type { AuthInfo } from '@modelcontextprotocol/sdk/server/auth/types.js';
 import { RedisRegisteredClientsStore } from './registered-clients-store.js';
 import { OAuthTransactionStore } from './oauth-transaction-store.js';
+import {
+    tokenVerificationDuration,
+    tokenVerificationTotal,
+    codeExchangeDuration,
+} from '../metrics/prometheus.js';
 
 type Auth0TokenResponse = OAuthTokens & {
     id_token?: string;
@@ -132,33 +137,42 @@ export class Auth0OAuthProvider implements OAuthServerProvider {
     }
 
     async verifyAccessToken(token: string): Promise<AuthInfo> {
-        const { payload } = await jwtVerify(token, this.jwks, {
-            issuer: `https://${this.auth0Domain}/`,
-            audience: this.auth0Audience,
-        });
+        const end = tokenVerificationDuration.startTimer();
+        try {
+            const { payload } = await jwtVerify(token, this.jwks, {
+                issuer: `https://${this.auth0Domain}/`,
+                audience: this.auth0Audience,
+            });
 
-        const scopeStr = typeof payload.scope === 'string' ? payload.scope : '';
-        const scopes = scopeStr.length > 0 ? scopeStr.split(' ') : [];
-        const expiresAt = typeof payload.exp === 'number' ? payload.exp : undefined;
-        const clientId = (
-            typeof payload.azp === 'string'
-                ? payload.azp
-                : typeof payload.client_id === 'string'
-                    ? payload.client_id
-                    : 'auth0'
-        );
+            const scopeStr = typeof payload.scope === 'string' ? payload.scope : '';
+            const scopes = scopeStr.length > 0 ? scopeStr.split(' ') : [];
+            const expiresAt = typeof payload.exp === 'number' ? payload.exp : undefined;
+            const clientId = (
+                typeof payload.azp === 'string'
+                    ? payload.azp
+                    : typeof payload.client_id === 'string'
+                        ? payload.client_id
+                        : 'auth0'
+            );
 
-        return {
-            token,
-            clientId,
-            scopes,
-            expiresAt,
-            extra: {
-                sub: payload.sub,
-                email: payload.email,
-                org_id: payload.org_id,
-            },
-        };
+            end({ status: 'success' });
+            tokenVerificationTotal.inc({ status: 'success' });
+            return {
+                token,
+                clientId,
+                scopes,
+                expiresAt,
+                extra: {
+                    sub: payload.sub,
+                    email: payload.email,
+                    org_id: payload.org_id,
+                },
+            };
+        } catch (err) {
+            end({ status: 'error' });
+            tokenVerificationTotal.inc({ status: 'error' });
+            throw err;
+        }
     }
 
     async revokeToken(
@@ -184,6 +198,7 @@ export class Auth0OAuthProvider implements OAuthServerProvider {
         pendingStateId: string,
         auth0Code: string
     ): Promise<{ code: string; redirectUri: string; state?: string; tokens: Auth0TokenResponse }> {
+        const endCodeExchange = codeExchangeDuration.startTimer();
         const pending = await this.txStore.getPendingAuthorization(pendingStateId);
         if (!pending) {
             throw new Error('Invalid or expired OAuth state');
@@ -204,6 +219,7 @@ export class Auth0OAuthProvider implements OAuthServerProvider {
         });
 
         if (!tokenResponse.ok) {
+            endCodeExchange({ status: 'error' });
             const errorBody = await tokenResponse.text();
             console.error(`[${new Date().toISOString()}] Auth0 token exchange error:`, {
                 status: tokenResponse.status,
@@ -229,6 +245,7 @@ export class Auth0OAuthProvider implements OAuthServerProvider {
         });
 
         await this.txStore.deletePendingAuthorization(pending.id);
+        endCodeExchange({ status: 'success' });
         return {
             code: codeRecord.id,
             redirectUri: pending.redirectUri,

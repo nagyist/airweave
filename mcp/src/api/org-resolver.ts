@@ -1,4 +1,10 @@
 import { createHash } from 'node:crypto';
+import {
+    orgResolutionDuration,
+    orgCacheHits,
+    orgCacheMisses,
+    orgCacheSize,
+} from '../metrics/prometheus.js';
 
 const CACHE_TTL_MS = 5 * 60 * 1000;
 const MAX_CACHE_ENTRIES = 500;
@@ -77,42 +83,51 @@ export async function resolveOrganizationForCollection(
     const key = cacheKey(token, collection);
     const cached = cache.get(key);
     if (cached && cached.expiresAt > Date.now()) {
+        orgCacheHits.inc();
         return cached.orgId;
     }
+    orgCacheMisses.inc();
 
-    const orgs = await fetchOrganizations(token, baseUrl);
-    if (orgs.length === 0) {
-        throw new Error('User does not belong to any organization');
+    const end = orgResolutionDuration.startTimer();
+    try {
+        const orgs = await fetchOrganizations(token, baseUrl);
+        if (orgs.length === 0) {
+            throw new Error('User does not belong to any organization');
+        }
+
+        const results = await Promise.all(
+            orgs.map(async (org) => ({
+                orgId: org.id,
+                name: org.name,
+                found: await probeCollection(token, baseUrl, org.id, collection),
+            }))
+        );
+
+        const match = results.find(r => r.found);
+        if (match) {
+            storeCache(key, match.orgId);
+            end({ status: 'success' });
+            return match.orgId;
+        }
+
+        const tried = results.map(r => `${r.name} (${r.orgId})`).join(', ');
+        throw new Error(
+            `Collection "${collection}" not found in any of the user's organizations: ${tried}`,
+        );
+    } catch (err) {
+        end({ status: 'error' });
+        throw err;
     }
-
-    const results = await Promise.all(
-        orgs.map(async (org) => ({
-            orgId: org.id,
-            name: org.name,
-            found: await probeCollection(token, baseUrl, org.id, collection),
-        }))
-    );
-
-    const match = results.find(r => r.found);
-    if (match) {
-        storeCache(key, match.orgId);
-        return match.orgId;
-    }
-
-    const tried = results.map(r => `${r.name} (${r.orgId})`).join(', ');
-    throw new Error(
-        `Collection "${collection}" not found in any of the user's organizations: ${tried}`,
-    );
 }
 
 function storeCache(key: string, orgId: string): void {
     if (cache.size >= MAX_CACHE_ENTRIES) {
         evictExpired();
-        // If still at capacity after TTL eviction, drop the oldest entry (LRU).
         if (cache.size >= MAX_CACHE_ENTRIES) {
             const oldest = cache.keys().next().value;
             if (oldest !== undefined) cache.delete(oldest);
         }
     }
     cache.set(key, { orgId, expiresAt: Date.now() + CACHE_TTL_MS });
+    orgCacheSize.set(cache.size);
 }

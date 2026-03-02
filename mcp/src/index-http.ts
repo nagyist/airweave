@@ -26,6 +26,7 @@ import { resolveOrganizationForCollection } from './api/org-resolver.js';
 import { Auth0OAuthProvider } from './auth/auth0-provider.js';
 import { createAuth0CallbackHandler } from './auth/auth0-callback.js';
 import { ensureRedisReady, disconnectRedis } from './auth/redis.js';
+import { register, httpRequestDuration, httpRequestsTotal } from './metrics/prometheus.js';
 
 const app = express();
 app.set('trust proxy', 1);
@@ -101,6 +102,12 @@ async function resolveAuth(req: ReqWithAuth, _res: express.Response, next: expre
     next();
 }
 
+// Prometheus metrics endpoint
+app.get('/metrics', async (_req, res) => {
+    res.set('Content-Type', register.contentType);
+    res.end(await register.metrics());
+});
+
 // Health check endpoint
 app.get('/health', (req, res) => {
     res.json({
@@ -154,6 +161,13 @@ app.get('/', (req, res) => {
 // Main MCP endpoint - fully stateless, fresh server per request
 app.post('/mcp', resolveAuth, async (req: ReqWithAuth, res) => {
     const startTime = Date.now();
+    const authType = req._authMethod || 'none';
+    res.on('finish', () => {
+        const duration = (Date.now() - startTime) / 1000;
+        const labels = { method: 'POST', route: '/mcp', status_code: String(res.statusCode), auth_type: authType };
+        httpRequestDuration.observe(labels, duration);
+        httpRequestsTotal.inc(labels);
+    });
 
     try {
         const isOAuth = req._authMethod === 'oauth';

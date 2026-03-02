@@ -4,6 +4,7 @@ const REDACTION = '[REDACTED]';
 
 const SENSITIVE_KEYS = new Set([
     'authorization',
+    'bearer',
     'x-api-key',
     'api_key',
     'apikey',

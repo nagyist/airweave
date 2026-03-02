@@ -185,8 +185,9 @@ describe('resolveOrganizationForCollection', () => {
     describe('parallel probing', () => {
         it('probes all orgs concurrently rather than sequentially', async () => {
             const resolve = await loadResolver();
-            const probeStartTimes: Record<string, number> = {};
-            let time = 0;
+
+            const initiated: string[] = [];
+            const gates: Record<string, () => void> = {};
 
             mockFetch.mockImplementation(async (url: string, opts: any) => {
                 const urlStr = typeof url === 'string' ? url : url.toString();
@@ -201,7 +202,9 @@ describe('resolveOrganizationForCollection', () => {
                     };
                 }
                 const orgId = opts?.headers?.['X-Organization-ID'];
-                probeStartTimes[orgId] = time++;
+                initiated.push(orgId);
+                // Block until the test explicitly opens the gate
+                await new Promise<void>(r => { gates[orgId] = r; });
                 const isTarget = orgId === 'o3';
                 return {
                     ok: true,
@@ -209,15 +212,25 @@ describe('resolveOrganizationForCollection', () => {
                 };
             });
 
-            const orgId = await resolve('tok', 'https://api.test.com', 'target');
-            expect(orgId).toBe('o3');
+            const resultPromise = resolve('tok', 'https://api.test.com', 'target');
 
-            // All probes should have been initiated (Promise.all),
-            // not waiting for each to finish before starting the next.
-            expect(Object.keys(probeStartTimes)).toHaveLength(3);
-            expect(probeStartTimes).toHaveProperty('o1');
-            expect(probeStartTimes).toHaveProperty('o2');
-            expect(probeStartTimes).toHaveProperty('o3');
+            // Flush microtasks so all parallel fetches are initiated
+            await new Promise(r => setTimeout(r, 0));
+
+            // With Promise.all, all 3 probes must have started before any resolved.
+            // A sequential loop would only have initiated 1 at this point.
+            expect(initiated).toHaveLength(3);
+            expect(initiated).toContain('o1');
+            expect(initiated).toContain('o2');
+            expect(initiated).toContain('o3');
+
+            // Unblock all probes
+            gates['o1']();
+            gates['o2']();
+            gates['o3']();
+
+            const orgId = await resultPromise;
+            expect(orgId).toBe('o3');
         });
 
         it('returns first matching org when multiple orgs contain the collection', async () => {

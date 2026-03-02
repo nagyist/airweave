@@ -199,58 +199,62 @@ export class Auth0OAuthProvider implements OAuthServerProvider {
         auth0Code: string
     ): Promise<{ code: string; redirectUri: string; state?: string; tokens: Auth0TokenResponse }> {
         const endCodeExchange = codeExchangeDuration.startTimer();
-        const pending = await this.txStore.getPendingAuthorization(pendingStateId);
-        if (!pending) {
-            throw new Error('Invalid or expired OAuth state');
-        }
+        try {
+            const pending = await this.txStore.getPendingAuthorization(pendingStateId);
+            if (!pending) {
+                throw new Error('Invalid or expired OAuth state');
+            }
 
-        const tokenUrl = new URL(`https://${this.auth0Domain}/oauth/token`);
-        const callbackUrl = toUrl(this.mcpBaseUrl, '/oauth/callback');
-        const tokenResponse = await fetch(tokenUrl, {
-            method: 'POST',
-            headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({
-                grant_type: 'authorization_code',
-                code: auth0Code,
-                client_id: this.auth0ClientId,
-                client_secret: this.auth0ClientSecret,
-                redirect_uri: callbackUrl.toString(),
-            }),
-        });
-
-        if (!tokenResponse.ok) {
-            endCodeExchange({ status: 'error' });
-            const errorBody = await tokenResponse.text();
-            console.error(`[${new Date().toISOString()}] Auth0 token exchange error:`, {
-                status: tokenResponse.status,
-                body: errorBody,
-                redirect_uri: callbackUrl.toString(),
+            const tokenUrl = new URL(`https://${this.auth0Domain}/oauth/token`);
+            const callbackUrl = toUrl(this.mcpBaseUrl, '/oauth/callback');
+            const tokenResponse = await fetch(tokenUrl, {
+                method: 'POST',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({
+                    grant_type: 'authorization_code',
+                    code: auth0Code,
+                    client_id: this.auth0ClientId,
+                    client_secret: this.auth0ClientSecret,
+                    redirect_uri: callbackUrl.toString(),
+                }),
             });
-            throw new Error(`Auth0 code exchange failed with status ${tokenResponse.status}: ${errorBody}`);
+
+            if (!tokenResponse.ok) {
+                const errorBody = await tokenResponse.text();
+                console.error(`[${new Date().toISOString()}] Auth0 token exchange error:`, {
+                    status: tokenResponse.status,
+                    body: errorBody,
+                    redirect_uri: callbackUrl.toString(),
+                });
+                throw new Error(`Auth0 code exchange failed with status ${tokenResponse.status}: ${errorBody}`);
+            }
+
+            const tokens = await tokenResponse.json() as Auth0TokenResponse;
+            const codeRecord = await this.txStore.issueAuthorizationCode({
+                clientId: pending.clientId,
+                redirectUri: pending.redirectUri,
+                codeChallenge: pending.codeChallenge,
+                scopes: pending.scopes,
+                tokens: {
+                    access_token: tokens.access_token,
+                    refresh_token: tokens.refresh_token,
+                    token_type: tokens.token_type || 'Bearer',
+                    expires_in: tokens.expires_in,
+                    scope: tokens.scope,
+                },
+            });
+
+            await this.txStore.deletePendingAuthorization(pending.id);
+            endCodeExchange({ status: 'success' });
+            return {
+                code: codeRecord.id,
+                redirectUri: pending.redirectUri,
+                state: pending.state,
+                tokens,
+            };
+        } catch (err) {
+            endCodeExchange({ status: 'error' });
+            throw err;
         }
-
-        const tokens = await tokenResponse.json() as Auth0TokenResponse;
-        const codeRecord = await this.txStore.issueAuthorizationCode({
-            clientId: pending.clientId,
-            redirectUri: pending.redirectUri,
-            codeChallenge: pending.codeChallenge,
-            scopes: pending.scopes,
-            tokens: {
-                access_token: tokens.access_token,
-                refresh_token: tokens.refresh_token,
-                token_type: tokens.token_type || 'Bearer',
-                expires_in: tokens.expires_in,
-                scope: tokens.scope,
-            },
-        });
-
-        await this.txStore.deletePendingAuthorization(pending.id);
-        endCodeExchange({ status: 'success' });
-        return {
-            code: codeRecord.id,
-            redirectUri: pending.redirectUri,
-            state: pending.state,
-            tokens,
-        };
     }
 }

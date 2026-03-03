@@ -8,8 +8,8 @@ from pydantic_core import PydanticUndefined
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import crud
+from airweave.core.container import container as app_container  # [code blue] todo: remove container import
 from airweave.core.logging import logger
-from airweave.platform.auth_providers import ALL_AUTH_PROVIDERS
 from airweave.platform.configs._base import ConfigValues
 from airweave.platform.locator import resource_locator
 
@@ -80,13 +80,15 @@ class AuthProviderService:
 
     @staticmethod
     def _get_auth_provider_class(auth_provider_short_name: str):
-        """Resolve auth provider class by short name from registered providers."""
-        for auth_provider_class in ALL_AUTH_PROVIDERS:
-            if auth_provider_class.short_name == auth_provider_short_name:
-                return auth_provider_class
-        raise HTTPException(
-            status_code=404, detail=f"Auth provider '{auth_provider_short_name}' not found"
-        )
+        """Resolve auth provider class by short name from registry."""
+        try:
+            entry = app_container.auth_provider_registry.get(auth_provider_short_name)
+            return entry.provider_class_ref
+        except KeyError:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Auth provider '{auth_provider_short_name}' not found",
+            )
 
     async def get_runtime_auth_fields_for_source(
         self, db: AsyncSession, source_short_name: str

@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from airweave import crud
 from airweave.api.context import ApiContext
 from airweave.core.config import settings
-from airweave.core.container import container as app_container
+from airweave.core.container import container as app_container  # [code blue] todo: remove container import
 from airweave.core.protocols.pubsub import PubSub
 from airweave.domains.embedders.protocols import DenseEmbedderProtocol, SparseEmbedderProtocol
 from airweave.platform.destinations._base import BaseDestination

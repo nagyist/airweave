@@ -18,7 +18,9 @@ updates:
     commit-message:
       prefix: "chore(deps):"
     labels:
-      - "dependencies"
+      - "chore"
+      - "deps:python"
+      - "area:backend"
     open-pull-requests-limit: 5
 
   # --- pip — monke (E2E testing framework) --------------------------------
@@ -33,7 +35,9 @@ updates:
     commit-message:
       prefix: "chore(deps):"
     labels:
-      - "dependencies"
+      - "chore"
+      - "deps:python"
+      - "area:testing"
     open-pull-requests-limit: 5
 
   # --- npm — frontend (React / Vite) -------------------------------------
@@ -49,7 +53,9 @@ updates:
     commit-message:
       prefix: "chore(deps):"
     labels:
-      - "dependencies"
+      - "chore"
+      - "deps:javascript"
+      - "area:frontend"
     open-pull-requests-limit: 5
 
   # --- npm — MCP server (TypeScript) -------------------------------------
@@ -64,7 +70,9 @@ updates:
     commit-message:
       prefix: "chore(deps):"
     labels:
-      - "dependencies"
+      - "chore"
+      - "deps:javascript"
+      - "area:mcp"
     open-pull-requests-limit: 5
 
   # --- Docker — backend ---------------------------------------------------
@@ -79,7 +87,9 @@ updates:
     commit-message:
       prefix: "chore(deps):"
     labels:
-      - "dependencies"
+      - "chore"
+      - "deps:docker"
+      - "area:backend"
     open-pull-requests-limit: 5
 
   # --- Docker — frontend --------------------------------------------------
@@ -94,7 +104,9 @@ updates:
     commit-message:
       prefix: "chore(deps):"
     labels:
-      - "dependencies"
+      - "chore"
+      - "deps:docker"
+      - "area:frontend"
     open-pull-requests-limit: 5
 
   # --- Docker — MCP server ------------------------------------------------
@@ -109,7 +121,9 @@ updates:
     commit-message:
       prefix: "chore(deps):"
     labels:
-      - "dependencies"
+      - "chore"
+      - "deps:docker"
+      - "area:mcp"
     open-pull-requests-limit: 5
 
   # --- GitHub Actions -----------------------------------------------------
@@ -127,5 +141,7 @@ updates:
     commit-message:
       prefix: "chore(deps):"
     labels:
-      - "dependencies"
+      - "chore"
+      - "deps:actions"
+      - "area:infra"
     open-pull-requests-limit: 5

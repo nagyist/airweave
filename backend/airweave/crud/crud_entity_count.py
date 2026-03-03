@@ -49,7 +49,6 @@ class CRUDEntityCount(CRUDBaseOrganization[EntityCount, EntityCountCreate, Entit
         result = await db.execute(stmt)
         rows = list(result.scalars().all())
 
-        # Try to enrich with registry metadata
         registry_meta = self._get_registry_metadata()
 
         return [
@@ -72,21 +71,18 @@ class CRUDEntityCount(CRUDBaseOrganization[EntityCount, EntityCountCreate, Entit
 
     @staticmethod
     def _get_registry_metadata() -> dict:
-        """Best-effort registry lookup for display metadata."""
-        try:
-            # [code blue] todo: remove container import
-            from airweave.core.container import container as app_container
+        """Return {short_name: {name, type, description}} from the entity definition registry."""
+        # [code blue] todo: remove container import
+        from airweave.core.container import container as app_container
 
-            return {
-                entry.short_name: {
-                    "name": entry.name,
-                    "type": "json",
-                    "description": entry.description,
-                }
-                for entry in app_container.entity_definition_registry.list_all()
+        return {
+            entry.short_name: {
+                "name": entry.name,
+                "type": "json",
+                "description": entry.description,
             }
-        except Exception:
-            return {}
+            for entry in app_container.entity_definition_registry.list_all()
+        }
 
     async def get_by_sync_id(
         self,

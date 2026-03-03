@@ -6,9 +6,9 @@ from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
-from fastapi import HTTPException
 from pydantic import BaseModel
 
+from airweave.core.exceptions import InvalidInputError, InvalidStateError, NotFoundException
 from airweave.core.shared_models import IntegrationType
 from airweave.domains.auth_provider.service import AuthProviderService
 from airweave.domains.auth_provider.types import AuthProviderRegistryEntry
@@ -29,14 +29,14 @@ class _ProviderInstance:
     def __init__(self):
         self.logger = None
         self.should_fail = False
-        self.http_error = False
+        self.domain_error = False
 
     def set_logger(self, logger):
         self.logger = logger
 
     async def validate(self):
-        if self.http_error:
-            raise HTTPException(status_code=418, detail="teapot")
+        if self.domain_error:
+            raise NotFoundException("teapot")
         if self.should_fail:
             raise RuntimeError("validate failed")
 
@@ -235,9 +235,8 @@ async def test_delete_connection(monkeypatch):
 def test_get_registry_entry_not_found():
     service, _, _ = _service()
     service._registry = SimpleNamespace(get=lambda short_name: (_ for _ in ()).throw(KeyError("missing")))
-    with pytest.raises(HTTPException) as exc:
+    with pytest.raises(NotFoundException):
         service._get_registry_entry("missing")
-    assert exc.value.status_code == 404
 
 
 def test_validate_auth_fields_paths():
@@ -252,17 +251,14 @@ def test_validate_auth_fields_paths():
     out2 = service._validate_auth_fields(_entry(auth_config_ref=_AuthConfig), Dumpable())
     assert out2["api_key"] == "k"
 
-    with pytest.raises(HTTPException) as missing:
+    with pytest.raises(InvalidInputError):
         service._validate_auth_fields(_entry(auth_config_ref=_AuthConfig), None)
-    assert missing.value.status_code == 422
 
-    with pytest.raises(HTTPException) as invalid:
+    with pytest.raises(InvalidInputError):
         service._validate_auth_fields(_entry(auth_config_ref=_AuthConfig), {})
-    assert invalid.value.status_code == 422
 
-    with pytest.raises(HTTPException) as generic:
+    with pytest.raises(InvalidInputError):
         service._validate_auth_fields(_entry(auth_config_ref=_BadAuthConfig), {"api_key": "x"})
-    assert generic.value.status_code == 422
 
 
 @pytest.mark.asyncio
@@ -277,26 +273,24 @@ async def test_validate_credentials_paths():
     )
 
     _ProviderClass.instance.should_fail = True
-    with pytest.raises(HTTPException) as exc:
+    with pytest.raises(InvalidInputError):
         await service._validate_credentials(
             entry=_entry(),
             validated_auth_fields={"api_key": "x"},
             validated_provider_config={},
             ctx=ctx,
         )
-    assert exc.value.status_code == 422
     _ProviderClass.instance.should_fail = False
 
-    _ProviderClass.instance.http_error = True
-    with pytest.raises(HTTPException) as http_exc:
+    _ProviderClass.instance.domain_error = True
+    with pytest.raises(NotFoundException):
         await service._validate_credentials(
             entry=_entry(),
             validated_auth_fields={"api_key": "x"},
             validated_provider_config={},
             ctx=ctx,
         )
-    assert http_exc.value.status_code == 418
-    _ProviderClass.instance.http_error = False
+    _ProviderClass.instance.domain_error = False
 
 
 @pytest.mark.asyncio
@@ -307,19 +301,17 @@ async def test_update_auth_credentials_paths(monkeypatch):
         session=SimpleNamespace(flush=AsyncMock()),
     )
     connection = SimpleNamespace(short_name="composio", integration_credential_id=None)
-    with pytest.raises(HTTPException) as missing:
+    with pytest.raises(InvalidStateError):
         await service._update_auth_credentials(
             uow=uow, connection=connection, auth_fields={"api_key": "x"}, ctx=_ctx()
         )
-    assert missing.value.status_code == 500
 
     connection.integration_credential_id = uuid4()
     credential_repo.get = AsyncMock(return_value=None)
-    with pytest.raises(HTTPException) as not_found:
+    with pytest.raises(NotFoundException):
         await service._update_auth_credentials(
             uow=uow, connection=connection, auth_fields={"api_key": "x"}, ctx=_ctx()
         )
-    assert not_found.value.status_code == 404
 
     credential = SimpleNamespace(id=uuid4())
     credential_repo.get = AsyncMock(return_value=credential)
@@ -370,15 +362,13 @@ async def test_get_masked_client_id_paths(monkeypatch):
 async def test_get_auth_provider_connection_paths():
     service, connection_repo, _ = _service()
     connection_repo.get_by_readable_id = AsyncMock(return_value=None)
-    with pytest.raises(HTTPException) as missing:
+    with pytest.raises(NotFoundException):
         await service._get_auth_provider_connection("db", readable_id="rid", ctx=_ctx())
-    assert missing.value.status_code == 404
 
     bad = SimpleNamespace(integration_type=IntegrationType.DESTINATION)
     connection_repo.get_by_readable_id = AsyncMock(return_value=bad)
-    with pytest.raises(HTTPException) as wrong_type:
+    with pytest.raises(InvalidStateError):
         await service._get_auth_provider_connection("db", readable_id="rid", ctx=_ctx())
-    assert wrong_type.value.status_code == 400
 
     good = SimpleNamespace(integration_type=IntegrationType.AUTH_PROVIDER)
     connection_repo.get_by_readable_id = AsyncMock(return_value=good)

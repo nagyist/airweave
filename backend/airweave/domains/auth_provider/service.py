@@ -2,7 +2,6 @@
 
 from typing import Optional
 
-from fastapi import HTTPException
 from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -10,6 +9,7 @@ from airweave import schemas
 from airweave.api.context import ApiContext
 from airweave.core import credentials
 from airweave.core.datetime_utils import utc_now_naive
+from airweave.core.exceptions import InvalidInputError, InvalidStateError, NotFoundException
 from airweave.core.shared_models import ConnectionStatus, IntegrationType
 from airweave.db.unit_of_work import UnitOfWork
 from airweave.domains.auth_provider.protocols import (
@@ -179,24 +179,18 @@ class AuthProviderService(AuthProviderServiceProtocol):
         return response
 
     def _get_registry_entry(self, short_name: str) -> AuthProviderRegistryEntry:
-        """Get auth provider registry entry or raise HTTP 404."""
+        """Get auth provider registry entry or raise NotFoundException."""
         try:
             return self._registry.get(short_name)
         except KeyError as exc:
-            raise HTTPException(
-                status_code=404,
-                detail=f"Auth provider '{short_name}' not found",
-            ) from exc
+            raise NotFoundException(f"Auth provider '{short_name}' not found") from exc
 
     def _validate_auth_fields(
         self, entry: AuthProviderRegistryEntry, auth_fields: Optional[dict[str, object]]
     ) -> dict[str, object]:
         """Validate auth fields against provider auth config."""
         if auth_fields is None:
-            raise HTTPException(
-                status_code=422,
-                detail=f"Auth provider {entry.name} requires auth fields.",
-            )
+            raise InvalidInputError(f"Auth provider {entry.name} requires auth fields.")
 
         auth_fields_dict = (
             auth_fields.model_dump() if hasattr(auth_fields, "model_dump") else auth_fields
@@ -215,12 +209,9 @@ class AuthProviderService(AuthProviderServiceProtocol):
                 f"Invalid configuration for {entry.auth_config_ref.__name__}:\n"
                 + "\n".join(error_messages)
             )
-            raise HTTPException(
-                status_code=422,
-                detail=f"Invalid auth fields: {error_detail}",
-            ) from exc
+            raise InvalidInputError(f"Invalid auth fields: {error_detail}") from exc
         except Exception as exc:
-            raise HTTPException(status_code=422, detail=f"Invalid auth fields: {exc}") from exc
+            raise InvalidInputError(f"Invalid auth fields: {exc}") from exc
 
     async def _validate_credentials(
         self,
@@ -238,12 +229,11 @@ class AuthProviderService(AuthProviderServiceProtocol):
             )
             auth_provider_instance.set_logger(ctx.logger)
             await auth_provider_instance.validate()
-        except HTTPException:
+        except (NotFoundException, InvalidInputError, InvalidStateError):
             raise
         except Exception as exc:
-            raise HTTPException(
-                status_code=422,
-                detail=f"Failed to validate {entry.short_name} connection: {exc}",
+            raise InvalidInputError(
+                f"Failed to validate {entry.short_name} connection: {exc}"
             ) from exc
 
     async def _update_auth_credentials(
@@ -259,13 +249,13 @@ class AuthProviderService(AuthProviderServiceProtocol):
         validated_auth_fields = self._validate_auth_fields(entry, auth_fields)
 
         if not connection.integration_credential_id:
-            raise HTTPException(status_code=500, detail="Connection missing integration credential")
+            raise InvalidStateError("Connection missing integration credential")
 
         integration_credential = await self._credential_repo.get(
             uow.session, id=connection.integration_credential_id, ctx=ctx
         )
         if not integration_credential:
-            raise HTTPException(status_code=404, detail="Integration credential not found")
+            raise NotFoundException("Integration credential not found")
 
         await self._credential_repo.update(
             uow.session,
@@ -319,14 +309,10 @@ class AuthProviderService(AuthProviderServiceProtocol):
             db, readable_id=readable_id, ctx=ctx
         )
         if not connection:
-            raise HTTPException(
-                status_code=404,
-                detail=f"Auth provider connection not found: {readable_id}",
-            )
+            raise NotFoundException(f"Auth provider connection not found: {readable_id}")
         if connection.integration_type != IntegrationType.AUTH_PROVIDER:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Connection {readable_id} is not an auth provider connection",
+            raise InvalidStateError(
+                f"Connection {readable_id} is not an auth provider connection"
             )
         return connection
 

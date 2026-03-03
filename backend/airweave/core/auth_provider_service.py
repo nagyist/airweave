@@ -8,9 +8,6 @@ from pydantic_core import PydanticUndefined
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import crud
-from airweave.core.container import (
-    container as app_container,
-)  # [code blue] todo: remove container import
 from airweave.core.logging import logger
 from airweave.platform.configs._base import ConfigValues
 from airweave.platform.locator import resource_locator
@@ -83,6 +80,9 @@ class AuthProviderService:
     @staticmethod
     def _get_auth_provider_class(auth_provider_short_name: str):
         """Resolve auth provider class by short name from registry."""
+        # [code blue] todo: remove container import
+        from airweave.core.container import container as app_container
+
         try:
             entry = app_container.auth_provider_registry.get(auth_provider_short_name)
             return entry.provider_class_ref

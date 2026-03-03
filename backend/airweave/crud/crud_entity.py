@@ -61,6 +61,12 @@ class CRUDEntity(CRUDBaseOrganization[Entity, EntityCreate, EntityUpdate]):
 
         obj_in_dict["organization_id"] = ctx.organization.id
 
+        if not obj_in_dict.get("entity_definition_short_name"):
+            raise ValueError(
+                "EntityCreate missing entity_definition_short_name for: "
+                f"{obj_in_dict.get('entity_id', '?')}"
+            )
+
         # Ensure we have timestamps
         if "created_at" not in obj_in_dict:
             obj_in_dict["created_at"] = datetime.now(timezone.utc).replace(tzinfo=None)

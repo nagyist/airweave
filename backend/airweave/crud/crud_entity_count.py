@@ -1,6 +1,5 @@
 """CRUD operations for entity counts."""
 
-import re
 from typing import List
 from uuid import UUID
 

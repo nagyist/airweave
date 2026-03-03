@@ -106,9 +106,7 @@ class PostgreSQLAgenticSearchDatabase:
         entries = app_container.entity_definition_registry.list_for_source(source.short_name)
 
         if not entries:
-            raise ValueError(
-                f"No entity definitions found for source '{source.short_name}'"
-            )
+            raise ValueError(f"No entity definitions found for source '{source.short_name}'")
 
         return [
             AgenticSearchEntityDefinition(

@@ -45,7 +45,6 @@ __all__ = [
     "ConnectionInitSession",
     "Destination",
     "EmbeddingModel",
-
     "EntityRelation",
     "FeatureFlag",
     "IntegrationCredential",

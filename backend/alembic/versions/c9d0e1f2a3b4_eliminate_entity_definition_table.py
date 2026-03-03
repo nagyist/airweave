@@ -9,7 +9,7 @@ Revises: b788750e60fe
 Create Date: 2026-03-03 00:00:00.000000
 """
 
-from typing import Sequence, Union
+from typing import List, Sequence, Union
 
 import sqlalchemy as sa
 from alembic import op
@@ -19,6 +19,30 @@ revision: str = "c9d0e1f2a3b4"
 down_revision: Union[str, None] = "b788750e60fe"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
+
+
+def _get_fk_constraint_names(table: str, column: str) -> List[str]:
+    """Look up FK constraint names from pg_constraint for a given table/column."""
+    conn = op.get_bind()
+    rows = conn.execute(sa.text("""
+        SELECT con.conname
+        FROM pg_constraint con
+        JOIN pg_class rel ON rel.oid = con.conrelid
+        JOIN pg_namespace nsp ON nsp.oid = rel.relnamespace
+        JOIN pg_attribute att ON att.attrelid = con.conrelid
+                              AND att.attnum = ANY(con.conkey)
+        WHERE rel.relname = :table
+          AND att.attname = :column
+          AND con.contype = 'f'
+          AND nsp.nspname = 'public'
+    """), {"table": table, "column": column})
+    return [row[0] for row in rows]
+
+
+def _drop_fk_constraints(table: str, column: str) -> None:
+    """Drop all FK constraints on table.column, looked up dynamically."""
+    for name in _get_fk_constraint_names(table, column):
+        op.drop_constraint(name, table, type_="foreignkey")
 
 
 def _to_snake_case_sql() -> str:
@@ -93,7 +117,39 @@ def upgrade() -> None:
             WHERE ed.id = er.to_entity_definition_id
         )
         WHERE er.from_entity_definition_short_name IS NULL
+           OR er.to_entity_definition_short_name IS NULL
     """)
+
+    # ---------------------------------------------------------------
+    # 2b. Validate backfill — abort before NOT NULL if orphans remain
+    # ---------------------------------------------------------------
+    conn = op.get_bind()
+
+    orphan_ec = conn.execute(sa.text(
+        "SELECT count(*) FROM entity_count "
+        "WHERE entity_definition_short_name IS NULL"
+    )).scalar()
+    if orphan_ec:
+        raise RuntimeError(
+            f"Backfill incomplete: {orphan_ec} entity_count rows still have "
+            "NULL entity_definition_short_name (orphaned entity_definition FK?). "
+            "Fix data before re-running migration."
+        )
+
+    orphan_er_from = conn.execute(sa.text(
+        "SELECT count(*) FROM entity_relation "
+        "WHERE from_entity_definition_short_name IS NULL"
+    )).scalar()
+    orphan_er_to = conn.execute(sa.text(
+        "SELECT count(*) FROM entity_relation "
+        "WHERE to_entity_definition_short_name IS NULL"
+    )).scalar()
+    if orphan_er_from or orphan_er_to:
+        raise RuntimeError(
+            f"Backfill incomplete: entity_relation has "
+            f"{orphan_er_from} NULL from / {orphan_er_to} NULL to short names. "
+            "Fix data before re-running migration."
+        )
 
     # ---------------------------------------------------------------
     # 3. Drop old FK constraints and UUID columns
@@ -101,26 +157,23 @@ def upgrade() -> None:
 
     # entity table
     op.drop_constraint("uq_sync_id_entity_id_entity_definition_id", "entity", type_="unique")
-    op.drop_constraint("fk_entity_entity_definition_id", "entity", type_="foreignkey")
+    _drop_fk_constraints("entity", "entity_definition_id")
     op.drop_index("idx_entity_entity_definition_id", table_name="entity")
     op.drop_index("idx_entity_sync_id_entity_def_id", table_name="entity")
     op.drop_column("entity", "entity_definition_id")
 
     # entity_count table
     op.drop_constraint("uq_sync_entity_definition", "entity_count", type_="unique")
-    op.drop_constraint("fk_entity_count_entity_def_id", "entity_count", type_="foreignkey")
+    _drop_fk_constraints("entity_count", "entity_definition_id")
     op.drop_index("idx_entity_count_entity_def_id", table_name="entity_count")
-    # May or may not exist
-    try:
-        op.drop_index("idx_entity_count_sync_def", table_name="entity_count")
-    except Exception:
-        pass
     op.drop_column("entity_count", "entity_definition_id")
 
     # entity_relation table
     op.drop_constraint("uq_entity_relation", "entity_relation", type_="unique")
     op.drop_index("idx_entity_relation_from", table_name="entity_relation")
     op.drop_index("idx_entity_relation_to", table_name="entity_relation")
+    _drop_fk_constraints("entity_relation", "from_entity_definition_id")
+    _drop_fk_constraints("entity_relation", "to_entity_definition_id")
     op.drop_column("entity_relation", "from_entity_definition_id")
     op.drop_column("entity_relation", "to_entity_definition_id")
 

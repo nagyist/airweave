@@ -38,7 +38,6 @@ __all__ = [
     "embedding_model",
     "entity",
     "entity_count",
-
     "integration_credential",
     "organization",
     "organization_billing",

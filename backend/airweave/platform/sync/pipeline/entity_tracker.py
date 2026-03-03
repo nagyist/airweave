@@ -277,9 +277,7 @@ class EntityTracker:
                 "name": name,
                 "type": entity_type or "unknown",
             }
-            self.logger.debug(
-                f"📝 Registered metadata for {entity_definition_short_name}: {name}"
-            )
+            self.logger.debug(f"📝 Registered metadata for {entity_definition_short_name}: {name}")
 
     # -------------------------------------------------------------------------
     # State Access

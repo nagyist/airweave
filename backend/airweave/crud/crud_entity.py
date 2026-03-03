@@ -216,9 +216,7 @@ class CRUDEntity(CRUDBaseOrganization[Entity, EntityCreate, EntityUpdate]):
             return []
 
         missing_def = [
-            o.entity_id
-            for o in objs
-            if getattr(o, "entity_definition_short_name", None) is None
+            o.entity_id for o in objs if getattr(o, "entity_definition_short_name", None) is None
         ]
         if missing_def:
             preview = ", ".join(missing_def[:5])

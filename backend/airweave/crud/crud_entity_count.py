@@ -57,12 +57,12 @@ class CRUDEntityCount(CRUDBaseOrganization[EntityCount, EntityCountCreate, Entit
             EntityCountWithDefinition(
                 count=row.count,
                 entity_definition_short_name=row.entity_definition_short_name,
-                entity_definition_name=registry_meta.get(
-                    row.entity_definition_short_name, {}
-                ).get("name", _short_name_to_display_name(row.entity_definition_short_name)),
-                entity_definition_type=registry_meta.get(
-                    row.entity_definition_short_name, {}
-                ).get("type", "json"),
+                entity_definition_name=registry_meta.get(row.entity_definition_short_name, {}).get(
+                    "name", _short_name_to_display_name(row.entity_definition_short_name)
+                ),
+                entity_definition_type=registry_meta.get(row.entity_definition_short_name, {}).get(
+                    "type", "json"
+                ),
                 entity_definition_description=registry_meta.get(
                     row.entity_definition_short_name, {}
                 ).get("description"),

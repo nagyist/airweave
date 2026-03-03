@@ -27,6 +27,7 @@ import { Auth0OAuthProvider } from './auth/auth0-provider.js';
 import { createAuth0CallbackHandler } from './auth/auth0-callback.js';
 import { ensureRedisReady, disconnectRedis } from './auth/redis.js';
 import { register, httpRequestDuration, httpRequestsTotal } from './metrics/prometheus.js';
+import { AirweaveClient } from './api/airweave-client.js';
 
 const app = express();
 app.set('trust proxy', 1);
@@ -190,11 +191,37 @@ app.post('/mcp', resolveAuth, async (req: ReqWithAuth, res) => {
             return;
         }
 
-        const collection = (req.headers['x-collection-readable-id'] as string) ||
-            process.env.AIRWEAVE_COLLECTION ||
-            'default';
+        const collectionHeader = req.headers['x-collection-readable-id'] as string | undefined;
+        const collectionEnv = process.env.AIRWEAVE_COLLECTION;
+        const collection = collectionHeader || collectionEnv || 'default';
         const baseUrl = process.env.AIRWEAVE_BASE_URL || DEFAULT_BASE_URL;
         const method = req.body?.method || 'unknown';
+
+        if (!collectionHeader && !collectionEnv) {
+            let collectionList = '';
+            try {
+                const tmpClient = new AirweaveClient({ apiKey: credential, collection: '', baseUrl });
+                const collections = await tmpClient.listCollections(25);
+                if (collections.length > 0) {
+                    collectionList = '\n\nYour available collections:\n' +
+                        collections.map(c => `- ${c.name || c.readable_id} (${c.readable_id})`).join('\n');
+                }
+            } catch {
+                // listing failed — still return guidance without the list
+            }
+
+            res.status(200).json({
+                jsonrpc: '2.0',
+                result: {
+                    content: [{
+                        type: 'text',
+                        text: `No collection specified. Set the X-Collection-Readable-ID header or AIRWEAVE_COLLECTION env var.\n\nSee: https://docs.airweave.ai/mcp-server${collectionList}`,
+                    }],
+                },
+                id: req.body?.id || null,
+            });
+            return;
+        }
 
         let organizationId: string | undefined;
         if (isOAuth) {

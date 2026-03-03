@@ -23,6 +23,19 @@ export class AirweaveClient {
         });
     }
 
+    async listCollections(limit = 25): Promise<{ readable_id: string; name?: string }[]> {
+        try {
+            const response = await this.client.collections.list({ limit });
+            return (response as any[]).map((c: any) => ({
+                readable_id: c.readable_id ?? c.readableId ?? c.id,
+                name: c.name,
+            }));
+        } catch (error: unknown) {
+            const err = error as { statusCode?: number; message?: string };
+            throw new Error(`Failed to list collections: ${err.message || 'Unknown error'}`);
+        }
+    }
+
     async search(searchRequest: SearchRequest): Promise<SearchResponse> {
         // Mock mode for testing
         if (this.config.apiKey === 'test-key' && this.config.baseUrl.includes('localhost')) {

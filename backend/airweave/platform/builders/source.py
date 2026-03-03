@@ -3,7 +3,6 @@
 Handles all source creation complexity:
 - Source connection data loading
 - Credentials and OAuth configuration
-- Token manager setup
 - File downloader setup
 - HTTP client wrapping (rate limiting)
 """
@@ -21,14 +20,12 @@ from airweave.core.container import (
 from airweave.core.exceptions import NotFoundException
 from airweave.core.logging import ContextualLogger
 from airweave.core.sync_cursor_service import sync_cursor_service
-from airweave.platform.auth_providers._base import BaseAuthProvider
 from airweave.platform.contexts.infra import InfraContext
 from airweave.platform.contexts.source import SourceContext
 from airweave.platform.locator import resource_locator
 from airweave.platform.sources._base import BaseSource
 from airweave.platform.sync.config import SyncConfig
 from airweave.platform.sync.cursor import SyncCursor
-from airweave.platform.sync.token_manager import TokenManager
 
 
 # [code blue] replace with SourceLifecycleService.create()
@@ -320,100 +317,6 @@ class SourceContextBuilder:
         cls._setup_file_downloader(source, sync_job, logger)
 
         return source
-
-    @classmethod
-    async def _setup_token_manager(
-        cls,
-        db: AsyncSession,
-        source: BaseSource,
-        source_connection_data: dict,
-        source_credentials: Any,
-        ctx: ApiContext,
-        logger: ContextualLogger,
-        access_token: Optional[str],
-        auth_config: dict,
-    ) -> None:
-        """Set up token manager for OAuth sources."""
-        from airweave.platform.auth_providers.auth_result import AuthProviderMode
-
-        auth_mode = auth_config.get("auth_mode")
-        auth_provider_instance: Optional[BaseAuthProvider] = auth_config.get(
-            "auth_provider_instance"
-        )
-
-        # Check if we should skip TokenManager
-        is_direct_token_injection = access_token is not None
-        is_proxy_mode = auth_mode == AuthProviderMode.PROXY
-
-        if is_direct_token_injection:
-            logger.debug(
-                f"⏭️ Skipping token manager for {source_connection_data['short_name']} - "
-                f"direct token injection"
-            )
-            return
-
-        if is_proxy_mode:
-            logger.info(
-                f"⏭️ Skipping token manager for {source_connection_data['short_name']} - "
-                f"proxy mode (PipedreamProxyClient manages tokens internally)"
-            )
-            return
-
-        short_name = source_connection_data["short_name"]
-        oauth_type = source_connection_data.get("oauth_type")
-
-        # Determine if we should create a token manager based on oauth_type
-        should_create_token_manager = False
-
-        if oauth_type:
-            from airweave.schemas.source_connection import OAuthType
-
-            if oauth_type in (OAuthType.WITH_REFRESH, OAuthType.WITH_ROTATING_REFRESH):
-                should_create_token_manager = True
-                logger.debug(
-                    f"✅ OAuth source {short_name} with oauth_type={oauth_type} "
-                    f"will use token manager for refresh"
-                )
-            else:
-                logger.debug(
-                    f"⏭️ Skipping token manager for {short_name} - "
-                    f"oauth_type={oauth_type} does not support token refresh"
-                )
-
-        if should_create_token_manager:
-            try:
-                # Create a minimal connection object with only the fields needed by TokenManager
-                minimal_source_connection = type(
-                    "SourceConnection",
-                    (),
-                    {
-                        "id": source_connection_data["connection_id"],
-                        "integration_credential_id": source_connection_data[
-                            "integration_credential_id"
-                        ],
-                        "config_fields": source_connection_data.get("config_fields"),
-                    },
-                )()
-
-                token_manager = TokenManager(
-                    db=db,
-                    source_short_name=short_name,
-                    source_connection=minimal_source_connection,
-                    ctx=ctx,
-                    initial_credentials=source_credentials,
-                    is_direct_injection=False,
-                    logger_instance=logger,
-                    auth_provider_instance=auth_provider_instance,
-                )
-                source.set_token_manager(token_manager)
-
-                logger.info(
-                    f"Token manager initialized for OAuth source {short_name} "
-                    f"(auth_provider: {'Yes' if auth_provider_instance else 'None'})"
-                )
-            except Exception as e:
-                logger.error(f"Failed to setup token manager for source '{short_name}': {e}")
-                # Don't fail source creation if token manager setup fails
 
     @classmethod
     def _setup_file_downloader(

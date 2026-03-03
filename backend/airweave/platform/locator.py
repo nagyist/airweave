@@ -101,21 +101,6 @@ class ResourceLocator:
     # CodeChunker and SemanticChunker in entity_pipeline.py
 
     @staticmethod
-    def get_entity_definition(entity_definition: schemas.EntityDefinition) -> Type[BaseEntity]:
-        """Get the entity definition class.
-
-        Args:
-            entity_definition (schemas.EntityDefinition): Entity definition schema
-
-        Returns:
-            Type[BaseEntity]: Entity definition class
-        """
-        module = importlib.import_module(
-            f"{PLATFORM_PATH}.entities.{entity_definition.module_name}"
-        )
-        return getattr(module, entity_definition.class_name)
-
-    @staticmethod
     def get_available_auth_provider_classes() -> list[Type[BaseAuthProvider]]:
         """Get all available auth provider classes.
 

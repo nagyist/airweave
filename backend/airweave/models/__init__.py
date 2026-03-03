@@ -11,7 +11,7 @@ from .destination import Destination
 from .embedding_model import EmbeddingModel
 from .entity import Entity
 from .entity_count import EntityCount
-from .entity_definition import EntityDefinition
+
 from .entity_relation import EntityRelation
 from .feature_flag import FeatureFlag
 from .integration_credential import IntegrationCredential
@@ -45,7 +45,7 @@ __all__ = [
     "ConnectionInitSession",
     "Destination",
     "EmbeddingModel",
-    "EntityDefinition",
+
     "EntityRelation",
     "FeatureFlag",
     "IntegrationCredential",

@@ -223,9 +223,6 @@ class QueryInterpretation(SearchOperation):
         self, collection_id: str, ctx: ApiContext
     ) -> Dict[str, Dict[str, str]]:
         """Discover available fields from collection's entity definitions."""
-        from airweave import schemas
-        from airweave.platform.locator import resource_locator
-
         fields = {}
 
         async with get_db_context() as db:
@@ -250,7 +247,7 @@ class QueryInterpretation(SearchOperation):
                 if not source:
                     continue
 
-                source_fields = await self._get_source_fields(db, source, resource_locator, schemas)
+                source_fields = self._get_source_fields(source)
 
                 if not source_fields:
                     raise ValueError(
@@ -270,10 +267,9 @@ class QueryInterpretation(SearchOperation):
 
         return fields
 
-    async def _get_source_fields(
-        self, db: Any, source: Any, resource_locator: Any, schemas: Any
-    ) -> Dict[str, str]:
+    def _get_source_fields(self, source: Any) -> Dict[str, str]:
         """Get fields for a specific source from its entity definitions."""
+        # [code blue] todo: remove container import
         from airweave.core.container import container as app_container
 
         entries = app_container.entity_definition_registry.list_for_source(source.short_name)
@@ -286,27 +282,20 @@ class QueryInterpretation(SearchOperation):
         for entry in entries:
             entity_class = entry.entity_class_ref
 
-            # Extract all fields from entity class for filtering
-            if hasattr(entity_class, "model_fields"):
-                for field_name, field_info in entity_class.model_fields.items():
-                    if field_name.startswith("_") or field_name == "airweave_system_metadata":
-                        continue
+            for field_name, field_info in entity_class.model_fields.items():
+                if field_name.startswith("_") or field_name == "airweave_system_metadata":
+                    continue
 
-                    # Get description from field
-                    description = getattr(field_info, "description", None)
+                description = getattr(field_info, "description", None)
 
-                    # Check json_schema_extra for description (used by AirweaveField)
-                    if not description and hasattr(field_info, "json_schema_extra"):
-                        extra = field_info.json_schema_extra
-                        if isinstance(extra, dict):
-                            description = extra.get("description")
+                if not description and hasattr(field_info, "json_schema_extra"):
+                    extra = field_info.json_schema_extra
+                    if isinstance(extra, dict):
+                        description = extra.get("description")
 
-                    all_fields[field_name] = description or f"{field_name} field"
+                all_fields[field_name] = description or f"{field_name} field"
 
-        # Add system metadata fields from class constant
         all_fields.update(self.NESTED_SYSTEM_FIELDS)
-
-        # Add entity-level timestamp fields (not nested)
         all_fields.update(self.ENTITY_TIMESTAMP_FIELDS)
 
         return all_fields

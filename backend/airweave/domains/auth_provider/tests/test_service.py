@@ -321,6 +321,13 @@ async def test_update_auth_credentials_paths(monkeypatch):
     )
     assert credential_repo.update.await_count == 1
 
+    _ProviderClass.instance.should_fail = True
+    with pytest.raises(InvalidInputError):
+        await service._update_auth_credentials(
+            uow=uow, connection=connection, auth_fields={"api_key": "x"}, ctx=_ctx()
+        )
+    _ProviderClass.instance.should_fail = False
+
 
 @pytest.mark.asyncio
 async def test_get_masked_client_id_paths(monkeypatch):

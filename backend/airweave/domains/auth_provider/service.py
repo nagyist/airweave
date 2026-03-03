@@ -248,6 +248,12 @@ class AuthProviderService(AuthProviderServiceProtocol):
         """Validate and update encrypted auth fields for a connection."""
         entry = self._get_registry_entry(connection.short_name)
         validated_auth_fields = self._validate_auth_fields(entry, auth_fields)
+        await self._validate_credentials(
+            entry=entry,
+            validated_auth_fields=validated_auth_fields,
+            validated_provider_config={},
+            ctx=ctx,
+        )
 
         if not connection.integration_credential_id:
             raise InvalidStateError("Connection missing integration credential")

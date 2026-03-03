@@ -15,7 +15,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import crud, schemas
 from airweave.api.context import ApiContext
-from airweave.core.container import container as app_container  # [code blue] todo: remove container import
+from airweave.core.container import (
+    container as app_container,
+)  # [code blue] todo: remove container import
 from airweave.core.exceptions import NotFoundException
 from airweave.core.logging import ContextualLogger
 from airweave.core.sync_cursor_service import sync_cursor_service

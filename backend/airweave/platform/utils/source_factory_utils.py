@@ -13,7 +13,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from airweave import crud
 from airweave.api.context import ApiContext
 from airweave.core import credentials
-from airweave.core.container import container as app_container  # [code blue] todo: remove container import
+from airweave.core.container import (
+    container as app_container,
+)  # [code blue] todo: remove container import
 from airweave.core.exceptions import NotFoundException
 from airweave.core.logging import ContextualLogger
 from airweave.platform.auth_providers._base import BaseAuthProvider

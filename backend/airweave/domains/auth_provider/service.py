@@ -312,9 +312,7 @@ class AuthProviderService(AuthProviderServiceProtocol):
         if not connection:
             raise NotFoundException(f"Auth provider connection not found: {readable_id}")
         if connection.integration_type != IntegrationType.AUTH_PROVIDER:
-            raise InvalidStateError(
-                f"Connection {readable_id} is not an auth provider connection"
-            )
+            raise InvalidStateError(f"Connection {readable_id} is not an auth provider connection")
         return connection
 
     async def _to_schema(

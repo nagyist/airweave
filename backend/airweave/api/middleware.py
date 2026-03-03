@@ -446,9 +446,7 @@ async def invalid_state_exception_handler(request: Request, exc: InvalidStateErr
     return JSONResponse(status_code=400, content={"detail": str(exc)})
 
 
-async def invalid_input_exception_handler(
-    request: Request, exc: InvalidInputError
-) -> JSONResponse:
+async def invalid_input_exception_handler(request: Request, exc: InvalidInputError) -> JSONResponse:
     """Exception handler for InvalidInputError."""
     return JSONResponse(status_code=422, content={"detail": str(exc)})
 

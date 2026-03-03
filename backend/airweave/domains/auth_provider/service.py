@@ -11,6 +11,7 @@ from airweave.core import credentials
 from airweave.core.datetime_utils import utc_now_naive
 from airweave.core.exceptions import InvalidInputError, InvalidStateError, NotFoundException
 from airweave.core.shared_models import ConnectionStatus, IntegrationType
+from airweave.platform.configs._base import ConfigValues
 from airweave.db.unit_of_work import UnitOfWork
 from airweave.domains.auth_provider.protocols import (
     AuthProviderRegistryProtocol,
@@ -186,7 +187,7 @@ class AuthProviderService(AuthProviderServiceProtocol):
             raise NotFoundException(f"Auth provider '{short_name}' not found") from exc
 
     def _validate_auth_fields(
-        self, entry: AuthProviderRegistryEntry, auth_fields: Optional[dict[str, object]]
+        self, entry: AuthProviderRegistryEntry, auth_fields: Optional[ConfigValues]
     ) -> dict[str, object]:
         """Validate auth fields against provider auth config."""
         if auth_fields is None:
@@ -241,7 +242,7 @@ class AuthProviderService(AuthProviderServiceProtocol):
         *,
         uow: UnitOfWork,
         connection,
-        auth_fields: dict[str, object],
+        auth_fields: ConfigValues,
         ctx: ApiContext,
     ) -> None:
         """Validate and update encrypted auth fields for a connection."""

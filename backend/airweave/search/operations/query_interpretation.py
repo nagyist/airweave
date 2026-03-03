@@ -274,21 +274,17 @@ class QueryInterpretation(SearchOperation):
         self, db: Any, source: Any, resource_locator: Any, schemas: Any
     ) -> Dict[str, str]:
         """Get fields for a specific source from its entity definitions."""
-        entity_defs = await crud.entity_definition.get_multi_by_source_short_name(
-            db, source_short_name=source.short_name
-        )
+        from airweave.core.container import container as app_container
 
-        if not entity_defs:
+        entries = app_container.entity_definition_registry.list_for_source(source.short_name)
+
+        if not entries:
             return {}
 
         all_fields = {}
 
-        for entity_def in entity_defs:
-            # Convert to schema and get entity class
-            entity_schema = schemas.EntityDefinition.model_validate(
-                entity_def, from_attributes=True
-            )
-            entity_class = resource_locator.get_entity_definition(entity_schema)
+        for entry in entries:
+            entity_class = entry.entity_class_ref
 
             # Extract all fields from entity class for filtering
             if hasattr(entity_class, "model_fields"):

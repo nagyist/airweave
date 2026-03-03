@@ -375,6 +375,7 @@ def create_container(settings: Settings) -> Container:
         source_registry=source_deps["source_registry"],
         auth_provider_registry=source_deps["auth_provider_registry"],
         auth_provider_service=auth_provider_service,
+        entity_definition_registry=source_deps["entity_definition_registry"],
         sc_repo=source_deps["sc_repo"],
         collection_repo=source_deps["collection_repo"],
         conn_repo=source_deps["conn_repo"],
@@ -657,6 +658,7 @@ def _create_source_services(settings: Settings) -> dict:
         "source_service": source_service,
         "source_registry": source_registry,
         "auth_provider_registry": auth_provider_registry,
+        "entity_definition_registry": entity_definition_registry,
         "sc_repo": sc_repo,
         "collection_repo": collection_repo,
         "conn_repo": conn_repo,
@@ -690,9 +692,9 @@ def _create_billing_services(settings: Settings) -> dict:
     from airweave.domains.billing.repository import (
         BillingPeriodRepository,
         OrganizationBillingRepository,
+        WebhookEventRepository,
     )
     from airweave.domains.billing.service import BillingService
-    from airweave.domains.billing.repository import WebhookEventRepository
     from airweave.domains.billing.webhook_processor import BillingWebhookProcessor
     from airweave.domains.organizations.repository import OrganizationRepository
     from airweave.domains.usage.repository import UsageRepository

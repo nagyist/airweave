@@ -1,8 +1,6 @@
 """Auth config."""
 
-from typing import Any, Optional
-
-from typing import Self
+from typing import Any, Optional, Self
 
 from pydantic import ConfigDict, Field, ValidationInfo, field_validator, model_validator
 

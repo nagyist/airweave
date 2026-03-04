@@ -28,9 +28,7 @@ from .connection import Connection, ConnectionCreate, ConnectionInDBBase, Connec
 from .destination import (
     Destination,
     DestinationCreate,
-    DestinationInDBBase,
     DestinationUpdate,
-    DestinationWithAuthenticationFields,
 )
 from .embedding_model import (
     EmbeddingModel,

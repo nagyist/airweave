@@ -27,10 +27,6 @@ export function getAppIconUrl(shortName: string, theme?: string): string {
   }
 }
 
-export function getDestinationIconUrl(shortName: string): string {
-  return new URL(`/src/components/icons/destinations/${shortName}.png`, import.meta.url).href;
-}
-
 export function getTransformerIconUrl(shortName: string, theme?: string): string {
   try {
     // Map known transformers to their icon filenames

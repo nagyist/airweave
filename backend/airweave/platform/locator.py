@@ -7,7 +7,6 @@ from airweave import schemas
 from airweave.domains.auth_provider.types import AuthProviderMetadata
 from airweave.platform.auth_providers._base import BaseAuthProvider
 from airweave.platform.configs._base import BaseConfig
-from airweave.platform.destinations._base import BaseDestination
 from airweave.platform.entities._base import BaseEntity
 from airweave.platform.sources._base import BaseSource
 
@@ -18,7 +17,6 @@ class ResourceLocator:
     """Resource locator for platform resources.
 
     Gets the following:
-    - destinations
     - sources
     - auth providers
     - configs
@@ -40,19 +38,6 @@ class ResourceLocator:
         """
         module = importlib.import_module(f"{PLATFORM_PATH}.sources.{source.short_name}")
         return getattr(module, source.class_name)
-
-    @staticmethod
-    def get_destination(destination: schemas.Destination) -> Type[BaseDestination]:
-        """Get the destination class.
-
-        Args:
-            destination (schemas.Destination): Destination schema
-
-        Returns:
-            Type[BaseDestination]: Destination class
-        """
-        module = importlib.import_module(f"{PLATFORM_PATH}.destinations.{destination.short_name}")
-        return getattr(module, destination.class_name)
 
     @staticmethod
     def get_auth_provider(auth_provider: AuthProviderMetadata) -> Type[BaseAuthProvider]:

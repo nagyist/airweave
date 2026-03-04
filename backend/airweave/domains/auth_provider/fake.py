@@ -95,3 +95,9 @@ class FakeAuthProviderService:
         connection = await self.get_connection(db, readable_id=readable_id, ctx=ctx)
         self._connections.pop(readable_id, None)
         return connection
+
+    def validate_provider_config(self, short_name, provider_config=None):
+        self._calls.append(("validate_provider_config", short_name, provider_config))
+        if provider_config is None:
+            return {}
+        return dict(provider_config) if not isinstance(provider_config, dict) else provider_config

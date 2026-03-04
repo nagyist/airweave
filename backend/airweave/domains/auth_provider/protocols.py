@@ -1,4 +1,4 @@
-from typing import Protocol
+from typing import Any, Optional, Protocol
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -6,6 +6,7 @@ from airweave import schemas
 from airweave.api.context import ApiContext
 from airweave.core.protocols.registry import RegistryProtocol
 from airweave.domains.auth_provider.types import AuthProviderMetadata, AuthProviderRegistryEntry
+from airweave.platform.configs._base import ConfigValues
 
 
 class AuthProviderRegistryProtocol(RegistryProtocol[AuthProviderRegistryEntry], Protocol):
@@ -62,4 +63,12 @@ class AuthProviderServiceProtocol(Protocol):
         self, db: AsyncSession, *, readable_id: str, ctx: ApiContext
     ) -> schemas.AuthProviderConnection:
         """Delete an auth provider connection."""
+        ...
+
+    def validate_provider_config(
+        self,
+        short_name: str,
+        provider_config: Optional[ConfigValues],
+    ) -> dict[str, Any]:
+        """Validate auth provider config against the provider's config class."""
         ...

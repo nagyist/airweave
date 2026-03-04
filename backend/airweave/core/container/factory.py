@@ -247,6 +247,11 @@ def create_container(settings: Settings) -> Container:
         settings=settings,
     )
 
+    auth_provider_service = AuthProviderService(
+        auth_provider_registry=source_deps["auth_provider_registry"],
+        connection_repo=source_deps["conn_repo"],
+        credential_repo=source_deps["cred_repo"],
+    )
     update_service = SourceConnectionUpdateService(
         sc_repo=source_deps["sc_repo"],
         collection_repo=source_deps["collection_repo"],
@@ -275,6 +280,7 @@ def create_container(settings: Settings) -> Container:
         credential_encryptor=encryptor,
         temporal_workflow_service=sync_deps["temporal_workflow_service"],
         event_bus=event_bus,
+        auth_provider_service=auth_provider_service,
     )
     source_connection_service = SourceConnectionService(
         sc_repo=source_deps["sc_repo"],
@@ -288,11 +294,6 @@ def create_container(settings: Settings) -> Container:
         create_service=create_service,
         update_service=update_service,
         deletion_service=deletion_service,
-    )
-    auth_provider_service = AuthProviderService(
-        auth_provider_registry=source_deps["auth_provider_registry"],
-        connection_repo=source_deps["conn_repo"],
-        credential_repo=source_deps["cred_repo"],
     )
 
     # -----------------------------------------------------------------

@@ -1,6 +1,6 @@
 """Domain service for auth provider connections."""
 
-from typing import Optional
+from typing import Any, Optional
 
 from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -178,6 +178,48 @@ class AuthProviderService(AuthProviderServiceProtocol):
         response = await self._to_schema(db, connection, ctx, include_masked_client_id=False)
         await self._connection_repo.remove(db, id=connection.id, ctx=ctx)
         return response
+
+    def validate_provider_config(
+        self,
+        short_name: str,
+        provider_config: Optional[ConfigValues],
+    ) -> dict[str, Any]:
+        """Validate auth provider config against the provider's config class.
+
+        Raises InvalidInputError on validation failure or if the provider has no
+        config class defined.
+        """
+        entry = self._get_registry_entry(short_name)
+        config_class = entry.config_ref
+
+        if config_class is None:
+            raise InvalidInputError(
+                f"Auth provider '{entry.name}' does not have a configuration class defined."
+            )
+
+        if provider_config is None:
+            try:
+                return config_class().model_dump()
+            except Exception:
+                raise InvalidInputError(
+                    f"Auth provider '{entry.name}' requires config fields but none were provided."
+                ) from None
+
+        try:
+            config = config_class(**provider_config)
+            return config.model_dump()
+        except ValidationError as exc:
+            error_messages: list[str] = []
+            for error in exc.errors():
+                field = ".".join(str(loc) for loc in error.get("loc", []))
+                msg = error.get("msg", "")
+                error_messages.append(f"Field '{field}': {msg}")
+            error_detail = f"Invalid configuration for {config_class.__name__}:\n" + "\n".join(
+                error_messages
+            )
+            raise InvalidInputError(f"Invalid auth provider config: {error_detail}") from exc
+        except Exception as exc:
+            raise InvalidInputError(f"Invalid auth provider config: {exc}") from exc
 
     def _get_registry_entry(self, short_name: str) -> AuthProviderRegistryEntry:
         """Get auth provider registry entry or raise NotFoundException."""

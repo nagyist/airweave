@@ -42,41 +42,6 @@ class AuthFieldsResponse:
 class AuthProviderService:
     """Service for managing auth provider operations."""
 
-    # CODE BLUE: mark for deprecation
-    def get_supported_providers_for_source(self, source_short_name: str) -> List[str]:
-        """Get auth providers that support the given source.
-
-        Args:
-            source_short_name: The short name of the source
-
-        Returns:
-            List of auth provider short names that support this source
-        """
-        supported = []
-
-        # Get all available auth provider classes from the resource locator
-        auth_provider_classes = resource_locator.get_available_auth_provider_classes()
-
-        # Check each available provider
-        for auth_provider_class in auth_provider_classes:
-            short_name = auth_provider_class.short_name
-
-            # Check if source is blocked
-            blocked_sources = getattr(auth_provider_class, "BLOCKED_SOURCES", [])
-            if source_short_name in blocked_sources:
-                auth_provider_logger.debug(
-                    f"Source '{source_short_name}' is blocked by auth provider '{short_name}'"
-                )
-                continue
-
-            # If not blocked, it's supported
-            auth_provider_logger.debug(
-                f"Source '{source_short_name}' is supported by auth provider '{short_name}'"
-            )
-            supported.append(short_name)
-
-        return supported
-
     @staticmethod
     def _get_auth_provider_class(auth_provider_short_name: str):
         """Resolve auth provider class by short name from registry."""

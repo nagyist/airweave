@@ -139,11 +139,12 @@ async def test_get_with_auth_raises_and_logs_descriptive_message():
     mock_client = AsyncMock()
     mock_client.get = AsyncMock(side_effect=httpx.HTTPStatusError("429", request=MagicMock(), response=MagicMock()))
 
+    url = "https://graph.microsoft.com/v1.0/me/drive"
     with patch.object(source, "_get_descriptive_error_message", return_value="Custom error msg") as mock_desc:
         with pytest.raises(httpx.HTTPStatusError):
-            await source._get_with_auth(mock_client, "https://graph.microsoft.com/v1.0/me/drive")
+            await source._get_with_auth(mock_client, url)
         mock_desc.assert_called_once()
-        assert "graph.microsoft.com" in mock_desc.call_args[0][0]
+        assert mock_desc.call_args[0][0] == url
 
 
 # ------------------------------------------------------------------

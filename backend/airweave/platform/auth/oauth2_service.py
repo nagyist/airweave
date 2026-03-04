@@ -21,7 +21,9 @@ from airweave.core.exceptions import NotFoundException, TokenRefreshError
 from airweave.core.logging import ContextualLogger
 from airweave.core.shared_models import ConnectionStatus
 from airweave.db.unit_of_work import UnitOfWork
+from airweave.models import connection as connection_model
 from airweave.models.integration_credential import IntegrationType
+from airweave.schemas.source_connection import AuthenticationMethod
 from airweave.platform.auth.schemas import (
     BaseAuthSettings,
     OAuth2Settings,
@@ -969,32 +971,29 @@ class OAuth2Service:
     async def _create_connection(
         db: AsyncSession,
         source: schemas.Source,
-        settings: BaseAuthSettings,
+        auth_settings: BaseAuthSettings,
         oauth2_response: OAuth2TokenResponse,
         ctx: ApiContext,
-    ) -> schemas.Connection:
+    ) -> connection_model.Connection:
         """Create a new connection with OAuth2 credentials."""
         # Prepare credentials based on oauth type
         # If it's access_only OAuth, only store access token
         # Otherwise store both refresh and access tokens
-        decrypted_credentials = (
-            {"access_token": oauth2_response.access_token}
-            if (hasattr(settings, "oauth_type") and settings.oauth_type == "access_only")
-            else {
-                "refresh_token": oauth2_response.refresh_token,
-                "access_token": oauth2_response.access_token,
-            }
-        )
+        decrypted_credentials: dict[str, str] = {
+            "access_token": oauth2_response.access_token,
+        }
+        if not (auth_settings.oauth_type == "access_only") and oauth2_response.refresh_token:
+            decrypted_credentials["refresh_token"] = oauth2_response.refresh_token
 
         encrypted_credentials = credentials.encrypt(decrypted_credentials)
 
         async with UnitOfWork(db) as uow:
-            # Create integration credential
-            integration_credential_in = schemas.IntegrationCredentialCreate(
+            integration_credential_in = schemas.IntegrationCredentialCreateEncrypted(
                 name=f"{source.name} - {ctx.organization.id}",
-                description=(f"OAuth2 credentials for {source.name} - {ctx.organization.id}"),
+                description=f"OAuth2 credentials for {source.name} - {ctx.organization.id}",
                 integration_short_name=source.short_name,
                 integration_type=IntegrationType.SOURCE,
+                authentication_method=AuthenticationMethod.OAUTH_BROWSER,
                 encrypted_credentials=encrypted_credentials,
             )
 
@@ -1004,23 +1003,22 @@ class OAuth2Service:
 
             await uow.session.flush()
 
-            # Create connection
             connection_in = schemas.ConnectionCreate(
                 name=f"Connection to {source.name}",
                 integration_type=IntegrationType.SOURCE,
                 status=ConnectionStatus.ACTIVE,
-                integration_credential_id=integration_credential.id,
+                integration_credential_id=integration_credential.id,  # type: ignore[arg-type]
                 short_name=source.short_name,
             )
 
-            connection = await crud.connection.create(
+            new_connection = await crud.connection.create(
                 uow.session, obj_in=connection_in, ctx=ctx, uow=uow
             )
 
             await uow.commit()
-            await uow.session.refresh(connection)
+            await uow.session.refresh(new_connection)
 
-        return connection
+        return new_connection
 
 
 oauth2_service = OAuth2Service()

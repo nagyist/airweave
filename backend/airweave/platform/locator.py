@@ -4,7 +4,6 @@ import importlib
 from typing import Type
 
 from airweave import schemas
-from airweave.domains.auth_provider.types import AuthProviderMetadata
 from airweave.platform.auth_providers._base import BaseAuthProvider
 from airweave.platform.configs._base import BaseConfig
 from airweave.platform.entities._base import BaseEntity
@@ -37,22 +36,8 @@ class ResourceLocator:
             Type[BaseSource]: Source class
         """
         module = importlib.import_module(f"{PLATFORM_PATH}.sources.{source.short_name}")
-        return getattr(module, source.class_name)
-
-    @staticmethod
-    def get_auth_provider(auth_provider: AuthProviderMetadata) -> Type[BaseAuthProvider]:
-        """Get the auth provider class.
-
-        Args:
-            auth_provider (AuthProviderMetadata): Auth provider metadata
-
-        Returns:
-            Type[BaseAuthProvider]: Auth provider class
-        """
-        module = importlib.import_module(
-            f"{PLATFORM_PATH}.auth_providers.{auth_provider.short_name}"
-        )
-        return getattr(module, auth_provider.class_name)
+        # TODO: replace with typed registry lookup
+        return getattr(module, source.class_name)  # type: ignore[no-any-return]
 
     @staticmethod
     def get_auth_config(auth_config_class: str) -> Type[BaseConfig]:
@@ -65,8 +50,8 @@ class ResourceLocator:
             Type[BaseConfig]: Auth config class
         """
         module = importlib.import_module(f"{PLATFORM_PATH}.configs.auth")
-        auth_config_class = getattr(module, auth_config_class)
-        return auth_config_class
+        # TODO: replace with typed registry lookup
+        return getattr(module, auth_config_class)  # type: ignore[no-any-return]
 
     @staticmethod
     def get_config(config_class: str) -> Type[BaseConfig]:
@@ -79,11 +64,27 @@ class ResourceLocator:
             Type[BaseConfig]: Config class
         """
         module = importlib.import_module(f"{PLATFORM_PATH}.configs.config")
-        config_class = getattr(module, config_class)
-        return config_class
+        # TODO: replace with typed registry lookup
+        return getattr(module, config_class)  # type: ignore[no-any-return]
 
     # NOTE: get_transformer removed - chunking now handled by
     # CodeChunker and SemanticChunker in entity_pipeline.py
+
+    @staticmethod
+    def get_entity_definition(entity_definition: schemas.EntityDefinition) -> Type[BaseEntity]:
+        """Get the entity definition class.
+
+        Args:
+            entity_definition (schemas.EntityDefinition): Entity definition schema
+
+        Returns:
+            Type[BaseEntity]: Entity definition class
+        """
+        module = importlib.import_module(
+            f"{PLATFORM_PATH}.entities.{entity_definition.module_name}"
+        )
+        # TODO: replace with typed registry lookup
+        return getattr(module, entity_definition.class_name)  # type: ignore[no-any-return]
 
     @staticmethod
     def get_available_auth_provider_classes() -> list[Type[BaseAuthProvider]]:

@@ -2,7 +2,9 @@
 
 from typing import Any, Optional
 
-from pydantic import ConfigDict, Field, field_validator, model_validator
+from typing import Self
+
+from pydantic import ConfigDict, Field, ValidationInfo, field_validator, model_validator
 
 from airweave.platform.configs._base import BaseConfig
 
@@ -179,10 +181,10 @@ class BaseDatabaseAuthConfig(AuthConfig):
 
     @field_validator("database", "user", "password", "db_schema")
     @classmethod
-    def validate_not_empty(cls, v: str, info) -> str:
+    def validate_not_empty(cls, v: str, info: ValidationInfo) -> str:
         """Validate that required fields are not empty."""
         if not v or not v.strip():
-            field_name = info.field_name.replace("_", " ").title()
+            field_name = (info.field_name or "").replace("_", " ").title()
             raise ValueError(f"{field_name} is required")
         return v.strip()
 
@@ -350,7 +352,7 @@ class BitbucketAuthConfig(AuthConfig):
     )
 
     @model_validator(mode="after")
-    def validate_required_fields(self):
+    def validate_required_fields(self) -> Self:
         """Ensure required authentication fields are provided."""
         if not self.access_token or not self.access_token.strip():
             raise ValueError("API token is required")
@@ -637,10 +639,10 @@ class CTTIAuthConfig(AuthConfig):
 
     @field_validator("username", "password")
     @classmethod
-    def validate_not_empty(cls, v: str, info) -> str:
+    def validate_not_empty(cls, v: str, info: ValidationInfo) -> str:
         """Validate that username and password are not empty."""
         if not v or not v.strip():
-            field_name = info.field_name.replace("_", " ").title()
+            field_name = (info.field_name or "").replace("_", " ").title()
             raise ValueError(f"{field_name} is required")
         return v.strip()
 

@@ -62,7 +62,7 @@ class FakeConnectionRepository:
             status=obj_in.status,
             short_name=obj_in.short_name,
         )
-        self._store[connection.id] = connection
+        self._store[connection.id] = connection  # type: ignore[index]
         if connection.readable_id:
             self._readable_store[connection.readable_id] = connection
         return connection
@@ -93,7 +93,7 @@ class FakeConnectionRepository:
         updates = obj_in if isinstance(obj_in, dict) else obj_in.model_dump(exclude_unset=True)
         for key, value in updates.items():
             setattr(db_obj, key, value)
-        self._store[db_obj.id] = db_obj
+        self._store[db_obj.id] = db_obj  # type: ignore[index]
         if db_obj.readable_id:
             self._readable_store[db_obj.readable_id] = db_obj
         return db_obj

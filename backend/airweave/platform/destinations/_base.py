@@ -36,7 +36,7 @@ class BaseDestination(ABC):
         self.soft_fail = soft_fail
 
     @property
-    def logger(self):
+    def logger(self) -> ContextualLogger:
         """Get the logger for this destination, falling back to default if not set."""
         if self._logger is not None:
             return self._logger
@@ -51,7 +51,7 @@ class BaseDestination(ABC):
     @abstractmethod
     async def create(
         cls,
-        credentials: Optional[any],
+        credentials: Optional[Any],
         config: Optional[dict],
         collection_id: UUID,
         organization_id: Optional[UUID] = None,

@@ -143,7 +143,7 @@ async def test_trigger_sync_run(case: TriggerCase) -> None:
 
 
 @pytest.mark.asyncio
-async def test_create_sync_flushes_sync_and_sync_job_and_refreshes_sync_job_before_validation() -> None:
+async def test_create_sync_flushes_and_refreshes_job_before_validation() -> None:
     """Verify create_sync flushes twice and refreshes the job before validation."""
     sync_repo = AsyncMock()
     sync_job_repo = AsyncMock()

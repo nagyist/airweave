@@ -15,6 +15,7 @@
  */
 
 import express from 'express';
+import { decodeJwt } from 'jose';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { mcpAuthRouter } from '@modelcontextprotocol/sdk/server/auth/router.js';
 import type { AuthInfo } from '@modelcontextprotocol/sdk/server/auth/types.js';
@@ -77,10 +78,12 @@ function extractApiKey(req: express.Request): string | undefined {
  * 1. X-API-Key header → always API key, no JWT verification attempted.
  * 2. Authorization: Bearer <token> with OAuth enabled → try JWT verification.
  *    If valid JWT → OAuth path (req.auth set, _authMethod = 'oauth').
- *    If JWT verification fails → treat as API key (_authMethod = 'api-key').
+ *    If JWT verification fails and token is structurally a JWT (per jose
+ *    decodeJwt) → return 401 so the client can refresh the token.
+ *    If JWT verification fails and token is NOT a JWT → treat as API key.
  * 3. No credential → _authMethod stays undefined; handler returns 401.
  */
-async function resolveAuth(req: ReqWithAuth, _res: express.Response, next: express.NextFunction) {
+async function resolveAuth(req: ReqWithAuth, res: express.Response, next: express.NextFunction) {
     if (req.headers['x-api-key']) {
         req._authMethod = 'api-key';
         return next();
@@ -92,6 +95,19 @@ async function resolveAuth(req: ReqWithAuth, _res: express.Response, next: expre
             req.auth = await auth0Provider.verifyAccessToken(bearer);
             req._authMethod = 'oauth';
         } catch {
+            let isJwt = false;
+            try { decodeJwt(bearer); isJwt = true; } catch {}
+            if (isJwt) {
+                res.status(401).json({
+                    jsonrpc: '2.0',
+                    error: {
+                        code: -32001,
+                        message: 'Token expired or invalid',
+                    },
+                    id: null,
+                });
+                return;
+            }
             req._authMethod = 'api-key';
         }
         return next();

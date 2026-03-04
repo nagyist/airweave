@@ -11,6 +11,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import express from 'express';
 import request from 'supertest';
+import { decodeJwt } from 'jose';
 
 // ---- Replicated types and helpers from index-http.ts ----
 
@@ -46,7 +47,7 @@ function createOAuthApp(opts: {
     app.use(express.json());
 
     // Replicate resolveAuth middleware from index-http.ts
-    const resolveAuth = async (req: ReqWithAuth, _res: express.Response, next: express.NextFunction) => {
+    const resolveAuth = async (req: ReqWithAuth, res: express.Response, next: express.NextFunction) => {
         if (req.headers['x-api-key']) {
             req._authMethod = 'api-key';
             return next();
@@ -58,6 +59,19 @@ function createOAuthApp(opts: {
                 req.auth = await opts.verifyAccessToken(bearer);
                 req._authMethod = 'oauth';
             } catch {
+                let isJwt = false;
+                try { decodeJwt(bearer); isJwt = true; } catch {}
+                if (isJwt) {
+                    res.status(401).json({
+                        jsonrpc: '2.0',
+                        error: {
+                            code: -32001,
+                            message: 'Token expired or invalid',
+                        },
+                        id: null,
+                    });
+                    return;
+                }
                 req._authMethod = 'api-key';
             }
             return next();
@@ -222,8 +236,49 @@ describe('index-http dual auth', () => {
         });
     });
 
-    describe('Bearer token with failed JWT verification (API key fallback)', () => {
-        it('falls back to api-key when JWT verification throws', async () => {
+    describe('Bearer token with failed verification', () => {
+        const fakeJwt = [
+            Buffer.from(JSON.stringify({ alg: 'RS256', typ: 'JWT' })).toString('base64url'),
+            Buffer.from(JSON.stringify({ sub: 'user', exp: 0 })).toString('base64url'),
+            'fakesignature',
+        ].join('.');
+
+        it('returns 401 when structurally valid JWT fails verification', async () => {
+            const app = createOAuthApp({
+                oauthEnabled: true,
+                verifyAccessToken: async () => { throw new Error('expired'); },
+            });
+
+            const res = await request(app)
+                .post('/mcp')
+                .set('Authorization', `Bearer ${fakeJwt}`)
+                .send({});
+
+            expect(res.status).toBe(401);
+        });
+
+        it('401 response has correct JSON-RPC error body', async () => {
+            const app = createOAuthApp({
+                oauthEnabled: true,
+                verifyAccessToken: async () => { throw new Error('expired'); },
+            });
+
+            const res = await request(app)
+                .post('/mcp')
+                .set('Authorization', `Bearer ${fakeJwt}`)
+                .send({});
+
+            expect(res.body).toEqual({
+                jsonrpc: '2.0',
+                error: {
+                    code: -32001,
+                    message: 'Token expired or invalid',
+                },
+                id: null,
+            });
+        });
+
+        it('falls back to api-key for non-JWT Bearer token when verification throws', async () => {
             const resolveOrg = vi.fn();
 
             const app = createOAuthApp({
@@ -234,11 +289,11 @@ describe('index-http dual auth', () => {
 
             const res = await request(app)
                 .post('/mcp')
-                .set('Authorization', 'Bearer plain-api-key')
+                .set('Authorization', 'Bearer plain-api-key-abc')
                 .send({});
 
             expect(res.status).toBe(200);
-            expect(res.body.credential).toBe('plain-api-key');
+            expect(res.body.credential).toBe('plain-api-key-abc');
             expect(res.body.authMethod).toBe('api-key');
             expect(res.body.hadAuthInfo).toBe(false);
             expect(res.body.organizationId).toBeUndefined();

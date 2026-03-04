@@ -7,7 +7,6 @@ from .crud_collection import collection
 from .crud_connection import connection
 from .crud_connection_init_session import connection_init_session
 from .crud_destination import destination
-from .crud_embedding_model import embedding_model
 from .crud_entity import entity
 from .crud_entity_count import entity_count
 
@@ -35,7 +34,6 @@ __all__ = [
     "connection_init_session",
     "connection",
     "destination",
-    "embedding_model",
     "entity",
     "entity_count",
     "integration_credential",

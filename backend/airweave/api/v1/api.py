@@ -8,7 +8,6 @@ from airweave.api.v1.endpoints import (
     auth_providers,
     billing,
     collections,
-    embedding_models,
     entities,
     entity_counts,
     file_retrieval,
@@ -34,9 +33,6 @@ api_router.include_router(organizations.router, prefix="/organizations", tags=["
 api_router.include_router(billing.router, prefix="/billing", tags=["billing"])
 api_router.include_router(usage.router, prefix="/usage", tags=["usage"])
 api_router.include_router(sources.router, prefix="/sources", tags=["sources"])
-api_router.include_router(
-    embedding_models.router, prefix="/embedding_models", tags=["embedding_models"]
-)
 api_router.include_router(auth_providers.router, prefix="/auth-providers", tags=["auth-providers"])
 api_router.include_router(collections.router, prefix="/collections", tags=["collections"])
 api_router.include_router(search.router, prefix="/collections", tags=["collections"])

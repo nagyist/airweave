@@ -30,13 +30,6 @@ from .destination import (
     DestinationCreate,
     DestinationUpdate,
 )
-from .embedding_model import (
-    EmbeddingModel,
-    EmbeddingModelCreate,
-    EmbeddingModelInDBBase,
-    EmbeddingModelUpdate,
-    EmbeddingModelWithAuthenticationFields,
-)
 from .entity import Entity, EntityCount, EntityCreate, EntityInDBBase, EntityUpdate
 from .entity_count import EntityCount as EntityCountSchema
 from .entity_count import EntityCountCreate, EntityCountUpdate, EntityCountWithDefinition

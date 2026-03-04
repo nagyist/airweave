@@ -78,9 +78,7 @@ class ResourceLocator:
         Returns:
             Type[BaseDestination]: Destination class
         """
-        module = importlib.import_module(
-            f"{PLATFORM_PATH}.destinations.{destination.short_name}"
-        )
+        module = importlib.import_module(f"{PLATFORM_PATH}.destinations.{destination.short_name}")
         # TODO: replace with typed registry lookup
         return getattr(module, destination.class_name)  # type: ignore[no-any-return]
 

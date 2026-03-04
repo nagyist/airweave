@@ -8,10 +8,8 @@ from .collection import Collection
 from .connection import Connection
 from .connection_init_session import ConnectionInitSession
 from .destination import Destination
-from .embedding_model import EmbeddingModel
 from .entity import Entity
 from .entity_count import EntityCount
-
 from .entity_relation import EntityRelation
 from .feature_flag import FeatureFlag
 from .integration_credential import IntegrationCredential
@@ -44,7 +42,7 @@ __all__ = [
     "Connection",
     "ConnectionInitSession",
     "Destination",
-    "EmbeddingModel",
+    "EntityDefinition",
     "EntityRelation",
     "FeatureFlag",
     "IntegrationCredential",

@@ -713,9 +713,14 @@ class OAuth2Service:
         ):
             # Get connection and its credential
             connection = await crud.connection.get(db=db, id=connection_id, ctx=ctx)
+            if not connection or not connection.integration_credential_id:
+                return oauth2_token_response
+
             integration_credential = await crud.integration_credential.get(
                 db=db, id=connection.integration_credential_id, ctx=ctx
             )
+            if not integration_credential:
+                return oauth2_token_response
 
             # Update the credentials with the new refresh token
             current_credentials = credentials.decrypt(integration_credential.encrypted_credentials)

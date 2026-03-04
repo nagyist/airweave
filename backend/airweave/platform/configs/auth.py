@@ -898,58 +898,6 @@ class PipedreamAuthConfig(AuthConfig):
     )
 
 
-class S3AuthConfig(AuthConfig):
-    """S3 destination using cross-account IAM role assumption.
-
-    Uses AWS STS AssumeRole to obtain temporary credentials for writing to
-    customer S3 buckets without requiring long-lived access keys.
-    """
-
-    # Cross-account role assumption
-    role_arn: str = Field(
-        title="IAM Role ARN",
-        description="ARN of the IAM role to assume in customer's AWS account "
-        "(e.g., arn:aws:iam::123456789012:role/airweave-writer)",
-    )
-    external_id: str = Field(
-        title="External ID",
-        description="External ID for secure cross-account access (provided by customer)",
-    )
-
-    # Bucket configuration
-    bucket_name: str = Field(
-        title="Bucket Name",
-        description="S3 bucket name where data will be written",
-    )
-    bucket_prefix: str = Field(
-        default="airweave/",
-        title="Bucket Prefix",
-        description="Prefix for all Airweave data in the bucket",
-    )
-    aws_region: str = Field(
-        default="us-east-1",
-        title="AWS Region",
-        description="AWS region where the S3 bucket is located",
-    )
-
-    @model_validator(mode="after")
-    def validate_config(self):
-        """Ensure required fields are provided."""
-        self.role_arn = self.role_arn.strip()
-        self.external_id = self.external_id.strip()
-        self.bucket_name = self.bucket_name.strip()
-
-        if not self.role_arn:
-            raise ValueError("S3 requires role_arn")
-        if not self.role_arn.startswith("arn:aws:iam::"):
-            raise ValueError("role_arn must be a valid AWS IAM role ARN")
-        if not self.external_id:
-            raise ValueError("S3 requires external_id for secure cross-account access")
-        if not self.bucket_name:
-            raise ValueError("S3 requires bucket_name")
-        return self
-
-
 class ZohoCRMAuthConfig(OAuth2WithRefreshAuthConfig):
     """Zoho CRM authentication credentials schema."""
 

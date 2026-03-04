@@ -60,7 +60,7 @@ class BaseDestination(ABC):
         """Create a new destination with credentials and config (matches source pattern).
 
         Args:
-            credentials: Authentication credentials (e.g., S3AuthConfig, QdrantAuthConfig)
+            credentials: Authentication credentials
             config: Configuration parameters (e.g., bucket_name, url)
             collection_id: Collection UUID
             organization_id: Organization UUID

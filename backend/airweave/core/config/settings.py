@@ -170,10 +170,6 @@ class Settings(BaseSettings):
     # Docling OCR fallback service (None = disabled)
     DOCLING_BASE_URL: Optional[str] = None
 
-    # AWS S3 Destination credentials (for local testing)
-    AWS_S3_DESTINATION_ACCESS_KEY_ID: Optional[str] = None
-    AWS_S3_DESTINATION_SECRET_ACCESS_KEY: Optional[str] = None
-
     # Temporal configuration
     TEMPORAL_HOST: str = "localhost"
     TEMPORAL_PORT: int = 7233

@@ -21,10 +21,7 @@ class PowerPointPresentationEntity(FileEntity):
     """Schema for a Microsoft PowerPoint presentation as a file entity.
 
     Represents PowerPoint presentations (.pptx, .ppt, .pptm) stored in OneDrive/SharePoint.
-    Extends FileEntity to leverage Airweave's file processing pipeline which will:
-    - Download the PowerPoint file
-    - Extract text using document converters (python-pptx)
-    - Chunk the content for indexing
+    Extends FileEntity to leverage Airweave's file processing.
 
     Reference:
         https://learn.microsoft.com/en-us/graph/api/resources/driveitem

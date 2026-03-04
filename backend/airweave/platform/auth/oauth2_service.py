@@ -21,9 +21,7 @@ from airweave.core.exceptions import NotFoundException, TokenRefreshError
 from airweave.core.logging import ContextualLogger
 from airweave.core.shared_models import ConnectionStatus
 from airweave.db.unit_of_work import UnitOfWork
-from airweave.models import connection as connection_model
 from airweave.models.integration_credential import IntegrationType
-from airweave.schemas.source_connection import AuthenticationMethod
 from airweave.platform.auth.schemas import (
     BaseAuthSettings,
     OAuth2Settings,
@@ -130,44 +128,40 @@ class OAuth2Service:
         ------
             HTTPException: If settings are not found for the source or token exchange fails.
         """
-        auth_settings = await integration_settings.get_by_short_name(source_short_name)
-        if not auth_settings:
+        # Get the settings for this source to generate the URL
+        oauth2_settings = await integration_settings.get_by_short_name(source_short_name)
+        if not oauth2_settings:
             raise HTTPException(
                 status_code=404, detail=f"Settings not found for source: {source_short_name}"
-            )
-        if not isinstance(auth_settings, OAuth2Settings):
-            raise HTTPException(
-                status_code=400,
-                detail=f"Source {source_short_name} does not support OAuth2",
             )
 
         redirect_uri = OAuth2Service._get_redirect_url(source_short_name)
 
         # Render backend URL if it's a template
-        if auth_settings.backend_url_template:
+        if getattr(oauth2_settings, "backend_url_template", False):
             if not template_configs:
                 raise ValueError(f"template_configs needed for {source_short_name}")
             try:
-                backend_url = auth_settings.render_backend_url(**template_configs)
+                backend_url = oauth2_settings.render_backend_url(**template_configs)
             except KeyError as e:
                 raise ValueError(
                     f"Missing template variable {e} in template_configs for token exchange"
                 ) from e
         else:
-            backend_url = auth_settings.backend_url
+            backend_url = oauth2_settings.backend_url
 
         if not client_id and not client_secret:
-            client_id = auth_settings.client_id
-            client_secret = auth_settings.client_secret
+            client_id = oauth2_settings.client_id
+            client_secret = oauth2_settings.client_secret
 
         return await OAuth2Service._exchange_code(
             logger=ctx.logger,
             code=code,
             redirect_uri=redirect_uri,
-            client_id=client_id or auth_settings.client_id,
-            client_secret=client_secret or auth_settings.client_secret or "",
+            client_id=client_id,
+            client_secret=client_secret,
             backend_url=backend_url,
-            integration_config=auth_settings,
+            integration_config=oauth2_settings,
         )
 
     @staticmethod
@@ -281,35 +275,29 @@ class OAuth2Service:
             ValueError: If template URL requires template_configs but it's missing
         """
         try:
-            auth_settings = await integration_settings.get_by_short_name(source_short_name)
+            oauth2_settings = await integration_settings.get_by_short_name(source_short_name)
         except KeyError as e:
             raise HTTPException(
                 status_code=404, detail=f"Settings not found for source: {source_short_name}"
             ) from e
 
-        if not isinstance(auth_settings, OAuth2Settings):
-            raise HTTPException(
-                status_code=400,
-                detail=f"Source {source_short_name} does not support OAuth2",
-            )
-
         # Render backend URL if it's a template
-        if auth_settings.backend_url_template:
+        if getattr(oauth2_settings, "backend_url_template", False):
             if not template_configs:
                 raise ValueError(f"template_configs needed for {source_short_name}")
             try:
-                backend_url = auth_settings.render_backend_url(**template_configs)
+                backend_url = oauth2_settings.render_backend_url(**template_configs)
             except KeyError as e:
                 raise ValueError(
                     f"Missing template variable {e} in template_configs for token exchange"
                 ) from e
         else:
-            backend_url = auth_settings.backend_url
+            backend_url = oauth2_settings.backend_url
 
         if not client_id:
-            client_id = auth_settings.client_id
+            client_id = oauth2_settings.client_id
         if not client_secret:
-            client_secret = auth_settings.client_secret or ""
+            client_secret = oauth2_settings.client_secret
 
         return await OAuth2Service._exchange_code(
             logger=ctx.logger,
@@ -318,7 +306,7 @@ class OAuth2Service:
             client_id=client_id,
             client_secret=client_secret,
             backend_url=backend_url,
-            integration_config=auth_settings,
+            integration_config=oauth2_settings,
             code_verifier=code_verifier,
         )
 
@@ -359,18 +347,13 @@ class OAuth2Service:
             refresh_token = await OAuth2Service._get_refresh_token(ctx.logger, decrypted_credential)
 
             # Get and validate integration config
-            base_config = await OAuth2Service._get_integration_config(
+            integration_config = await OAuth2Service._get_integration_config(
                 ctx.logger, integration_short_name
             )
-            if not isinstance(base_config, OAuth2Settings):
-                raise TokenRefreshError(
-                    f"Integration {integration_short_name} is not an OAuth2 integration"
-                )
-            integration_config = base_config
 
             # Render backend URL if it's a template
             backend_url = integration_config.backend_url
-            if integration_config.backend_url_template:
+            if getattr(integration_config, "backend_url_template", False):
                 if not config_fields:
                     raise ValueError(
                         f"config_fields required for token refresh of {integration_short_name}"
@@ -460,7 +443,7 @@ class OAuth2Service:
     async def _get_integration_config(
         logger: ContextualLogger,
         integration_short_name: str,
-    ) -> BaseAuthSettings:
+    ) -> schemas.Source | schemas.Destination:
         """Get and validate integration configuration exists.
 
         Args:
@@ -470,7 +453,8 @@ class OAuth2Service:
 
         Returns:
         -------
-            BaseAuthSettings: The integration configuration.
+            schemas.Source | schemas.Destination: The integration
+                configuration.
 
         Raises:
         ------
@@ -487,7 +471,7 @@ class OAuth2Service:
     @staticmethod
     async def _get_client_credentials(
         logger: ContextualLogger,
-        integration_config: OAuth2Settings,
+        integration_config: schemas.Source | schemas.Destination,
         auth_fields: Optional[dict] = None,
         decrypted_credential: Optional[dict] = None,
     ) -> tuple[str, str]:
@@ -496,7 +480,7 @@ class OAuth2Service:
         Args:
         ----
             logger (ContextualLogger): The logger to use.
-            integration_config: The OAuth2 integration configuration.
+            integration_config: The integration configuration.
             auth_fields: Optional additional authentication fields for the connection.
             decrypted_credential: Optional decrypted credentials that may contain client ID/secret.
 
@@ -527,7 +511,7 @@ class OAuth2Service:
     @staticmethod
     def _prepare_token_request(
         logger: ContextualLogger,
-        integration_config: OAuth2Settings,
+        integration_config: schemas.Source | schemas.Destination,
         refresh_token: str,
         client_id: str,
         client_secret: str,
@@ -537,7 +521,8 @@ class OAuth2Service:
         Args:
         ----
             logger (ContextualLogger): The logger to use.
-            integration_config: The OAuth2 integration configuration.
+            integration_config (schemas.Source | schemas.Destination):
+                The integration configuration.
             refresh_token (str): The refresh token.
             client_id (str): The client ID.
             client_secret (str): The client secret.
@@ -561,16 +546,20 @@ class OAuth2Service:
         # For WITH_REFRESH OAuth (Google, Slack), scope should be included
         # EXCEPTION: Salesforce is with_refresh but does NOT support scope parameter during refresh
         # See: https://developer.atlassian.com/cloud/jira/platform/oauth-2-3lo-apps/#refresh-a-token
-        oauth_type = integration_config.oauth_type
-        short_name = integration_config.integration_short_name
+        oauth_type = getattr(integration_config, "oauth_type", None)
+        integration_short_name = getattr(integration_config, "integration_short_name", None)
 
         # Skip scope for: rotating_refresh types, or Salesforce
-        if oauth_type == "with_rotating_refresh" or short_name == "salesforce":
+        if oauth_type == "with_rotating_refresh" or integration_short_name == "salesforce":
             logger.debug(
                 f"Skipping scope in token refresh "
-                f"(oauth_type={oauth_type}, integration={short_name})"
+                f"(oauth_type={oauth_type}, integration={integration_short_name})"
             )
-        elif oauth_type == "with_refresh" and integration_config.scope:
+        elif (
+            oauth_type == "with_refresh"
+            and hasattr(integration_config, "scope")
+            and integration_config.scope
+        ):
             payload["scope"] = integration_config.scope
             logger.debug(
                 f"Including scope in token refresh (oauth_type=with_refresh): "
@@ -688,7 +677,7 @@ class OAuth2Service:
     async def _handle_token_response(
         db: AsyncSession,
         response: httpx.Response,
-        integration_config: BaseAuthSettings,
+        integration_config: schemas.Source | schemas.Destination,
         ctx: ApiContext,
         connection_id: UUID,
     ) -> OAuth2TokenResponse:
@@ -697,8 +686,10 @@ class OAuth2Service:
         Args:
         ----
             db (AsyncSession): The database session.
+            logger (ContextualLogger): The logger to use.
             response (httpx.Response): The response from the token refresh request.
-            integration_config: The integration auth settings.
+            integration_config (schemas.Source | schemas.Destination):
+                The integration configuration.
             ctx (ApiContext): The API context.
             connection_id (UUID): The ID of the connection to update.
 
@@ -715,14 +706,9 @@ class OAuth2Service:
         ):
             # Get connection and its credential
             connection = await crud.connection.get(db=db, id=connection_id, ctx=ctx)
-            if not connection or not connection.integration_credential_id:
-                return oauth2_token_response
-
             integration_credential = await crud.integration_credential.get(
                 db=db, id=connection.integration_credential_id, ctx=ctx
             )
-            if not integration_credential:
-                return oauth2_token_response
 
             # Update the credentials with the new refresh token
             current_credentials = credentials.decrypt(integration_credential.encrypted_credentials)
@@ -874,7 +860,7 @@ class OAuth2Service:
         client_id: str,
         client_secret: str,
         backend_url: str,
-        integration_config: OAuth2Settings,
+        integration_config: schemas.Source | schemas.Destination,
         code_verifier: Optional[str] = None,
     ) -> OAuth2TokenResponse:
         """Core method to exchange an authorization code for tokens.
@@ -971,29 +957,32 @@ class OAuth2Service:
     async def _create_connection(
         db: AsyncSession,
         source: schemas.Source,
-        auth_settings: BaseAuthSettings,
+        settings: BaseAuthSettings,
         oauth2_response: OAuth2TokenResponse,
         ctx: ApiContext,
-    ) -> connection_model.Connection:
+    ) -> schemas.Connection:
         """Create a new connection with OAuth2 credentials."""
         # Prepare credentials based on oauth type
         # If it's access_only OAuth, only store access token
         # Otherwise store both refresh and access tokens
-        decrypted_credentials: dict[str, str] = {
-            "access_token": oauth2_response.access_token,
-        }
-        if not (auth_settings.oauth_type == "access_only") and oauth2_response.refresh_token:
-            decrypted_credentials["refresh_token"] = oauth2_response.refresh_token
+        decrypted_credentials = (
+            {"access_token": oauth2_response.access_token}
+            if (hasattr(settings, "oauth_type") and settings.oauth_type == "access_only")
+            else {
+                "refresh_token": oauth2_response.refresh_token,
+                "access_token": oauth2_response.access_token,
+            }
+        )
 
         encrypted_credentials = credentials.encrypt(decrypted_credentials)
 
         async with UnitOfWork(db) as uow:
-            integration_credential_in = schemas.IntegrationCredentialCreateEncrypted(
+            # Create integration credential
+            integration_credential_in = schemas.IntegrationCredentialCreate(
                 name=f"{source.name} - {ctx.organization.id}",
-                description=f"OAuth2 credentials for {source.name} - {ctx.organization.id}",
+                description=(f"OAuth2 credentials for {source.name} - {ctx.organization.id}"),
                 integration_short_name=source.short_name,
                 integration_type=IntegrationType.SOURCE,
-                authentication_method=AuthenticationMethod.OAUTH_BROWSER,
                 encrypted_credentials=encrypted_credentials,
             )
 
@@ -1003,22 +992,23 @@ class OAuth2Service:
 
             await uow.session.flush()
 
+            # Create connection
             connection_in = schemas.ConnectionCreate(
                 name=f"Connection to {source.name}",
                 integration_type=IntegrationType.SOURCE,
                 status=ConnectionStatus.ACTIVE,
-                integration_credential_id=integration_credential.id,  # type: ignore[arg-type]
+                integration_credential_id=integration_credential.id,
                 short_name=source.short_name,
             )
 
-            new_connection = await crud.connection.create(
+            connection = await crud.connection.create(
                 uow.session, obj_in=connection_in, ctx=ctx, uow=uow
             )
 
             await uow.commit()
-            await uow.session.refresh(new_connection)
+            await uow.session.refresh(connection)
 
-        return new_connection
+        return connection
 
 
 oauth2_service = OAuth2Service()

@@ -1,4 +1,8 @@
-"""Service for managing auth provider operations."""
+"""Legacy auth provider service -- [code blue] pending deletion.
+
+Only get_runtime_auth_fields_for_source remains
+(sole caller: TokenManager._refresh_via_auth_provider).
+"""
 
 from dataclasses import dataclass
 from typing import List, Set, Union, get_origin
@@ -18,12 +22,7 @@ auth_provider_logger = logger.with_prefix("Auth Provider Service: ").with_contex
 
 @dataclass
 class AuthFieldsResponse:
-    """Auth fields required for a source.
-
-    Attributes:
-        all_fields: All auth field names that should be fetched
-        optional_fields: Field names that are optional (can be missing without error)
-    """
+    """Auth fields required for a source."""
 
     all_fields: List[str]
     optional_fields: Set[str]
@@ -34,27 +33,8 @@ class AuthFieldsResponse:
         return set(self.all_fields) - self.optional_fields
 
 
-# function to get most recent connection for an auth provider short name
-# function to get credentials of most recent connection
-
-
 class AuthProviderService:
-    """Service for managing auth provider operations."""
-
-    @staticmethod
-    def _get_auth_provider_class(auth_provider_short_name: str):
-        """Resolve auth provider class by short name from registry."""
-        # [code blue] todo: remove container import
-        from airweave.core.container import container as app_container
-
-        try:
-            entry = app_container.auth_provider_registry.get(auth_provider_short_name)
-            return entry.provider_class_ref
-        except KeyError:
-            raise HTTPException(
-                status_code=404,
-                detail=f"Auth provider '{auth_provider_short_name}' not found",
-            )
+    """Legacy service -- will be deleted once TokenManager is refactored."""
 
     async def get_runtime_auth_fields_for_source(
         self, db: AsyncSession, source_short_name: str

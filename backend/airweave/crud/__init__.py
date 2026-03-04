@@ -21,7 +21,6 @@ from .crud_source_rate_limit import source_rate_limit
 from .crud_sync import sync
 from .crud_sync_cursor import sync_cursor
 from .crud_sync_job import sync_job
-from .crud_transformer import transformer
 from .crud_usage import usage
 from .crud_user import user
 
@@ -47,7 +46,6 @@ __all__ = [
     "sync",
     "sync_cursor",
     "sync_job",
-    "transformer",
     "usage",
     "user",
 ]

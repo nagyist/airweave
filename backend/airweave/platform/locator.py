@@ -6,6 +6,7 @@ from typing import Type
 from airweave import schemas
 from airweave.platform.auth_providers._base import BaseAuthProvider
 from airweave.platform.configs._base import BaseConfig
+from airweave.platform.destinations._base import BaseDestination
 from airweave.platform.entities._base import BaseEntity
 from airweave.platform.sources._base import BaseSource
 
@@ -66,6 +67,22 @@ class ResourceLocator:
         module = importlib.import_module(f"{PLATFORM_PATH}.configs.config")
         # TODO: replace with typed registry lookup
         return getattr(module, config_class)  # type: ignore[no-any-return]
+
+    @staticmethod
+    def get_destination(destination: schemas.Destination) -> Type[BaseDestination]:
+        """Get the destination class.
+
+        Args:
+            destination (schemas.Destination): Destination schema
+
+        Returns:
+            Type[BaseDestination]: Destination class
+        """
+        module = importlib.import_module(
+            f"{PLATFORM_PATH}.destinations.{destination.short_name}"
+        )
+        # TODO: replace with typed registry lookup
+        return getattr(module, destination.class_name)  # type: ignore[no-any-return]
 
     # NOTE: get_transformer removed - chunking now handled by
     # CodeChunker and SemanticChunker in entity_pipeline.py

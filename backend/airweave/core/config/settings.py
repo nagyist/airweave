@@ -231,7 +231,7 @@ class Settings(BaseSettings):
     # for custom domains in custom deployments
     API_FULL_URL: Optional[str] = None
     APP_FULL_URL: Optional[str] = None
-    ADDITIONAL_CORS_ORIGINS: Optional[str] = None  # Separated by commas or semicolons
+    ADDITIONAL_CORS_ORIGINS: Optional[list[str]] = None
 
     # Svix (webhooks) configuration
     SVIX_URL: str = "http://localhost:8071"

@@ -18,7 +18,6 @@ from airweave.domains.embedders.protocols import DenseEmbedderProtocol, SparseEm
 from airweave.platform.destinations._base import BaseDestination
 from airweave.platform.locator import resource_locator
 from airweave.platform.sources._base import BaseSource
-from airweave.platform.sync.token_manager import TokenManager
 from airweave.schemas.search import RetrievalStrategy, SearchDefaults, SearchRequest
 from airweave.search.context import SearchContext
 from airweave.search.emitter import EventEmitter
@@ -899,84 +898,6 @@ class SearchFactory:
                 f"This source is configured for your collection but cannot be searched. "
                 f"Error: {str(e)}"
             ) from e
-
-    def _maybe_setup_token_manager(
-        self,
-        source_instance: BaseSource,
-        source_model,
-        db: AsyncSession,
-        source_connection,
-        source_connection_data: dict,
-        auth_config: dict,
-        ctx: ApiContext,
-    ) -> None:
-        """Setup token manager if source requires it, skip for proxy mode."""
-        from airweave.platform.auth_providers.auth_result import AuthProviderMode
-        from airweave.schemas.source_connection import OAuthType
-
-        auth_mode = auth_config.get("auth_mode")
-        is_proxy_mode = auth_mode == AuthProviderMode.PROXY
-
-        if is_proxy_mode:
-            ctx.logger.info(
-                f"⏭️ Skipping token manager for {source_connection.short_name} - "
-                f"proxy mode (proxy client manages tokens internally)"
-            )
-            return
-
-        if not source_model.oauth_type:
-            return
-
-        # Only create token manager for sources with refresh capability
-        if source_model.oauth_type not in (OAuthType.WITH_REFRESH, OAuthType.WITH_ROTATING_REFRESH):
-            ctx.logger.debug(
-                f"⏭️ Skipping token manager for {source_connection.short_name} - "
-                f"oauth_type={source_model.oauth_type} does not support token refresh"
-            )
-            return
-
-        self._setup_token_manager(
-            source_instance,
-            db,
-            source_connection,
-            source_connection_data.get("integration_credential_id"),
-            auth_config["credentials"],
-            ctx,
-            auth_provider_instance=auth_config.get("auth_provider_instance"),
-        )
-
-    def _setup_token_manager(
-        self,
-        source_instance: BaseSource,
-        db: AsyncSession,
-        source_connection,
-        integration_credential_id: Optional[UUID],
-        decrypted_credential: dict,
-        ctx: ApiContext,
-        auth_provider_instance=None,
-    ):
-        """Setup token manager for OAuth sources with auth provider support."""
-        minimal_connection = type(
-            "MinimalConnection",
-            (),
-            {
-                "id": source_connection.connection_id,
-                "integration_credential_id": integration_credential_id,
-                "config_fields": source_connection.config_fields,
-            },
-        )()
-
-        token_manager = TokenManager(
-            db=db,
-            source_short_name=source_connection.short_name,
-            source_connection=minimal_connection,
-            ctx=ctx,
-            initial_credentials=decrypted_credential,
-            is_direct_injection=False,
-            logger_instance=ctx.logger,
-            auth_provider_instance=auth_provider_instance,
-        )
-        source_instance.set_token_manager(token_manager)
 
 
 factory = SearchFactory()

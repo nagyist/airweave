@@ -1,7 +1,7 @@
 """Service for managing auth provider operations."""
 
 from dataclasses import dataclass
-from typing import List, Optional, Set, Union, get_origin
+from typing import List, Set, Union, get_origin
 
 from fastapi import HTTPException
 from pydantic_core import PydanticUndefined
@@ -9,7 +9,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import crud
 from airweave.core.logging import logger
-from airweave.platform.configs._base import ConfigValues
 from airweave.platform.locator import resource_locator
 
 auth_provider_logger = logger.with_prefix("Auth Provider Service: ").with_context(
@@ -108,89 +107,6 @@ class AuthProviderService:
                 )
             else:
                 return AuthFieldsResponse(all_fields=["access_token"], optional_fields=set())
-
-    async def validate_auth_provider_config(
-        self,
-        db: AsyncSession,
-        auth_provider_short_name: str,
-        auth_provider_config: Optional[ConfigValues],
-    ) -> dict:
-        """Validate auth provider config fields based on auth provider config class.
-
-        Args:
-            db: The database session
-            auth_provider_short_name: The short name of the auth provider
-            auth_provider_config: The auth provider config fields to validate (ConfigValues)
-
-        Returns:
-            The validated auth provider config fields as a dict
-
-        Raises:
-            HTTPException: If config fields are invalid or required but not provided
-        """
-        auth_provider_class = self._get_auth_provider_class(auth_provider_short_name)
-        auth_provider_name = getattr(auth_provider_class, "provider_name", auth_provider_short_name)
-
-        BASE_ERROR_MESSAGE = (
-            "For more information about auth provider configuration, "
-            "check [this page](https://docs.airweave.ai/auth-providers)."
-        )
-
-        # Check if auth provider has a config class defined - it MUST be defined
-        config_class_ref = getattr(auth_provider_class, "config_class", None)
-        if config_class_ref is None:
-            raise HTTPException(
-                status_code=422,
-                detail=f"Auth provider {auth_provider_name} does not have a "
-                "configuration class defined. " + BASE_ERROR_MESSAGE,
-            )
-
-        # Config class exists but no config fields provided - check if that's allowed
-        if auth_provider_config is None:
-            try:
-                # Create an empty instance to see if it accepts no fields
-                config = config_class_ref()
-                return config.model_dump()
-            except Exception:
-                # If it fails with no fields, config is required
-                raise HTTPException(
-                    status_code=422,
-                    detail=f"Auth provider {auth_provider_name} requires config fields "
-                    "but none were provided. " + BASE_ERROR_MESSAGE,
-                ) from None
-
-        # Both config class and config fields exist, validate them
-        try:
-            config = config_class_ref(**auth_provider_config)
-            return config.model_dump()
-        except Exception as e:
-            auth_provider_logger.error(f"Failed to validate auth provider config fields: {e}")
-            # Check if it's a Pydantic validation error and format it nicely
-            from pydantic import ValidationError
-
-            if isinstance(e, ValidationError):
-                # Extract the field names and error messages
-                error_messages = []
-                for error in e.errors():
-                    field = ".".join(str(loc) for loc in error.get("loc", []))
-                    msg = error.get("msg", "")
-                    error_messages.append(f"Field '{field}': {msg}")
-
-                error_detail = (
-                    f"Invalid configuration for {config_class_ref.__name__}:\n"
-                    + "\n".join(error_messages)
-                )
-                raise HTTPException(
-                    status_code=422,
-                    detail=f"Invalid auth provider config fields: {error_detail}. "
-                    + BASE_ERROR_MESSAGE,
-                ) from e
-            else:
-                # For other types of errors
-                raise HTTPException(
-                    status_code=422,
-                    detail=f"Invalid auth provider config fields: {str(e)}. " + BASE_ERROR_MESSAGE,
-                ) from e
 
 
 # Singleton instance

@@ -233,8 +233,7 @@ class BillingOperations(BillingOperationsProtocol):
                     if not previous_period_id:
                         previous_period_id = db_period.id
                     logger.info(
-                        f"Completed earlier period {db_period.id} "
-                        f"(truncated end to {period_start})"
+                        f"Completed earlier period {db_period.id} (truncated end to {period_start})"
                     )
                 else:
                     # Period starts at or after ours — it's a forward overlap,

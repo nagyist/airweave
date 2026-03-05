@@ -38,6 +38,20 @@ _log = logging.getLogger(__name__)
 
 _USAGE_CACHE_TTL = timedelta(seconds=15)
 
+
+def _parse_plan(raw: object) -> Optional[BillingPlan]:
+    """Coerce a string or BillingPlan value into a BillingPlan enum member."""
+    if isinstance(raw, BillingPlan):
+        return raw
+    if isinstance(raw, str):
+        try:
+            return BillingPlan.normalize(raw)
+        except (ValueError, KeyError):
+            _log.warning("Unrecognised billing plan value: %s", raw)
+            return None
+    return None
+
+
 _FRESH_ACTION_TYPES: frozenset[ActionType] = frozenset(
     {ActionType.SOURCE_CONNECTIONS, ActionType.TEAM_MEMBERS}
 )

@@ -28,19 +28,11 @@ from .connection import Connection, ConnectionCreate, ConnectionInDBBase, Connec
 from .destination import (
     Destination,
     DestinationCreate,
-    DestinationInDBBase,
     DestinationUpdate,
-    DestinationWithAuthenticationFields,
-)
-from .embedding_model import (
-    EmbeddingModel,
-    EmbeddingModelCreate,
-    EmbeddingModelInDBBase,
-    EmbeddingModelUpdate,
-    EmbeddingModelWithAuthenticationFields,
 )
 from .entity import Entity, EntityCount, EntityCreate, EntityInDBBase, EntityUpdate
 from .entity_count import EntityCount as EntityCountSchema
+from .entity_definition import EntityDefinition, EntityDefinitionCreate, EntityDefinitionUpdate
 from .entity_count import EntityCountCreate, EntityCountUpdate, EntityCountWithDefinition
 
 from .errors import (
@@ -148,7 +140,6 @@ from .sync_job import (
     SyncJobInDBBase,
     SyncJobUpdate,
 )
-from .transformer import Transformer, TransformerCreate, TransformerUpdate
 from .usage import (
     SingleActionCheckResponse,
     Usage,

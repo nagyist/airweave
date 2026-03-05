@@ -8,10 +8,9 @@ from .collection import Collection
 from .connection import Connection
 from .connection_init_session import ConnectionInitSession
 from .destination import Destination
-from .embedding_model import EmbeddingModel
 from .entity import Entity
 from .entity_count import EntityCount
-
+from .entity_definition import EntityDefinition
 from .entity_relation import EntityRelation
 from .feature_flag import FeatureFlag
 from .integration_credential import IntegrationCredential
@@ -27,7 +26,6 @@ from .sync import Sync
 from .sync_connection import SyncConnection
 from .sync_cursor import SyncCursor
 from .sync_job import SyncJob
-from .transformer import Transformer
 from .usage import Usage
 from .user import User
 from .user_organization import UserOrganization
@@ -44,7 +42,7 @@ __all__ = [
     "Connection",
     "ConnectionInitSession",
     "Destination",
-    "EmbeddingModel",
+    "EntityDefinition",
     "EntityRelation",
     "FeatureFlag",
     "IntegrationCredential",
@@ -60,7 +58,6 @@ __all__ = [
     "SyncConnection",
     "SyncCursor",
     "SyncJob",
-    "Transformer",
     "Usage",
     "User",
     "UserOrganization",

@@ -7,7 +7,6 @@ from .crud_collection import collection
 from .crud_connection import connection
 from .crud_connection_init_session import connection_init_session
 from .crud_destination import destination
-from .crud_embedding_model import embedding_model
 from .crud_entity import entity
 from .crud_entity_count import entity_count
 
@@ -22,7 +21,6 @@ from .crud_source_rate_limit import source_rate_limit
 from .crud_sync import sync
 from .crud_sync_cursor import sync_cursor
 from .crud_sync_job import sync_job
-from .crud_transformer import transformer
 from .crud_usage import usage
 from .crud_user import user
 
@@ -35,7 +33,6 @@ __all__ = [
     "connection_init_session",
     "connection",
     "destination",
-    "embedding_model",
     "entity",
     "entity_count",
     "integration_credential",
@@ -49,7 +46,6 @@ __all__ = [
     "sync",
     "sync_cursor",
     "sync_job",
-    "transformer",
     "usage",
     "user",
 ]

@@ -3,8 +3,6 @@
 Generates realistic booking content with embedded verification tokens for Monke.
 """
 
-from typing import Tuple
-
 from monke.client.llm import LLMClient
 from monke.generation.schemas.calcom import CalBookingArtifact
 
@@ -59,13 +57,3 @@ async def generate_cal_booking(model: str, token: str) -> dict:
         "attendee_time_zone": artifact.spec.attendee_time_zone,
         "token": token,
     }
-
-
-async def generate_cal_booking_update(model: str, token: str) -> Tuple[str, str]:
-    """Generate updated Cal.com booking title/description with the same token.
-
-    Used for incremental sync testing where the verification token must remain
-    stable but content changes.
-    """
-    data = await generate_cal_booking(model, token)
-    return data["title"], data["description"]

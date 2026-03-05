@@ -13,7 +13,7 @@ Data model reference:
 - List bookings: https://cal.com/docs/api-reference/v2/bookings/get-all-bookings
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, AsyncGenerator, Dict, Optional
 
 import httpx
@@ -280,19 +280,35 @@ class CalSource(BaseSource):
         self,
         client: httpx.AsyncClient,
     ) -> AsyncGenerator[Dict[str, Any], None]:
-        """Yield all event types from Cal.com.
+        """Yield all event types from Cal.com with pagination.
 
         Event types describe the bookable meeting templates (duration, locations,
-        booking page URL, etc.).
+        booking page URL, etc.). Uses take/skip and pagination metadata when present.
         """
-        data = await self._get_with_auth(
-            client,
-            "/v2/event-types",
-            params={"sortCreatedAt": "asc"},
-            headers={"cal-api-version": CAL_EVENT_TYPES_API_VERSION},
-        )
-        for item in data.get("data", []) or []:
-            yield item
+        params: Dict[str, Any] = {
+            "take": 100,
+            "skip": 0,
+            "sortCreatedAt": "asc",
+        }
+        while True:
+            data = await self._get_with_auth(
+                client,
+                "/v2/event-types",
+                params=params,
+                headers={"cal-api-version": CAL_EVENT_TYPES_API_VERSION},
+            )
+            items = data.get("data", []) or []
+            for item in items:
+                yield item
+
+            pagination = data.get("pagination") or {}
+            has_next = pagination.get("hasNextPage")
+            returned_items = pagination.get("returnedItems", len(items))
+
+            if not items or not has_next or returned_items == 0:
+                break
+
+            params["skip"] = params.get("skip", 0) + int(returned_items)
 
     def _event_type_to_entity(self, et: Dict[str, Any]) -> CalEventTypeEntity:
         """Transform a Cal.com event type JSON object into a CalEventTypeEntity."""
@@ -314,7 +330,11 @@ class CalSource(BaseSource):
         self,
         client: httpx.AsyncClient,
     ) -> AsyncGenerator[Dict[str, Any], None]:
-        """Yield all schedules for the authenticated user from Cal.com."""
+        """Yield all schedules for the authenticated user from Cal.com.
+
+        The v2/schedules endpoint returns all schedules in a single response;
+        no pagination parameters are documented.
+        """
         data = await self._get_with_auth(
             client,
             "/v2/schedules",
@@ -378,11 +398,11 @@ class CalSource(BaseSource):
                 else:
                     yield entity
 
-                # Update cursor watermark incrementally based on updated_at
+                # Update cursor watermark incrementally based on updated_at.
                 if self.cursor:
                     updated_at = entity.updated_at or entity.created_at
                     if updated_at:
-                        iso = updated_at.astimezone().isoformat()
+                        iso = updated_at.astimezone(timezone.utc).isoformat()
                         if latest_watermark is None or iso > latest_watermark:
                             latest_watermark = iso
                             self.cursor.update(last_updated_at=latest_watermark)

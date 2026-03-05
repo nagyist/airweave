@@ -9,6 +9,7 @@ from airweave.platform.configs.auth import CalComAuthConfig
 from airweave.platform.configs.config import CalComConfig
 from airweave.platform.sources.calcom import (
     CAL_BOOKINGS_API_VERSION,
+    CAL_EVENT_TYPES_API_VERSION,
     DEFAULT_CAL_API_BASE,
     CalSource,
 )
@@ -70,6 +71,146 @@ async def test_list_bookings_requests_all_statuses():
         assert params["status"] == "upcoming,recurring,past,cancelled,unconfirmed"
         assert params["afterUpdatedAt"] == "2026-01-01T00:00:00Z"
         assert kwargs["headers"]["cal-api-version"] == CAL_BOOKINGS_API_VERSION
+
+
+@pytest.mark.asyncio
+async def test_list_bookings_pagination_yields_all_pages():
+    """Pagination advances skip and requests next page until hasNextPage is false."""
+    source = await CalSource.create("cal_test_1234567890", {"host": "https://cal.example.com"})
+
+    page1 = [
+        {"uid": "b1", "id": 1, "title": "Booking 1", "updatedAt": "2026-01-01T00:00:00Z"},
+        {"uid": "b2", "id": 2, "title": "Booking 2", "updatedAt": "2026-01-01T00:00:00Z"},
+    ]
+    page2 = [
+        {"uid": "b3", "id": 3, "title": "Booking 3", "updatedAt": "2026-01-01T00:00:00Z"},
+    ]
+
+    # Source mutates params in place; capture a copy at call time to assert later.
+    params_snapshot: list = []
+
+    async def fake_get_with_auth(_client, path, params=None, headers=None):
+        params_snapshot.append(dict(params) if params else {})
+        if path != "/v2/bookings":
+            return {"data": [], "pagination": {"hasNextPage": False, "returnedItems": 0}}
+        skip = (params or {}).get("skip", 0)
+        if skip == 0:
+            return {
+                "data": page1,
+                "pagination": {"hasNextPage": True, "returnedItems": len(page1)},
+            }
+        if skip == 2:
+            return {
+                "data": page2,
+                "pagination": {"hasNextPage": False, "returnedItems": len(page2)},
+            }
+        return {"data": [], "pagination": {"hasNextPage": False, "returnedItems": 0}}
+
+    with patch.object(source, "_get_with_auth", new=AsyncMock(side_effect=fake_get_with_auth)) as m:
+        items = []
+        async for b in source._list_bookings(MagicMock()):
+            items.append(b)
+
+        assert len(items) == 3
+        assert items[0]["uid"] == "b1"
+        assert items[1]["uid"] == "b2"
+        assert items[2]["uid"] == "b3"
+
+        assert m.await_count == 2
+        assert params_snapshot[0]["skip"] == 0
+        assert params_snapshot[0]["take"] == 100
+        assert params_snapshot[1]["skip"] == 2
+        assert params_snapshot[1]["take"] == 100
+
+
+@pytest.mark.asyncio
+async def test_list_bookings_pagination_stops_when_no_items_returned():
+    """Pagination stops when returnedItems is 0 even if hasNextPage is true (defensive)."""
+    source = await CalSource.create("cal_test_1234567890", {"host": "https://cal.example.com"})
+
+    async def fake_get_with_auth(_client, path, params=None, headers=None):
+        return {"data": [], "pagination": {"hasNextPage": True, "returnedItems": 0}}
+
+    with patch.object(source, "_get_with_auth", new=AsyncMock(side_effect=fake_get_with_auth)) as m:
+        items = []
+        async for b in source._list_bookings(MagicMock()):
+            items.append(b)
+        assert len(items) == 0
+        assert m.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_list_event_types_pagination_yields_all_pages():
+    """Event types pagination advances skip and requests next page until hasNextPage is false."""
+    source = await CalSource.create("cal_test_1234567890", {"host": "https://cal.example.com"})
+
+    page1 = [
+        {"id": 1, "title": "Type 1", "slug": "type-1", "lengthInMinutes": 30},
+        {"id": 2, "title": "Type 2", "slug": "type-2", "lengthInMinutes": 60},
+    ]
+    page2 = [
+        {"id": 3, "title": "Type 3", "slug": "type-3", "lengthInMinutes": 90},
+    ]
+
+    # Source mutates params in place; capture a copy at call time to assert later.
+    params_snapshot: list = []
+
+    async def fake_get_with_auth(_client, path, params=None, headers=None):
+        params_snapshot.append(dict(params) if params else {})
+        if path != "/v2/event-types":
+            return {"data": [], "pagination": {"hasNextPage": False, "returnedItems": 0}}
+        skip = (params or {}).get("skip", 0)
+        if skip == 0:
+            return {
+                "data": page1,
+                "pagination": {"hasNextPage": True, "returnedItems": len(page1)},
+            }
+        if skip == 2:
+            return {
+                "data": page2,
+                "pagination": {"hasNextPage": False, "returnedItems": len(page2)},
+            }
+        return {"data": [], "pagination": {"hasNextPage": False, "returnedItems": 0}}
+
+    with patch.object(source, "_get_with_auth", new=AsyncMock(side_effect=fake_get_with_auth)) as m:
+        items = []
+        async for et in source._list_event_types(MagicMock()):
+            items.append(et)
+
+        assert len(items) == 3
+        assert items[0]["id"] == 1 and items[0]["slug"] == "type-1"
+        assert items[1]["id"] == 2 and items[1]["slug"] == "type-2"
+        assert items[2]["id"] == 3 and items[2]["slug"] == "type-3"
+
+        assert m.await_count == 2
+        assert params_snapshot[0]["skip"] == 0
+        assert params_snapshot[0]["take"] == 100
+        assert params_snapshot[1]["skip"] == 2
+        assert params_snapshot[1]["take"] == 100
+        # First call must be event-types with correct API version
+        assert m.call_args_list[0].kwargs["headers"]["cal-api-version"] == CAL_EVENT_TYPES_API_VERSION
+
+
+@pytest.mark.asyncio
+async def test_list_event_types_single_page_when_no_pagination():
+    """Event types with no pagination in response yield one page and stop (backward compatible)."""
+    source = await CalSource.create("cal_test_1234567890", {"host": "https://cal.example.com"})
+
+    single_page = [
+        {"id": 10, "title": "Only", "slug": "only", "lengthInMinutes": 15},
+    ]
+
+    async def fake_get_with_auth(_client, path, params=None, headers=None):
+        # No pagination key - simulates API that doesn't return pagination.
+        return {"data": single_page}
+
+    with patch.object(source, "_get_with_auth", new=AsyncMock(side_effect=fake_get_with_auth)) as m:
+        items = []
+        async for et in source._list_event_types(MagicMock()):
+            items.append(et)
+        assert len(items) == 1
+        assert items[0]["id"] == 10
+        assert m.await_count == 1
 
 
 @pytest.mark.asyncio

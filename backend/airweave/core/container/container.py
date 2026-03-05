@@ -46,6 +46,7 @@ from airweave.domains.embedders.protocols import (
     SparseEmbedderProtocol,
     SparseEmbedderRegistryProtocol,
 )
+from airweave.domains.entities.protocols import EntityDefinitionRegistryProtocol
 from airweave.domains.oauth.protocols import (
     OAuth1ServiceProtocol,
     OAuth2ServiceProtocol,
@@ -136,6 +137,7 @@ class Container:
     source_registry: SourceRegistryProtocol
     auth_provider_registry: AuthProviderRegistryProtocol
     auth_provider_service: AuthProviderServiceProtocol
+    entity_definition_registry: EntityDefinitionRegistryProtocol
 
     # Collection service — domain service for collection lifecycle
     collection_service: CollectionServiceProtocol

@@ -297,6 +297,7 @@ from .teams import (
     TeamsTeamEntity,
     TeamsUserEntity,
 )
+from .timed import TimedContainerEntity, TimedEntity
 from .todoist import (
     TodoistCommentEntity,
     TodoistProjectEntity,
@@ -620,6 +621,10 @@ ENTITIES_BY_SOURCE: dict[str, list[type]] = {
         TeamsMessageEntity,
         TeamsTeamEntity,
         TeamsUserEntity,
+    ],
+    "timed": [
+        TimedContainerEntity,
+        TimedEntity,
     ],
     "todoist": [
         TodoistCommentEntity,

@@ -474,8 +474,8 @@ class TestDeleteOrgNotFound:
 
 class TestDeleteExternalCleanupFailures:
     @pytest.mark.asyncio
-    async def test_identity_cleanup_failure_does_not_block_delete(self):
-        """Identity provider failure during cleanup must not prevent delete."""
+    async def test_identity_cleanup_failure_blocks_delete(self):
+        """Identity is source of truth — failure must prevent local delete."""
         identity = FakeIdentityProvider()
         event_bus = FakeEventBus()
         org_repo = FakeOrganizationRepository()
@@ -496,9 +496,9 @@ class TestDeleteExternalCleanupFailures:
             identity=identity,
             event_bus=event_bus,
         )
-        result = await ops.delete_organization(AsyncMock(), org_id, _make_user())
-        assert result is True
-        event_bus.assert_published("organization.deleted")
+        with pytest.raises(IdentityProviderError, match="Auth0 cleanup failed"):
+            await ops.delete_organization(AsyncMock(), org_id, _make_user())
+        event_bus.assert_not_published("organization.deleted")
 
     @pytest.mark.asyncio
     async def test_payment_cleanup_failure_does_not_block_delete(self):
@@ -531,8 +531,8 @@ class TestDeleteExternalCleanupFailures:
         event_bus.assert_published("organization.deleted")
 
     @pytest.mark.asyncio
-    async def test_all_external_cleanup_fails_delete_still_succeeds(self):
-        """Even if every external cleanup fails, delete returns True and publishes event."""
+    async def test_all_external_cleanup_fails_identity_error_propagates(self):
+        """Identity is source of truth — its failure propagates before reaching Stripe/webhook."""
         identity = FakeIdentityProvider()
         payment = FakePaymentGateway()
         webhook_admin = FakeWebhookAdmin()
@@ -568,6 +568,6 @@ class TestDeleteExternalCleanupFailures:
             billing_repo=billing_repo,
             event_bus=event_bus,
         )
-        result = await ops.delete_organization(AsyncMock(), org_id, _make_user())
-        assert result is True
-        event_bus.assert_published("organization.deleted")
+        with pytest.raises(IdentityProviderError, match="identity boom"):
+            await ops.delete_organization(AsyncMock(), org_id, _make_user())
+        event_bus.assert_not_published("organization.deleted")

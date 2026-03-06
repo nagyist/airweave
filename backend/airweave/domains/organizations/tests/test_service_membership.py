@@ -149,8 +149,8 @@ class TestRemoveMember:
             await svc.remove_member(db, org_id, uuid4(), _UserStub())
 
     @pytest.mark.asyncio
-    async def test_identity_failure_does_not_block_removal(self):
-        """Identity provider cleanup is best-effort after local delete."""
+    async def test_identity_failure_blocks_removal(self):
+        """Auth0 is source of truth — failure must prevent local delete."""
         identity = FakeIdentityProvider()
         event_bus = FakeEventBus()
         org_repo = FakeOrganizationRepository()
@@ -177,9 +177,9 @@ class TestRemoveMember:
         db = AsyncMock()
         db.execute = AsyncMock(return_value=SimpleNamespace(scalar_one_or_none=lambda: target_user))
 
-        result = await svc.remove_member(db, org_id, user_id, _UserStub())
-        assert result is True
-        event_bus.assert_published("organization.member_removed")
+        with pytest.raises(IdentityProviderError, match="down"):
+            await svc.remove_member(db, org_id, user_id, _UserStub())
+        event_bus.assert_not_published("organization.member_removed")
 
 
 # ===========================================================================

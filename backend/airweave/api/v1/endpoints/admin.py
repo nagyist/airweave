@@ -601,8 +601,33 @@ async def add_self_to_organization(
                 user_id=ctx.user.auth0_id,
             )
             ctx.logger.info(f"Added admin {ctx.user.email} to Auth0 org {org_data['auth0_org_id']}")
+
+            # Also assign the requested role in Auth0
+            all_roles = await auth0_management_client.get_roles()
+            role_id = next((r["id"] for r in all_roles if r["name"] == role), None)
+            if role_id:
+                await auth0_management_client.set_organization_member_roles(
+                    org_id=org_data["auth0_org_id"],
+                    user_id=ctx.user.auth0_id,
+                    role_ids=[role_id],
+                )
+                ctx.logger.info(
+                    f"Assigned role '{role}' to {ctx.user.email} in Auth0 org "
+                    f"{org_data['auth0_org_id']}"
+                )
+            else:
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Auth0 role '{role}' not found — cannot assign role",
+                )
+    except HTTPException:
+        raise
     except Exception as e:
-        ctx.logger.warning(f"Failed to add admin to Auth0 organization: {e}")
+        ctx.logger.error(f"Failed to add admin to Auth0 organization: {e}")
+        raise HTTPException(
+            status_code=502,
+            detail=f"Failed to complete Auth0 operation: {e}",
+        )
 
     membership_changed = await _update_or_create_membership(db, ctx, organization_id, role)
 

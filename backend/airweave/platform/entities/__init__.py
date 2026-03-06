@@ -48,6 +48,12 @@ from .box import (
     BoxFolderEntity,
     BoxUserEntity,
 )
+from .calcom import (
+    CalBookingDeletionEntity,
+    CalBookingEntity,
+    CalEventTypeEntity,
+    CalScheduleEntity,
+)
 from .clickup import (
     ClickUpCommentEntity,
     ClickUpFileEntity,
@@ -671,5 +677,11 @@ ENTITIES_BY_SOURCE: dict[str, list[type]] = {
         ZohoCRMProductEntity,
         ZohoCRMQuoteEntity,
         ZohoCRMSalesOrderEntity,
+    ],
+    "calcom": [
+        CalBookingEntity,
+        CalBookingDeletionEntity,
+        CalEventTypeEntity,
+        CalScheduleEntity,
     ],
 }

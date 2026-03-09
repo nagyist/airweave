@@ -3,7 +3,7 @@
 from typing import List
 from uuid import UUID
 
-from fastapi import Depends, HTTPException
+from fastapi import Body, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import crud, schemas
@@ -160,7 +160,7 @@ async def update_organization(
             status_code=403, detail="Only organization owners and admins can update organizations"
         )
 
-    organization = await crud.organization.get(db=db, id=organization_id, ctx=ctx)
+    organization = await crud.organization.get(db=db, id=organization_id, ctx=ctx, enrich=False)
     update_data = schemas.OrganizationUpdate(
         name=organization_data.name, description=organization_data.description or ""
     )
@@ -168,6 +168,7 @@ async def update_organization(
         db=db, db_obj=organization, obj_in=update_data, ctx=ctx
     )
 
+    enabled_features = crud.organization._extract_enabled_features(updated_organization)
     return schemas.OrganizationWithRole(
         id=updated_organization.id,
         name=updated_organization.name,
@@ -176,7 +177,7 @@ async def update_organization(
         modified_at=updated_organization.modified_at,
         role=user_role,
         is_primary=user_is_primary,
-        enabled_features=updated_organization.enabled_features or [],
+        enabled_features=enabled_features,
     )
 
 
@@ -431,6 +432,37 @@ async def remove_member_from_organization(
         )
         if success:
             return {"message": "Member removed successfully"}
+        raise HTTPException(status_code=404, detail="Member not found")
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+
+@router.patch("/{organization_id}/members/{user_id}", response_model=dict)
+async def change_member_role(
+    organization_id: UUID,
+    user_id: UUID,
+    role: str = Body(..., embed=True),
+    db: AsyncSession = Depends(deps.get_db),
+    ctx: ApiContext = Depends(deps.get_context),
+    org_service: OrganizationServiceProtocol = Inject(OrganizationServiceProtocol),
+) -> dict:
+    """Change a member's role in an organization (Auth0 first, then DB)."""
+    user_org = _find_user_org(ctx, organization_id)
+    if not user_org or not logic.can_manage_members(user_org.role):
+        raise HTTPException(
+            status_code=403, detail="Only organization owners and admins can change roles"
+        )
+    if role not in ("owner", "admin", "member"):
+        raise HTTPException(status_code=400, detail="Invalid role")
+    try:
+        success = await org_service.change_member_role(
+            db=db,
+            organization_id=organization_id,
+            user_id=user_id,
+            new_role=role,
+        )
+        if success:
+            return {"message": f"Role changed to {role}"}
         raise HTTPException(status_code=404, detail="Member not found")
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e)) from e

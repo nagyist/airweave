@@ -359,6 +359,7 @@ integrations:
     backend_url_template: true
 
   coda:
+    # Coda API v1 uses Personal API Token (DIRECT auth). OAuth via Packs can be added later.
 
   zoom:
     oauth_type: "with_refresh"

@@ -12,6 +12,7 @@ Reference:
   https://developers.zoom.us/docs/api/rest/reference/zoom-api/methods/#operation/recordingGet
 """
 
+import asyncio
 from datetime import datetime, timedelta, timezone
 from typing import Any, AsyncGenerator, Dict, Optional
 
@@ -131,7 +132,6 @@ class ZoomSource(BaseSource):
                 self.logger.warning(
                     f"Rate limit hit for {url}, waiting {retry_after} seconds before retry"
                 )
-                import asyncio
 
                 await asyncio.sleep(float(retry_after))
                 response = await client.get(url, headers=headers, params=params)

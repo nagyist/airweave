@@ -12,7 +12,7 @@ Reference:
   https://developers.zoom.us/docs/api/rest/reference/zoom-api/methods/#operation/recordingGet
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, AsyncGenerator, Dict, Optional
 
 import httpx
@@ -259,8 +259,8 @@ class ZoomSource(BaseSource):
         self.logger.info("Starting past meeting entity generation")
 
         # Get meetings from the last 30 days
-        from_date = (datetime.utcnow() - timedelta(days=30)).strftime("%Y-%m-%d")
-        to_date = datetime.utcnow().strftime("%Y-%m-%d")
+        from_date = (datetime.now(timezone.utc) - timedelta(days=30)).strftime("%Y-%m-%d")
+        to_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
         url = f"{self.ZOOM_BASE_URL}/users/{user_id}/meetings"
         params = {

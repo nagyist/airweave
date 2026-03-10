@@ -360,6 +360,7 @@ class OAuth2Service:
                     )
 
                 try:
+                    # TODO(code-blue): inject via constructor
                     import airweave.core.container as _container_module
 
                     config_ref = None

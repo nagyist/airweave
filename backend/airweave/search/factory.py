@@ -7,7 +7,7 @@ from fastapi import HTTPException
 from sqlalchemy import select as sa_select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-import airweave.core.container as _container_module
+import airweave.core.container as _container_module  # TODO(code-blue): inject via constructor
 from airweave import crud
 from airweave.api.context import ApiContext
 from airweave.core.config import settings

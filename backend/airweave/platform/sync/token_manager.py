@@ -259,6 +259,7 @@ class TokenManager:
         )
 
         try:
+            # TODO(code-blue): inject via constructor
             import airweave.core.container as _container_module
 
             if _container_module.container is None:

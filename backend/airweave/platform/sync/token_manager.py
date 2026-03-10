@@ -6,12 +6,12 @@ from typing import Any, Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+import airweave.core.container as _container_module  # TODO(code-blue): inject via constructor
 from airweave import crud, schemas
 from airweave.api.context import ApiContext
 from airweave.core import credentials
 from airweave.core.exceptions import TokenRefreshError
 from airweave.core.logging import logger
-from airweave.platform.auth.oauth2_service import oauth2_service
 
 
 class TokenManager:
@@ -259,9 +259,6 @@ class TokenManager:
         )
 
         try:
-            # TODO(code-blue): inject via constructor
-            import airweave.core.container as _container_module
-
             if _container_module.container is None:
                 raise RuntimeError("Container not initialized")
             entry = _container_module.container.source_registry.get(self.source_short_name)
@@ -343,14 +340,15 @@ class TokenManager:
 
                 decrypted_credential = credentials.decrypt(credential.encrypted_credentials)
 
-                # Use the oauth2_service to refresh the token
-                oauth2_response = await oauth2_service.refresh_access_token(
-                    db=refresh_db,
-                    integration_short_name=self.source_short_name,
-                    ctx=self.ctx,
-                    connection_id=self.connection_id,
-                    decrypted_credential=decrypted_credential,
-                    config_fields=self.config_fields,
+                oauth2_response = (
+                    await _container_module.container.oauth2_service.refresh_access_token(
+                        db=refresh_db,
+                        integration_short_name=self.source_short_name,
+                        ctx=self.ctx,
+                        connection_id=self.connection_id,
+                        decrypted_credential=decrypted_credential,
+                        config_fields=self.config_fields,
+                    )
                 )
 
                 return oauth2_response.access_token

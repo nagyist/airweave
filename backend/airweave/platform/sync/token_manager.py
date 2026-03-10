@@ -259,18 +259,17 @@ class TokenManager:
         )
 
         try:
-            # Get the runtime auth fields required by the source
-            from airweave.core.auth_provider_service import auth_provider_service
+            import airweave.core.container as _container_module
 
-            auth_fields = await auth_provider_service.get_runtime_auth_fields_for_source(
-                self.db, self.source_short_name
-            )
+            if _container_module.container is None:
+                raise RuntimeError("Container not initialized")
+            entry = _container_module.container.source_registry.get(self.source_short_name)
 
             # Get fresh credentials from auth provider instance
             fresh_credentials = await self.auth_provider_instance.get_creds_for_source(
                 source_short_name=self.source_short_name,
-                source_auth_config_fields=auth_fields.all_fields,
-                optional_fields=auth_fields.optional_fields,
+                source_auth_config_fields=entry.runtime_auth_all_fields,
+                optional_fields=entry.runtime_auth_optional_fields,
             )
 
             # Extract access token

@@ -50,10 +50,10 @@ def _validate_source_template_config(source_class: Type[BaseSource]) -> None:
         ValueError: If template variables don't match auth-required config fields
     """
     short_name = source_class.short_name
-    config_class_name = source_class.config_class
+    config_class = source_class.config_class
 
     # Skip if no config class
-    if not config_class_name:
+    if not config_class:
         return
 
     # Load integration settings to check for templates
@@ -84,10 +84,6 @@ def _validate_source_template_config(source_class: Type[BaseSource]) -> None:
             )
             return
 
-        # Load config class and get template config fields
-        from airweave.platform.locator import resource_locator
-
-        config_class = resource_locator.get_config(config_class_name)
         template_config_fields = set(config_class.get_template_config_fields())
 
         # Validate: every template variable must have a matching RequiredTemplateConfig
@@ -98,7 +94,7 @@ def _validate_source_template_config(source_class: Type[BaseSource]) -> None:
                 f"  YAML template variables: {sorted(all_template_vars)}\n"
                 f"  Config template fields: {sorted(template_config_fields)}\n"
                 f"  Missing in config class: {sorted(missing_in_config)}\n\n"
-                f"Fix: Add to {config_class_name}:\n"
+                f"Fix: Add to {config_class.__name__}:\n"
                 + "\n".join(
                     [
                         f"    {var}: str = RequiredTemplateConfig("

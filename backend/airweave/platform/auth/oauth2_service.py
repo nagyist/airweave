@@ -359,22 +359,21 @@ class OAuth2Service:
                         f"config_fields required for token refresh of {integration_short_name}"
                     )
 
-                # Extract only auth-required fields if config class is available
                 try:
-                    from airweave import crud
+                    import airweave.core.container as _container_module
 
-                    source = await crud.source.get_by_short_name(db, integration_short_name)
-                    if source and source.config_class:
-                        from airweave.platform.locator import resource_locator
-
-                        config_class = resource_locator.get_config(source.config_class)
-                        template_config_values = config_class.extract_template_configs(
-                            config_fields
+                    config_ref = None
+                    if _container_module.container is not None:
+                        entry = _container_module.container.source_registry.get(
+                            integration_short_name
                         )
+                        config_ref = entry.config_ref
+
+                    if config_ref is not None:
+                        template_config_values = config_ref.extract_template_configs(config_fields)
                     else:
                         template_config_values = config_fields
                 except Exception:
-                    # Fallback to all config fields
                     template_config_values = config_fields
 
                 try:

@@ -5,15 +5,13 @@ Only get_runtime_auth_fields_for_source remains
 """
 
 from dataclasses import dataclass
-from typing import List, Set, Union, get_origin
+from typing import List, Set
 
 from fastapi import HTTPException
-from pydantic_core import PydanticUndefined
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from airweave import crud
+import airweave.core.container as _container_module
 from airweave.core.logging import logger
-from airweave.platform.locator import resource_locator
 
 auth_provider_logger = logger.with_prefix("Auth Provider Service: ").with_context(
     component="auth_provider_service"
@@ -41,52 +39,35 @@ class AuthProviderService:
     ) -> AuthFieldsResponse:
         """Get the runtime auth fields required from an auth provider for a source.
 
-        Returns all auth config fields along with which ones are optional, so auth
+        Returns precomputed auth field metadata from the source registry so auth
         providers can skip missing optional fields instead of hard-failing.
 
         Args:
-            db: The database session
+            db: The database session (unused, kept for API compat)
             source_short_name: The short name of the source
 
         Returns:
             AuthFieldsResponse with all field names and optional field names.
-            Auth providers should attempt to fetch all fields but only fail on
-            missing required ones.
 
         Raises:
-            HTTPException: If source not found
+            HTTPException: If source not found in registry
         """
-        # Get the source model
-        source_model = await crud.source.get_by_short_name(db, short_name=source_short_name)
-        if not source_model:
+        if _container_module.container is None:
+            raise RuntimeError("Container not initialized")
+
+        try:
+            entry = _container_module.container.source_registry.get(source_short_name)
+        except KeyError:
             raise HTTPException(status_code=404, detail=f"Source '{source_short_name}' not found")
 
-        # Check if source has auth_config_class (DIRECT auth sources)
-        if source_model.auth_config_class:
-            auth_config_class = resource_locator.get_auth_config(source_model.auth_config_class)
-            all_fields = list(auth_config_class.model_fields.keys())
-
-            # Determine which fields are optional based on Pydantic model metadata
-            optional_fields: Set[str] = set()
-            for name, field_info in auth_config_class.model_fields.items():
-                has_default = field_info.default is not PydanticUndefined
-                is_optional = get_origin(field_info.annotation) is Union
-                if has_default or is_optional:
-                    optional_fields.add(name)
-
-            auth_provider_logger.debug(
-                f"Source '{source_short_name}' auth fields: {all_fields}, "
-                f"optional: {optional_fields}"
-            )
-            return AuthFieldsResponse(all_fields=all_fields, optional_fields=optional_fields)
-        else:
-            # Pure OAuth -- all fields are required
-            if source_model.oauth_type == "with_refresh":
-                return AuthFieldsResponse(
-                    all_fields=["access_token", "refresh_token"], optional_fields=set()
-                )
-            else:
-                return AuthFieldsResponse(all_fields=["access_token"], optional_fields=set())
+        auth_provider_logger.debug(
+            f"Source '{source_short_name}' auth fields: {entry.runtime_auth_all_fields}, "
+            f"optional: {entry.runtime_auth_optional_fields}"
+        )
+        return AuthFieldsResponse(
+            all_fields=entry.runtime_auth_all_fields,
+            optional_fields=entry.runtime_auth_optional_fields,
+        )
 
 
 # Singleton instance

@@ -82,7 +82,7 @@ export const SourceConfigView: React.FC<SourceConfigViewProps> = ({ humanReadabl
   const [isCreating, setIsCreating] = useState(false);
   const [sourceDetails, setSourceDetails] = useState<SourceDetails | null>(null);
   const [authFields, setAuthFields] = useState<Record<string, string>>({});
-  const [configData, setConfigData] = useState<Record<string, string | string[]>>({});
+  const [configData, setConfigData] = useState<Record<string, string | string[] | boolean>>({});
   const [useOwnCredentials, setUseOwnCredentials] = useState(false);
   // Initialize connection name from store or with source default
   const [connectionName, setConnectionName] = useState(
@@ -209,9 +209,13 @@ export const SourceConfigView: React.FC<SourceConfigViewProps> = ({ humanReadabl
 
           // Initialize config fields
           if (source.config_fields?.fields) {
-            const initialValues: Record<string, string> = {};
+            const initialValues: Record<string, string | string[] | boolean> = {};
             source.config_fields.fields.forEach((field: any) => {
-              initialValues[field.name] = '';
+              if (field.type === 'boolean') {
+                initialValues[field.name] = field.default === true;
+              } else {
+                initialValues[field.name] = '';
+              }
             });
             setConfigData(initialValues);
           }
@@ -308,6 +312,7 @@ export const SourceConfigView: React.FC<SourceConfigViewProps> = ({ humanReadabl
       if (requiredConfigFields.length > 0) {
         const allFilled = requiredConfigFields.every(field => {
           const value = configData[field.name];
+          if (typeof value === 'boolean') return true;
           if (Array.isArray(value)) {
             return value.length > 0;
           }
@@ -687,11 +692,33 @@ export const SourceConfigView: React.FC<SourceConfigViewProps> = ({ humanReadabl
                               placeholder={`Enter ${field.title?.toLowerCase() || field.name} and press Enter...`}
                               transformInput={sourceDetails?.short_name === 'jira' && field.name === 'project_keys' ? (v) => v.toUpperCase() : undefined}
                             />
+                          ) : field.type === 'boolean' ? (
+                            <label className="flex items-center gap-3 cursor-pointer group">
+                              <div className="relative">
+                                <input
+                                  type="checkbox"
+                                  checked={!!configData[field.name]}
+                                  onChange={(e) => setConfigData({ ...configData, [field.name]: e.target.checked })}
+                                  className="sr-only"
+                                />
+                                <div className={cn(
+                                  "w-10 h-6 rounded-full transition-colors",
+                                  configData[field.name]
+                                    ? "bg-blue-600"
+                                    : isDark ? "bg-gray-800" : "bg-gray-200"
+                                )}>
+                                  <div className={cn(
+                                    "absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-transform",
+                                    configData[field.name] && "translate-x-4"
+                                  )} />
+                                </div>
+                              </div>
+                            </label>
                           ) : (
                             <input
                               type="text"
                               placeholder=""
-                              value={configData[field.name] || ''}
+                              value={(configData[field.name] as string) || ''}
                               onChange={(e) => setConfigData({ ...configData, [field.name]: e.target.value })}
                               className={cn(
                                 "w-full px-4 py-2 rounded-lg text-sm",

@@ -12,7 +12,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from airweave import crud, schemas
 from airweave.core.config import settings
 from airweave.core.logging import logger
-from airweave.platform.destinations._base import BaseDestination
 from airweave.platform.sources._base import BaseSource
 
 # Compute platform directory from this file's location (works regardless of cwd)
@@ -140,8 +139,6 @@ def _process_module_classes(module, components: Dict[str, list[Type | Callable]]
     for _, cls in inspect.getmembers(module, inspect.isclass):
         if getattr(cls, "is_source", False):
             components["sources"].append(cls)
-        elif getattr(cls, "is_destination", False):
-            components["destinations"].append(cls)
         elif getattr(cls, "is_auth_provider", False):
             components["auth_providers"].append(cls)
 
@@ -162,7 +159,6 @@ def _get_decorated_classes() -> Dict[str, list[Type | Callable]]:
     """
     components = {
         "sources": [],
-        "destinations": [],
         "auth_providers": [],
     }
 
@@ -397,35 +393,6 @@ async def _sync_sources(
     sync_logger.info(f"Synced {len(source_definitions)} sources to database.")
 
 
-async def _sync_destinations(db: AsyncSession, destinations: list[Type[BaseDestination]]) -> None:
-    """Sync destinations with the database.
-
-    Args:
-        db (AsyncSession): Database session
-        destinations (list[Type[BaseDestination]]): List of destination classes
-    """
-    sync_logger.info("Syncing destinations to database.")
-
-    destination_definitions = []
-    for dest_class in destinations:
-        dest_def = schemas.DestinationCreate(
-            name=dest_class.destination_name,
-            description=dest_class.__doc__,
-            short_name=dest_class.short_name,
-            class_name=dest_class.__name__,
-            auth_config_class=getattr(dest_class.auth_config_class, "__name__", None),
-            labels=getattr(dest_class, "labels", []),
-        )
-        destination_definitions.append(dest_def)
-
-    await crud.destination.sync(db, destination_definitions)
-    sync_logger.info(f"Synced {len(destination_definitions)} destinations to database.")
-
-
-# NOTE: Transformer sync functions removed - chunking now handled by
-# CodeChunker and SemanticChunker in entity_pipeline.py, not decorator-based transformers
-
-
 async def sync_platform_components(db: AsyncSession) -> None:
     """Sync all platform components with the database.
 
@@ -442,17 +409,13 @@ async def sync_platform_components(db: AsyncSession) -> None:
         components = _get_decorated_classes()
         c = components
 
-        # Log component counts to help diagnose issues
         sync_logger.info(
-            f"Found {len(c['sources'])} sources, {len(c['destinations'])} destinations, "
-            f"{len(c['auth_providers'])} auth providers."
+            f"Found {len(c['sources'])} sources, {len(c['auth_providers'])} auth providers."
         )
 
         module_entity_map = _build_entity_module_map()
 
-        # Sync platform components
         await _sync_sources(db, components["sources"], module_entity_map)
-        await _sync_destinations(db, components["destinations"])
 
         sync_logger.info("Platform components sync completed successfully.")
     except ImportError as e:

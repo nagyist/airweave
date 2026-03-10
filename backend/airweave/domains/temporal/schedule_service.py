@@ -473,7 +473,7 @@ class TemporalScheduleService(TemporalScheduleServiceProtocol):
             if e.status != RPCStatusCode.NOT_FOUND:
                 raise
         except Exception:
-            pass
+            raise
 
         logger.info(f"Creating system schedule {schedule_id}")
         await client.create_schedule(

@@ -657,7 +657,7 @@ ENSURE_SINGLETON_CASES = [
         describe_raises_other=True,
     ),
     EnsureSingletonCase(
-        name="creates_on_generic_describe_error",
+        name="propagates_generic_describe_error",
         describe_raises_generic=True,
     ),
 ]
@@ -693,6 +693,19 @@ async def test_ensure_singleton_schedule(case: EnsureSingletonCase):
 
     if case.describe_raises_other:
         with pytest.raises(RPCError):
+            await svc._ensure_singleton_schedule(
+                client=mock_client,
+                schedule_id="test-system-sched",
+                workflow_cls=mock_workflow_cls,
+                workflow_id="test-workflow",
+                interval=timedelta(minutes=5),
+                note="test note",
+            )
+        mock_client.create_schedule.assert_not_called()
+        return
+
+    if case.describe_raises_generic:
+        with pytest.raises(RuntimeError):
             await svc._ensure_singleton_schedule(
                 client=mock_client,
                 schedule_id="test-system-sched",

@@ -60,6 +60,12 @@ class GitHubSource(BaseSource):
 
     BASE_URL = "https://api.github.com"
 
+    personal_access_token: str
+    repo_name: str
+    branch: Optional[str]
+    max_file_size: int
+    sync_pull_requests: bool
+
     def get_default_cursor_field(self) -> Optional[str]:
         """Get the default cursor field for GitHub source.
 
@@ -270,7 +276,7 @@ class GitHubSource(BaseSource):
             self.cursor.update(
                 last_repository_pushed_at=current_pushed_at,
                 repo_name=repo_name,
-                branch=getattr(self, "branch", None),
+                branch=self.branch,
             )
 
         return GitHubRepositoryEntity(
@@ -1059,7 +1065,7 @@ class GitHubSource(BaseSource):
                 yield repo_entity
 
             # Sync merged pull requests and review comments if enabled
-            if getattr(self, "sync_pull_requests", False):
+            if self.sync_pull_requests:
                 cursor_data = self.cursor.data if self.cursor else {}
                 last_pr_updated = cursor_data.get("last_pr_updated_at") or None
 

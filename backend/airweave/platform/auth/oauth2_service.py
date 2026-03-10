@@ -29,8 +29,6 @@ from airweave.platform.auth.schemas import (
 )
 from airweave.platform.auth.settings import integration_settings
 
-# Note: oauth1_service imported at bottom to avoid circular dependency
-
 
 class OAuth2Service:
     """Service class for handling OAuth2 authentication and token exchange."""
@@ -1014,8 +1012,3 @@ class OAuth2Service:
 oauth2_service = OAuth2Service()
 
 __all__ = ["oauth2_service", "OAuth2Service"]
-
-# Import OAuth1 service at bottom to avoid circular dependency
-from airweave.platform.auth.oauth1_service import oauth1_service  # noqa: E402, F401
-
-__all__.append("oauth1_service")

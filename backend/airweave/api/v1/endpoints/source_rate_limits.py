@@ -10,6 +10,9 @@ from airweave import crud, schemas
 from airweave.api import deps
 from airweave.api.context import ApiContext
 from airweave.api.router import TrailingSlashRouter
+
+# [code blue] todo: inject source_registry via Inject() instead of container access
+from airweave.core import container as container_mod
 from airweave.core.shared_models import FeatureFlag
 from airweave.db.session import get_db
 from airweave.models.source_rate_limit import SourceRateLimit
@@ -36,8 +39,8 @@ async def list_source_rate_limits(
             status_code=403, detail="SOURCE_RATE_LIMITING feature not enabled for this organization"
         )
 
-    # Get all sources
-    sources = await crud.source.get_all(db)
+    source_registry = container_mod.container.source_registry
+    sources = source_registry.list_all()
 
     # Get configured limits for this org
     stmt = select(SourceRateLimit).where(SourceRateLimit.organization_id == ctx.organization.id)
@@ -48,7 +51,6 @@ async def list_source_rate_limits(
     # Build response with all sources
     results = []
     for source in sources:
-        # Skip the special pipedream_proxy entry (handled separately)
         if source.short_name == "pipedream_proxy":
             continue
 

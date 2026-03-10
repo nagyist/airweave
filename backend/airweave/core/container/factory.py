@@ -77,7 +77,6 @@ from airweave.domains.oauth.repository import (
     OAuthCredentialRepository,
     OAuthInitSessionRepository,
     OAuthRedirectSessionRepository,
-    OAuthSourceRepository,
 )
 from airweave.domains.organizations.protocols import UserOrganizationRepositoryProtocol
 from airweave.domains.organizations.repository import OrganizationRepository as OrgRepo
@@ -390,7 +389,6 @@ def create_container(settings: Settings) -> Container:
         temporal_workflow_service=sync_deps["temporal_workflow_service"],
         event_bus=event_bus,
         organization_repo=OrgRepo(),
-        source_repo=source_deps["source_repo"],
         sc_repo=source_deps["sc_repo"],
         credential_repo=source_deps["cred_repo"],
         connection_repo=source_deps["conn_repo"],
@@ -706,7 +704,7 @@ def _create_source_services(settings: Settings) -> dict:
     source_registry.build()
 
     # Repository adapters
-    sc_repo = SourceConnectionRepository()
+    sc_repo = SourceConnectionRepository(source_registry=source_registry)
     collection_repo = CollectionRepository()
     conn_repo = ConnectionRepository()
     cred_repo = IntegrationCredentialRepository()
@@ -714,14 +712,12 @@ def _create_source_services(settings: Settings) -> dict:
     sync_cursor_repo = SyncCursorRepository()
     sync_job_repo = SyncJobRepository()
     redirect_session_repo = OAuthRedirectSessionRepository()
-    source_repo = OAuthSourceRepository()
     oauth1_svc = OAuth1Service()
     oauth2_svc = OAuth2Service(
         settings=settings,
         conn_repo=OAuthConnectionRepository(),
         cred_repo=OAuthCredentialRepository(),
         encryptor=FernetCredentialEncryptor(settings.ENCRYPTION_KEY),
-        source_repo=source_repo,
         source_registry=source_registry,
     )
 
@@ -749,7 +745,6 @@ def _create_source_services(settings: Settings) -> dict:
         "cred_repo": cred_repo,
         "oauth1_service": oauth1_svc,
         "oauth2_service": oauth2_svc,
-        "source_repo": source_repo,
         "redirect_session_repo": redirect_session_repo,
         "source_lifecycle_service": source_lifecycle_service,
         "sync_repo": sync_repo,

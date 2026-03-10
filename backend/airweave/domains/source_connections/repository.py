@@ -12,12 +12,17 @@ from airweave.api.context import ApiContext
 from airweave.db.unit_of_work import UnitOfWork
 from airweave.domains.source_connections.protocols import SourceConnectionRepositoryProtocol
 from airweave.domains.source_connections.types import ScheduleInfo, SourceConnectionStats
+from airweave.domains.sources.protocols import SourceRegistryProtocol
 from airweave.models.connection_init_session import ConnectionInitSession
 from airweave.models.source_connection import SourceConnection
 
 
 class SourceConnectionRepository(SourceConnectionRepositoryProtocol):
     """Delegates to the crud.source_connection singleton."""
+
+    def __init__(self, source_registry: SourceRegistryProtocol) -> None:
+        """Initialize with source registry for enriching results."""
+        self._source_registry = source_registry
 
     async def get(self, db: AsyncSession, id: UUID, ctx: ApiContext) -> Optional[SourceConnection]:
         """Get a source connection by ID within org scope."""
@@ -69,6 +74,12 @@ class SourceConnectionRepository(SourceConnectionRepositoryProtocol):
         raw = await crud.source_connection.get_multi_with_stats(
             db, ctx=ctx, collection_id=collection_id, skip=skip, limit=limit
         )
+        for d in raw:
+            try:
+                entry = self._source_registry.get(d["short_name"])
+                d["federated_search"] = entry.federated_search
+            except KeyError:
+                d["federated_search"] = False
         return [SourceConnectionStats.from_dict(d) for d in raw]
 
     async def get_sync_ids_for_collection(

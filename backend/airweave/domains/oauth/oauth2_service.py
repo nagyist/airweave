@@ -25,7 +25,6 @@ from airweave.domains.oauth.protocols import (
     OAuth2ServiceProtocol,
     OAuthConnectionRepositoryProtocol,
     OAuthCredentialRepositoryProtocol,
-    OAuthSourceRepositoryProtocol,
 )
 from airweave.domains.sources.protocols import SourceRegistryProtocol
 from airweave.models.integration_credential import IntegrationType
@@ -46,7 +45,6 @@ class OAuth2Service(OAuth2ServiceProtocol):
         conn_repo: OAuthConnectionRepositoryProtocol,
         cred_repo: OAuthCredentialRepositoryProtocol,
         encryptor: CredentialEncryptor,
-        source_repo: OAuthSourceRepositoryProtocol,
         source_registry: SourceRegistryProtocol,
     ):
         """Initialize with injected dependencies."""
@@ -54,7 +52,6 @@ class OAuth2Service(OAuth2ServiceProtocol):
         self.conn_repo = conn_repo
         self.cred_repo = cred_repo
         self.encryptor = encryptor
-        self.source_repo = source_repo
         self._source_registry = source_registry
 
     async def generate_auth_url(

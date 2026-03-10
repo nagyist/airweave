@@ -22,8 +22,8 @@ from tenacity import retry, stop_after_attempt
 
 from airweave.core.exceptions import TokenRefreshError
 from airweave.core.shared_models import RateLimitLevel
-from airweave.platform.cursors import GoogleDriveCursor
 from airweave.platform.configs.config import GoogleDriveConfig
+from airweave.platform.cursors import GoogleDriveCursor
 from airweave.platform.decorators import source
 from airweave.platform.entities._base import BaseEntity, Breadcrumb
 from airweave.platform.entities.google_drive import (

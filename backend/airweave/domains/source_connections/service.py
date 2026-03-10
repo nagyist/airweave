@@ -12,8 +12,8 @@ from airweave.domains.collections.protocols import CollectionRepositoryProtocol
 from airweave.domains.connections.protocols import ConnectionRepositoryProtocol
 from airweave.domains.oauth.protocols import OAuthRedirectSessionRepositoryProtocol
 from airweave.domains.source_connections.protocols import (
-    SourceConnectionCreateServiceProtocol,
     ResponseBuilderProtocol,
+    SourceConnectionCreateServiceProtocol,
     SourceConnectionDeletionServiceProtocol,
     SourceConnectionRepositoryProtocol,
     SourceConnectionServiceProtocol,

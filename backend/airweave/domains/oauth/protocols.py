@@ -13,7 +13,6 @@ from airweave.domains.oauth.types import OAuth1TokenResponse, OAuthBrowserInitia
 from airweave.models.connection import Connection
 from airweave.models.connection_init_session import ConnectionInitSession
 from airweave.models.integration_credential import IntegrationCredential
-from airweave.models.source import Source
 from airweave.platform.auth.schemas import OAuth1Settings, OAuth2Settings, OAuth2TokenResponse
 from airweave.schemas.connection import ConnectionCreate
 from airweave.schemas.integration_credential import (
@@ -179,14 +178,6 @@ class OAuthCredentialRepositoryProtocol(Protocol):
         uow: UnitOfWork,
     ) -> IntegrationCredential:
         """Create an integration credential within a unit of work."""
-        ...
-
-
-class OAuthSourceRepositoryProtocol(Protocol):
-    """Source lookup needed for template URL rendering during token refresh."""
-
-    async def get_by_short_name(self, db: AsyncSession, short_name: str) -> Optional[Source]:
-        """Get a source by short_name. Returns None if not found."""
         ...
 
 

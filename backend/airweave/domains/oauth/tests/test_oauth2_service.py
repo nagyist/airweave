@@ -42,7 +42,6 @@ from airweave.core.shared_models import AuthMethod
 from airweave.domains.oauth.fakes.repository import (
     FakeOAuthConnectionRepository,
     FakeOAuthCredentialRepository,
-    FakeOAuthSourceRepository,
 )
 from airweave.domains.oauth.oauth2_service import OAuth2Service
 from airweave.domains.sources.fakes.registry import FakeSourceRegistry
@@ -161,7 +160,6 @@ class Deps:
         self.conn_repo = FakeOAuthConnectionRepository()
         self.cred_repo = FakeOAuthCredentialRepository()
         self.encryptor = FakeCredentialEncryptor()
-        self.source_repo = FakeOAuthSourceRepository()
         self.source_registry = FakeSourceRegistry()
 
     def build(self) -> OAuth2Service:
@@ -170,7 +168,6 @@ class Deps:
             conn_repo=self.conn_repo,
             cred_repo=self.cred_repo,
             encryptor=self.encryptor,
-            source_repo=self.source_repo,
             source_registry=self.source_registry,
         )
 

@@ -14,7 +14,6 @@ from airweave.models.connection import Connection
 from airweave.models.connection_init_session import ConnectionInitSession
 from airweave.models.integration_credential import IntegrationCredential
 from airweave.models.redirect_session import RedirectSession
-from airweave.models.source import Source
 from airweave.schemas.connection import ConnectionCreate
 from airweave.schemas.integration_credential import (
     IntegrationCredentialCreateEncrypted,
@@ -66,13 +65,6 @@ class OAuthCredentialRepository:
         uow: UnitOfWork,
     ) -> IntegrationCredential:
         return await crud.integration_credential.create(db, obj_in=obj_in, ctx=ctx, uow=uow)
-
-
-class OAuthSourceRepository:
-    """Delegates to crud.source for config_class lookups."""
-
-    async def get_by_short_name(self, db: AsyncSession, short_name: str) -> Optional[Source]:
-        return await crud.source.get_by_short_name(db, short_name)
 
 
 class OAuthInitSessionRepository:

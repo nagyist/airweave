@@ -33,17 +33,18 @@ from uuid import UUID, uuid4
 import httpx
 import pytest
 
+from airweave.adapters.encryption.fake import FakeCredentialEncryptor
 from airweave.api.context import ApiContext
 from airweave.core.exceptions import NotFoundException, TokenRefreshError
 from airweave.core.logging import logger
 from airweave.core.shared_models import AuthMethod
-from airweave.adapters.encryption.fake import FakeCredentialEncryptor
 from airweave.domains.oauth.fakes.repository import (
     FakeOAuthConnectionRepository,
     FakeOAuthCredentialRepository,
     FakeOAuthSourceRepository,
 )
 from airweave.domains.oauth.oauth2_service import OAuth2Service
+from airweave.domains.sources.fakes.registry import FakeSourceRegistry
 from airweave.platform.auth.schemas import OAuth2Settings, OAuth2TokenResponse
 from airweave.schemas.organization import Organization
 
@@ -160,6 +161,7 @@ class Deps:
         self.cred_repo = FakeOAuthCredentialRepository()
         self.encryptor = FakeCredentialEncryptor()
         self.source_repo = FakeOAuthSourceRepository()
+        self.source_registry = FakeSourceRegistry()
 
     def build(self) -> OAuth2Service:
         return OAuth2Service(
@@ -168,6 +170,7 @@ class Deps:
             cred_repo=self.cred_repo,
             encryptor=self.encryptor,
             source_repo=self.source_repo,
+            source_registry=self.source_registry,
         )
 
 

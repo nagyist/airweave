@@ -207,6 +207,9 @@ class GitHubPullRequestEntity(BaseEntity):
     changed_files: Optional[int] = AirweaveField(
         None, description="Number of files changed", embeddable=False
     )
+    changed_files_list: Optional[List[str]] = AirweaveField(
+        None, description="Paths of files changed in this PR", embeddable=True
+    )
     merge_commit_sha: Optional[str] = AirweaveField(
         None, description="SHA of the merge commit", embeddable=False
     )

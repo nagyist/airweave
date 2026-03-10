@@ -909,6 +909,13 @@ class GitHubSource(BaseSource):
                 r["login"] for r in pr_data.get("requested_reviewers", []) if r.get("login")
             ]
 
+            files_data = await self._get_paginated_results(
+                client,
+                f"{self.BASE_URL}/repos/{repo_name}/pulls/{pr_number}/files",
+                {},
+            )
+            changed_paths = [f["filename"] for f in files_data if f.get("filename")]
+
             pr_entity = GitHubPullRequestEntity(
                 breadcrumbs=[repo_breadcrumb],
                 pr_id=f"{repo_name}#{pr_number}",
@@ -925,6 +932,7 @@ class GitHubSource(BaseSource):
                 additions=pr_data.get("additions"),
                 deletions=pr_data.get("deletions"),
                 changed_files=pr_data.get("changed_files"),
+                changed_files_list=changed_paths or None,
                 merge_commit_sha=pr_data.get("merge_commit_sha"),
                 created_time=datetime.fromisoformat(pr_data["created_at"].replace("Z", "+00:00")),
                 updated_time=datetime.fromisoformat(pr_data["updated_at"].replace("Z", "+00:00")),

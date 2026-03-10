@@ -1,4 +1,4 @@
-"""Module for syncing embedding models, sources, destinations, and auth providers."""
+"""Module for syncing sources to the database and validating entity definitions."""
 
 import importlib
 import inspect
@@ -139,12 +139,6 @@ def _process_module_classes(module, components: Dict[str, list[Type | Callable]]
     for _, cls in inspect.getmembers(module, inspect.isclass):
         if getattr(cls, "is_source", False):
             components["sources"].append(cls)
-        elif getattr(cls, "is_auth_provider", False):
-            components["auth_providers"].append(cls)
-
-
-# NOTE: Transformers were removed - chunking now happens in entity_pipeline.py
-# using CodeChunker and SemanticChunker, not decorator-based transformers
 
 
 def _get_decorated_classes() -> Dict[str, list[Type | Callable]]:
@@ -159,7 +153,6 @@ def _get_decorated_classes() -> Dict[str, list[Type | Callable]]:
     """
     components = {
         "sources": [],
-        "auth_providers": [],
     }
 
     base_package = "airweave.platform"
@@ -186,8 +179,7 @@ def _get_decorated_classes() -> Dict[str, list[Type | Callable]]:
                 error_msg = (
                     f"Failed to import {full_module_name}: {e}\n"
                     f"This is likely due to missing dependencies required by this module.\n"
-                    f"If this module contains transformers, sources, destinations, "
-                    f"or auth providers, they will not be registered."
+                    f"If this module contains sources, they will not be registered."
                 )
                 sync_logger.error(error_msg)
                 # Re-raise the exception to fail the sync process
@@ -240,10 +232,6 @@ def _validate_entity_class_fields(cls: Type, name: str, module_name: str) -> Non
                     f"without a Pydantic Field description. All entity fields must use "
                     f"Field with a description parameter."
                 )
-
-
-# NOTE: Embedding models sync removed - embeddings now handled by
-# DenseEmbedder and SparseEmbedder in platform/embedders/, not decorator-based models
 
 
 def _build_entity_module_map() -> Dict[str, dict]:
@@ -324,20 +312,8 @@ async def _sync_sources(
     """
     sync_logger.info("Syncing sources to database.")
 
-    # Filter out internal sources if ENABLE_INTERNAL_SOURCES is False.
-    # Uses the `internal=True` flag from the @source decorator as the single source of truth.
-    filtered_sources = sources
-    if not settings.ENABLE_INTERNAL_SOURCES:
-        filtered_sources = [s for s in sources if not s.is_internal()]
-        skipped_count = len(sources) - len(filtered_sources)
-        if skipped_count > 0:
-            sync_logger.info(
-                f"Skipping {skipped_count} internal source(s) "
-                "(set ENABLE_INTERNAL_SOURCES=true to enable)"
-            )
-
     source_definitions = []
-    for source_class in filtered_sources:
+    for source_class in sources:
         # Get the source's short name (e.g., "slack" for SlackSource)
         source_module_name = source_class.short_name
 
@@ -409,9 +385,7 @@ async def sync_platform_components(db: AsyncSession) -> None:
         components = _get_decorated_classes()
         c = components
 
-        sync_logger.info(
-            f"Found {len(c['sources'])} sources, {len(c['auth_providers'])} auth providers."
-        )
+        sync_logger.info(f"Found {len(c['sources'])} sources.")
 
         module_entity_map = _build_entity_module_map()
 

@@ -162,6 +162,14 @@ class GitHubConfig(SourceConfig):
             "If empty, uses the default branch."
         ),
     )
+    sync_pull_requests: bool = Field(
+        default=False,
+        title="Sync Pull Requests",
+        description=(
+            "Sync merged pull requests and their review comments. "
+            "Enables searching over PR descriptions, discussions, and code review feedback."
+        ),
+    )
 
     @field_validator("repo_name")
     @classmethod

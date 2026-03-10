@@ -115,6 +115,8 @@ from .github import (
     GithubContentEntity,
     GitHubDirectoryEntity,
     GitHubFileDeletionEntity,
+    GitHubPRCommentEntity,
+    GitHubPullRequestEntity,
     GithubRepoEntity,
     GitHubRepositoryEntity,
 )
@@ -448,6 +450,8 @@ ENTITIES_BY_SOURCE: dict[str, list[type]] = {
         GithubContentEntity,
         GitHubDirectoryEntity,
         GitHubFileDeletionEntity,
+        GitHubPRCommentEntity,
+        GitHubPullRequestEntity,
         GithubRepoEntity,
         GitHubRepositoryEntity,
     ],

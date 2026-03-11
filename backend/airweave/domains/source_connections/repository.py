@@ -71,16 +71,16 @@ class SourceConnectionRepository(SourceConnectionRepositoryProtocol):
         limit: int = 100,
     ) -> List[SourceConnectionStats]:
         """Get source connections with complete stats."""
-        raw = await crud.source_connection.get_multi_with_stats(
+        stat_rows = await crud.source_connection.get_multi_with_stats(
             db, ctx=ctx, collection_id=collection_id, skip=skip, limit=limit
         )
-        for d in raw:
+        for row in stat_rows:
             try:
-                entry = self._source_registry.get(d["short_name"])
-                d["federated_search"] = entry.federated_search
+                entry = self._source_registry.get(row["short_name"])
+                row["federated_search"] = entry.federated_search
             except KeyError:
-                d["federated_search"] = False
-        return [SourceConnectionStats.from_dict(d) for d in raw]
+                row["federated_search"] = False
+        return [SourceConnectionStats.from_dict(row) for row in stat_rows]
 
     async def get_sync_ids_for_collection(
         self,

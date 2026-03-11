@@ -8,6 +8,7 @@ from airweave.domains.auth_provider.protocols import AuthProviderRegistryProtoco
 from airweave.domains.entities.protocols import EntityDefinitionRegistryProtocol
 from airweave.domains.sources.protocols import SourceRegistryProtocol
 from airweave.domains.sources.types import SourceRegistryEntry
+from airweave.platform.auth.settings import integration_settings
 from airweave.platform.configs._base import Fields
 from airweave.platform.sources import ALL_SOURCES
 
@@ -202,8 +203,6 @@ class SourceRegistry(SourceRegistryProtocol):
             return
 
         try:
-            from airweave.platform.auth.settings import integration_settings
-
             oauth_settings = integration_settings.get_settings(short_name)
             if not oauth_settings or not getattr(oauth_settings, "url_template", False):
                 return

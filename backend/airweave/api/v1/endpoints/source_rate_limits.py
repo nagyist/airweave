@@ -9,12 +9,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from airweave import crud, schemas
 from airweave.api import deps
 from airweave.api.context import ApiContext
+from airweave.api.inject import Inject
 from airweave.api.router import TrailingSlashRouter
-
-# [code blue] todo: inject source_registry via Inject() instead of container access
-from airweave.core import container as container_mod
 from airweave.core.shared_models import FeatureFlag
 from airweave.db.session import get_db
+from airweave.domains.sources.protocols import SourceRegistryProtocol
 from airweave.models.source_rate_limit import SourceRateLimit
 
 router = TrailingSlashRouter()
@@ -25,6 +24,7 @@ async def list_source_rate_limits(
     *,
     db: AsyncSession = Depends(get_db),
     ctx: ApiContext = Depends(deps.get_context),
+    source_registry: SourceRegistryProtocol = Inject(SourceRegistryProtocol),
 ) -> List[schemas.SourceRateLimitResponse]:
     """Get all sources with their rate limit configurations.
 
@@ -39,7 +39,6 @@ async def list_source_rate_limits(
             status_code=403, detail="SOURCE_RATE_LIMITING feature not enabled for this organization"
         )
 
-    source_registry = container_mod.container.source_registry
     sources = source_registry.list_all()
 
     # Get configured limits for this org

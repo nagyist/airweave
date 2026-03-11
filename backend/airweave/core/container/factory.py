@@ -73,8 +73,6 @@ from airweave.domains.oauth.flow_service import OAuthFlowService
 from airweave.domains.oauth.oauth1_service import OAuth1Service
 from airweave.domains.oauth.oauth2_service import OAuth2Service
 from airweave.domains.oauth.repository import (
-    OAuthConnectionRepository,
-    OAuthCredentialRepository,
     OAuthInitSessionRepository,
     OAuthRedirectSessionRepository,
 )
@@ -715,8 +713,8 @@ def _create_source_services(settings: Settings) -> dict:
     oauth1_svc = OAuth1Service()
     oauth2_svc = OAuth2Service(
         settings=settings,
-        conn_repo=OAuthConnectionRepository(),
-        cred_repo=OAuthCredentialRepository(),
+        conn_repo=conn_repo,
+        cred_repo=cred_repo,
         encryptor=FernetCredentialEncryptor(settings.ENCRYPTION_KEY),
         source_registry=source_registry,
     )

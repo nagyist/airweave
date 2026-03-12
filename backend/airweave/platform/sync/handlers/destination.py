@@ -149,8 +149,9 @@ class DestinationHandler(EntityActionHandler):
         runtime: "SyncRuntime",
     ) -> None:
         """Process entities through ChunkEmbedProcessor and insert into destinations."""
+        copies = [e.model_copy(deep=True) for e in entities]
         proc_start = asyncio.get_running_loop().time()
-        processed = await _processor.process(entities, sync_context, runtime)
+        processed = await _processor.process(copies, sync_context, runtime)
         proc_elapsed = asyncio.get_running_loop().time() - proc_start
         if proc_elapsed > 10:
             sync_context.logger.warning(

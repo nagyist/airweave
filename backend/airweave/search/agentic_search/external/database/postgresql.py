@@ -53,7 +53,8 @@ class PostgreSQLAgenticSearchDatabase:
 
     async def get_collection_by_readable_id(self, readable_id: str) -> AgenticSearchCollection:
         """Get collection by readable_id."""
-        collection = await crud.collection.get_by_readable_id(
+        assert container_mod.container is not None  # [code blue]
+        collection = await container_mod.container.collection_repo.get_by_readable_id(
             self._session,
             readable_id=readable_id,
             ctx=self._ctx,

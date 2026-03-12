@@ -43,14 +43,14 @@ class TestAdminGetUserPrincipals:
             group_principals=["group:ad:engineering", "group:sp:site_members"],
         )
 
+        mock_collection_repo = MagicMock()
+        mock_collection_repo.get_by_readable_id = AsyncMock(return_value=fake_collection)
+
         with patch(
             "airweave.api.v1.endpoints.admin._require_admin_permission"
         ), patch(
-            "airweave.api.v1.endpoints.admin.crud"
-        ) as mock_crud, patch(
             "airweave.platform.access_control.broker.access_broker"
         ) as mock_broker:
-            mock_crud.collection.get_by_readable_id = AsyncMock(return_value=fake_collection)
             mock_broker.resolve_access_context_for_collection = AsyncMock(
                 return_value=fake_access_ctx
             )
@@ -60,6 +60,7 @@ class TestAdminGetUserPrincipals:
                 user_principal="sp_admin",
                 db=mock_db,
                 ctx=mock_ctx,
+                collection_repo=mock_collection_repo,
             )
 
         assert "user:sp_admin" in result
@@ -72,14 +73,14 @@ class TestAdminGetUserPrincipals:
         fake_collection = MagicMock()
         fake_collection.organization_id = mock_ctx.organization_id
 
+        mock_collection_repo = MagicMock()
+        mock_collection_repo.get_by_readable_id = AsyncMock(return_value=fake_collection)
+
         with patch(
             "airweave.api.v1.endpoints.admin._require_admin_permission"
         ), patch(
-            "airweave.api.v1.endpoints.admin.crud"
-        ) as mock_crud, patch(
             "airweave.platform.access_control.broker.access_broker"
         ) as mock_broker:
-            mock_crud.collection.get_by_readable_id = AsyncMock(return_value=fake_collection)
             mock_broker.resolve_access_context_for_collection = AsyncMock(return_value=None)
 
             result = await admin_get_user_principals(
@@ -87,6 +88,7 @@ class TestAdminGetUserPrincipals:
                 user_principal="unknown_user",
                 db=mock_db,
                 ctx=mock_ctx,
+                collection_repo=mock_collection_repo,
             )
 
         assert result == []

@@ -119,14 +119,6 @@ class Source(BaseModel):
             "If set, only organizations with this feature enabled can see/use this source."
         ),
     )
-
-
-class Source(SourceBase):
-    """Complete source representation with authentication and configuration schemas.
-
-    Served from the in-memory SourceRegistry — no database row needed.
-    """
-
     supports_browse_tree: bool = Field(
         False,
         description=(

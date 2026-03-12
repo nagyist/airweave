@@ -1,8 +1,4 @@
-"""Content processors for destination-specific entity preparation.
-
-Processors implement the ContentProcessor protocol and are provided by
-destinations via get_content_processor(). This inverts the dependency -
-destinations declare what they need rather than handlers guessing.
+"""Content processors for entity preparation.
 
 Available Processors:
 - ChunkEmbedProcessor: Unified processor for chunk-as-document model (Qdrant, Vespa)
@@ -11,9 +7,7 @@ Available Processors:
 """
 
 from .chunk_embed import ChunkEmbedProcessor
-from .protocol import ContentProcessor
 
 __all__ = [
-    "ContentProcessor",
     "ChunkEmbedProcessor",
 ]

@@ -392,7 +392,7 @@ def create_container(settings: Settings) -> Container:
     sparse_embedder = _create_sparse_embedder(sparse_embedder_registry)
 
     # -----------------------------------------------------------------
-    # Sync factory + service (needs embedders, built after embedder init)
+    # Sync factory + service
     # -----------------------------------------------------------------
     sync_factory = SyncFactory(
         sc_repo=source_deps["sc_repo"],
@@ -425,7 +425,7 @@ def create_container(settings: Settings) -> Container:
     )
 
     # -----------------------------------------------------------------
-    # Collection service (needs collection_repo, sc_repo, sync_lifecycle, dense_registry)
+    # Collection service
     # -----------------------------------------------------------------
     collection_service = CollectionService(
         collection_repo=source_deps["collection_repo"],

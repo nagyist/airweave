@@ -20,11 +20,13 @@ class OAuthInitSessionRepository:
     async def get_by_state_no_auth(
         self, db: AsyncSession, *, state: str
     ) -> Optional[ConnectionInitSession]:
+        """Look up an init session by OAuth state parameter."""
         return await connection_init_session.get_by_state_no_auth(db, state=state)
 
     async def get_by_oauth_token_no_auth(
         self, db: AsyncSession, *, oauth_token: str
     ) -> Optional[ConnectionInitSession]:
+        """Look up an init session by OAuth token."""
         return await connection_init_session.get_by_oauth_token_no_auth(db, oauth_token=oauth_token)
 
     async def create(
@@ -35,6 +37,7 @@ class OAuthInitSessionRepository:
         ctx: ApiContext,
         uow: UnitOfWork,
     ) -> ConnectionInitSession:
+        """Create a new connection init session."""
         return await connection_init_session.create(db, obj_in=obj_in, ctx=ctx, uow=uow)
 
     async def mark_completed(
@@ -45,6 +48,7 @@ class OAuthInitSessionRepository:
         final_connection_id: Optional[UUID],
         ctx: ApiContext,
     ) -> None:
+        """Mark an init session as completed with the final connection ID."""
         await connection_init_session.mark_completed(
             db, session_id=session_id, final_connection_id=final_connection_id, ctx=ctx
         )
@@ -54,6 +58,7 @@ class OAuthRedirectSessionRepository:
     """Delegates to crud.redirect_session."""
 
     async def generate_unique_code(self, db: AsyncSession, *, length: int) -> str:
+        """Generate a unique redirect code of the given length."""
         return await redirect_session.generate_unique_code(db, length=length)
 
     async def create(
@@ -66,9 +71,11 @@ class OAuthRedirectSessionRepository:
         ctx: ApiContext,
         uow: Optional[UnitOfWork] = None,
     ) -> Any:
+        """Create a new redirect session."""
         return await redirect_session.create(
             db, code=code, final_url=final_url, expires_at=expires_at, ctx=ctx, uow=uow
         )
 
     async def get_by_code(self, db: AsyncSession, code: str) -> Optional[RedirectSession]:
+        """Look up a redirect session by its code."""
         return await crud.redirect_session.get_by_code(db, code)

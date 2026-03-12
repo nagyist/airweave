@@ -36,7 +36,7 @@ from airweave.schemas.source_connection import (
 class SourceConnectionService(SourceConnectionServiceProtocol):
     """Service for source connections."""
 
-    def __init__(
+    def __init__(  # noqa: D107
         self,
         # Repositories
         sc_repo: SourceConnectionRepositoryProtocol,

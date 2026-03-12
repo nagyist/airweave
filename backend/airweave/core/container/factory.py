@@ -84,6 +84,7 @@ from airweave.domains.embedders.sparse.fastembed import (
     FastEmbedSparseEmbedder as DomainFastEmbedSparseEmbedder,
 )
 from airweave.domains.entities.entity_count_repository import EntityCountRepository
+from airweave.domains.entities.entity_repository import EntityRepository
 from airweave.domains.entities.registry import EntityDefinitionRegistry
 from airweave.domains.oauth.callback_service import OAuthCallbackService
 from airweave.domains.oauth.flow_service import OAuthFlowService
@@ -116,8 +117,10 @@ from airweave.domains.sources.registry import SourceRegistry
 from airweave.domains.sources.service import SourceService
 from airweave.domains.sources.validation import SourceValidationService
 from airweave.domains.storage.sync_file_manager import SyncFileManager
+from airweave.domains.sync_pipeline.factory import SyncFactory
 from airweave.domains.syncs.cursors.repository import SyncCursorRepository
 from airweave.domains.syncs.cursors.service import SyncCursorService
+from airweave.domains.syncs.service import SyncService
 from airweave.domains.syncs.sync_job_repository import SyncJobRepository
 from airweave.domains.syncs.sync_job_service import SyncJobService
 from airweave.domains.syncs.sync_lifecycle_service import SyncLifecycleService
@@ -389,6 +392,23 @@ def create_container(settings: Settings) -> Container:
     sparse_embedder = _create_sparse_embedder(sparse_embedder_registry)
 
     # -----------------------------------------------------------------
+    # Sync factory + service (needs embedders, built after embedder init)
+    # -----------------------------------------------------------------
+    sync_factory = SyncFactory(
+        sc_repo=source_deps["sc_repo"],
+        event_bus=event_bus,
+        usage_checker=usage_checker,
+        dense_embedder=dense_embedder,
+        sparse_embedder=sparse_embedder,
+        entity_repo=sync_deps["entity_repo"],
+    )
+
+    sync_service = SyncService(
+        sync_job_service=sync_deps["sync_job_service"],
+        sync_factory=sync_factory,
+    )
+
+    # -----------------------------------------------------------------
     # Search domain services (LLM, tokenizer, reranker, metadata builder, per-tier)
     # -----------------------------------------------------------------
     search_deps = _create_search_services(
@@ -536,8 +556,10 @@ def create_container(settings: Settings) -> Container:
         payment_gateway=billing_services["payment_gateway"],
         sync_record_service=sync_deps["sync_record_service"],
         sync_job_service=sync_deps["sync_job_service"],
-        sync_service=sync_deps["sync_service"],
+        sync_service=sync_service,
         sync_lifecycle=sync_deps["sync_lifecycle"],
+        sync_factory=sync_factory,
+        entity_repo=sync_deps["entity_repo"],
         temporal_workflow_service=sync_deps["temporal_workflow_service"],
         temporal_schedule_service=sync_deps["temporal_schedule_service"],
         usage_checker=usage_checker,
@@ -924,12 +946,10 @@ def _create_sync_services(
     4. SyncLifecycleService (needs everything above)
     """
     entity_count_repo = EntityCountRepository()
+    entity_repo = EntityRepository()
 
     sync_job_service = SyncJobService(sync_job_repo=sync_job_repo)
 
-    from airweave.domains.syncs.service import SyncService
-
-    sync_service = SyncService(sync_job_service=sync_job_service)
     temporal_workflow_service = TemporalWorkflowService()
 
     sync_record_service = SyncRecordService(
@@ -971,11 +991,11 @@ def _create_sync_services(
     return {
         "sync_record_service": sync_record_service,
         "sync_job_service": sync_job_service,
-        "sync_service": sync_service,
         "sync_lifecycle": sync_lifecycle,
         "temporal_workflow_service": temporal_workflow_service,
         "temporal_schedule_service": temporal_schedule_service,
         "response_builder": response_builder,
+        "entity_repo": entity_repo,
     }
 
 

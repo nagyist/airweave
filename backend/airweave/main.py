@@ -47,7 +47,6 @@ from airweave.core.logging import logger
 from airweave.db.init_db import init_db
 from airweave.db.session import AsyncSessionLocal
 from airweave.domains.embedders.config import validate_embedding_config
-from airweave.platform.db_sync import sync_platform_components
 
 
 @asynccontextmanager
@@ -81,8 +80,6 @@ async def lifespan(app: FastAPI):
                 cwd=backend_dir,
                 env=env,
             )
-        if settings.RUN_DB_SYNC:
-            await sync_platform_components(db)
         await init_db(db)
 
         # Reconcile embedding config against DB deployment metadata

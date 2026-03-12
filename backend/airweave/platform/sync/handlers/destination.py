@@ -23,8 +23,6 @@ from airweave.platform.sync.pipeline import ProcessingRequirement
 from airweave.platform.sync.processors import (
     ChunkEmbedProcessor,
     ContentProcessor,
-    RawProcessor,
-    TextOnlyProcessor,
 )
 
 if TYPE_CHECKING:
@@ -37,8 +35,6 @@ if TYPE_CHECKING:
 # ChunkEmbedProcessor generates both dense and sparse embeddings for all vector DBs
 _PROCESSORS: Dict[ProcessingRequirement, ContentProcessor] = {
     ProcessingRequirement.CHUNKS_AND_EMBEDDINGS: ChunkEmbedProcessor(),
-    ProcessingRequirement.TEXT_ONLY: TextOnlyProcessor(),
-    ProcessingRequirement.RAW: RawProcessor(),
 }
 
 # Retryable network exceptions

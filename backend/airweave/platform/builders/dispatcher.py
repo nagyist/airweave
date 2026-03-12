@@ -3,7 +3,7 @@
 from typing import List, Optional
 
 from airweave.core.logging import ContextualLogger
-from airweave.platform.destinations._base import BaseDestination, ProcessingRequirement
+from airweave.platform.destinations._base import BaseDestination
 from airweave.platform.sync.actions import EntityActionDispatcher
 from airweave.platform.sync.config import SyncConfig
 from airweave.platform.sync.handlers import (
@@ -77,33 +77,13 @@ class DispatcherBuilder:
             return
 
         if enabled:
-            # Group destinations by processing requirement
-            vector_db_destinations: List[BaseDestination] = []
-
-            for dest in destinations:
-                requirement = dest.processing_requirement
-                if requirement == ProcessingRequirement.CHUNKS_AND_EMBEDDINGS:
-                    vector_db_destinations.append(dest)
-                elif requirement == ProcessingRequirement.RAW:
-                    # Self-processing destinations don't need VectorDBHandler
-                    pass
-                else:
-                    # Default to vector DB for unknown requirements (backward compat)
-                    if logger:
-                        logger.warning(
-                            f"Unknown processing requirement {requirement} for "
-                            f"{dest.__class__.__name__}, defaulting to CHUNKS_AND_EMBEDDINGS"
-                        )
-                    vector_db_destinations.append(dest)
-
-            if vector_db_destinations:
-                handlers.append(DestinationHandler(destinations=vector_db_destinations))
-                if logger:
-                    dest_names = [d.__class__.__name__ for d in vector_db_destinations]
-                    logger.info(
-                        f"Created DestinationHandler for {len(vector_db_destinations)} "
-                        f"destination(s): {dest_names}"
-                    )
+            handlers.append(DestinationHandler(destinations=destinations))
+            if logger:
+                dest_names = [d.__class__.__name__ for d in destinations]
+                logger.info(
+                    f"Created DestinationHandler for {len(destinations)} "
+                    f"destination(s): {dest_names}"
+                )
         elif logger:
             logger.info(
                 f"Skipping VectorDBHandler (disabled by execution_config) for "

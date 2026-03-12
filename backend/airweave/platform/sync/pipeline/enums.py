@@ -17,5 +17,3 @@ class ProcessingRequirement(Enum):
     """
 
     CHUNKS_AND_EMBEDDINGS = "chunks_and_embeddings"
-    TEXT_ONLY = "text_only"
-    RAW = "raw"

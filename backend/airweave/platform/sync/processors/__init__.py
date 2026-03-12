@@ -8,18 +8,12 @@ Available Processors:
 - ChunkEmbedProcessor: Unified processor for chunk-as-document model (Qdrant, Vespa)
   - With sparse=True: dense + sparse embeddings for hybrid search (Qdrant)
   - With sparse=False: dense only, BM25 computed server-side (Vespa)
-- TextOnlyProcessor: Text extraction only (legacy)
-- RawProcessor: No processing, raw entities (S3)
 """
 
 from .chunk_embed import ChunkEmbedProcessor
 from .protocol import ContentProcessor
-from .raw import RawProcessor
-from .text_only import TextOnlyProcessor
 
 __all__ = [
     "ContentProcessor",
     "ChunkEmbedProcessor",
-    "TextOnlyProcessor",
-    "RawProcessor",
 ]

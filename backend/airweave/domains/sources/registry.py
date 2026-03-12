@@ -8,6 +8,7 @@ from airweave.domains.auth_provider.protocols import AuthProviderRegistryProtoco
 from airweave.domains.entities.protocols import EntityDefinitionRegistryProtocol
 from airweave.domains.sources.protocols import SourceRegistryProtocol
 from airweave.domains.sources.types import SourceRegistryEntry
+from airweave.platform.auth.schemas import OAuth2Settings
 from airweave.platform.auth.settings import integration_settings
 from airweave.platform.configs._base import Fields
 from airweave.platform.sources import ALL_SOURCES
@@ -204,11 +205,11 @@ class SourceRegistry(SourceRegistryProtocol):
 
         try:
             oauth_settings = integration_settings.get_settings(short_name)
-            if not oauth_settings or not getattr(oauth_settings, "url_template", False):
+            if not isinstance(oauth_settings, OAuth2Settings) or not oauth_settings.url_template:
                 return
 
             url_vars = set(re.findall(r"\{(\w+)\}", oauth_settings.url))
-            if getattr(oauth_settings, "backend_url_template", False):
+            if oauth_settings.backend_url_template:
                 url_vars |= set(re.findall(r"\{(\w+)\}", oauth_settings.backend_url))
 
             if not url_vars:

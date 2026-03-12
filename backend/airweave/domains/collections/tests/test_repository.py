@@ -9,23 +9,53 @@ import pytest
 from airweave.core.shared_models import CollectionStatus
 from airweave.domains.collections.repository import CollectionRepository
 from airweave.domains.source_connections.fakes.repository import FakeSourceConnectionRepository
+from airweave.domains.sources.fakes.registry import FakeSourceRegistry
+from airweave.domains.sources.types import SourceRegistryEntry
+from airweave.platform.configs._base import Fields
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
+_EMPTY_FIELDS = Fields(fields=[])
 
-def _source_registry(federated_map: dict[str, bool] | None = None):
-    """Build a fake source registry that returns federated_search flags."""
-    federated_map = federated_map or {}
+_ENTRY_DEFAULTS: dict = {
+    "name": "Test",
+    "description": None,
+    "class_name": "TestSource",
+    "source_class_ref": type,
+    "config_ref": None,
+    "auth_config_ref": None,
+    "auth_fields": _EMPTY_FIELDS,
+    "config_fields": _EMPTY_FIELDS,
+    "supported_auth_providers": [],
+    "runtime_auth_all_fields": [],
+    "runtime_auth_optional_fields": set(),
+    "auth_methods": None,
+    "oauth_type": None,
+    "requires_byoc": False,
+    "supports_continuous": False,
+    "federated_search": False,
+    "supports_temporal_relevance": False,
+    "supports_access_control": False,
+    "supports_browse_tree": False,
+    "rate_limit_level": None,
+    "feature_flag": None,
+    "labels": None,
+    "output_entity_definitions": [],
+}
 
-    def _get(short_name: str):
-        if short_name not in federated_map:
-            raise KeyError(short_name)
-        return SimpleNamespace(federated_search=federated_map[short_name])
 
-    reg = MagicMock()
-    reg.get = MagicMock(side_effect=_get)
+def _entry(short_name: str, **overrides) -> SourceRegistryEntry:
+    """Build a minimal SourceRegistryEntry with sensible defaults."""
+    return SourceRegistryEntry(short_name=short_name, **{**_ENTRY_DEFAULTS, **overrides})
+
+
+def _source_registry(federated_map: dict[str, bool] | None = None) -> FakeSourceRegistry:
+    """Build a FakeSourceRegistry seeded from a {short_name: federated} map."""
+    reg = FakeSourceRegistry()
+    for short_name, federated in (federated_map or {}).items():
+        reg.seed(_entry(short_name, federated_search=federated))
     return reg
 
 
@@ -152,37 +182,38 @@ class TestComputeCollectionStatus:
 # ---------------------------------------------------------------------------
 
 
-def _sc(
-    id=None, readable_collection_id="col", short_name="github", is_authenticated=True
-):
+def _sc(id=None, readable_collection_id="col", short_name="github", is_authenticated=True):
     """Build a fake SourceConnection-like object for seeding."""
-    obj = MagicMock()
-    obj.id = id or uuid4()
-    obj.readable_collection_id = readable_collection_id
-    obj.short_name = short_name
-    obj.is_authenticated = is_authenticated
-    return obj
+    return SimpleNamespace(
+        id=id or uuid4(),
+        readable_collection_id=readable_collection_id,
+        short_name=short_name,
+        is_authenticated=is_authenticated,
+    )
+
+
+def _col(readable_id: str) -> SimpleNamespace:
+    return SimpleNamespace(readable_id=readable_id)
+
+
+def _ctx() -> SimpleNamespace:
+    return SimpleNamespace(organization=SimpleNamespace(id=uuid4()))
 
 
 @pytest.mark.asyncio
 class TestAttachEphemeralStatus:
     async def test_empty_collections_returns_empty(self):
         repo = _repo()
-        result = await repo._attach_ephemeral_status(MagicMock(), [], MagicMock())
+        result = await repo._attach_ephemeral_status(None, [], _ctx())
         assert result == []
 
     async def test_no_source_connections_sets_needs_source(self):
         repo = _repo()
+        col = _col("test-col")
 
-        col = MagicMock()
-        col.readable_id = "test-col"
-
-        ctx = MagicMock()
-        ctx.organization.id = uuid4()
-
-        result = await repo._attach_ephemeral_status(MagicMock(), [col], ctx)
+        result = await repo._attach_ephemeral_status(None, [col], _ctx())
         assert len(result) == 1
-        assert result[0].status == CollectionStatus.NEEDS_SOURCE  # type: ignore[attr-defined]
+        assert result[0].status == CollectionStatus.NEEDS_SOURCE
 
     async def test_with_connections_computes_status(self):
         sc = _sc(readable_collection_id="my-col", short_name="github")
@@ -192,16 +223,12 @@ class TestAttachEphemeralStatus:
         sc_repo.seed_last_jobs({sc.id: {"status": "completed"}})
         repo = _repo({"github": False}, sc_repo=sc_repo)
 
-        col = MagicMock()
-        col.readable_id = "my-col"
+        col = _col("my-col")
 
-        ctx = MagicMock()
-        ctx.organization.id = uuid4()
-
-        result = await repo._attach_ephemeral_status(MagicMock(), [col], ctx)
+        result = await repo._attach_ephemeral_status(None, [col], _ctx())
 
         assert len(result) == 1
-        assert result[0].status == CollectionStatus.ACTIVE  # type: ignore[attr-defined]
+        assert result[0].status == CollectionStatus.ACTIVE
 
     async def test_federated_source_sets_active(self):
         sc = _sc(readable_collection_id="slack-col", short_name="slack")
@@ -210,15 +237,11 @@ class TestAttachEphemeralStatus:
         sc_repo.seed(sc.id, sc)
         repo = _repo({"slack": True}, sc_repo=sc_repo)
 
-        col = MagicMock()
-        col.readable_id = "slack-col"
+        col = _col("slack-col")
 
-        ctx = MagicMock()
-        ctx.organization.id = uuid4()
+        result = await repo._attach_ephemeral_status(None, [col], _ctx())
 
-        result = await repo._attach_ephemeral_status(MagicMock(), [col], ctx)
-
-        assert result[0].status == CollectionStatus.ACTIVE  # type: ignore[attr-defined]
+        assert result[0].status == CollectionStatus.ACTIVE
 
 
 # ---------------------------------------------------------------------------

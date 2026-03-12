@@ -1,6 +1,6 @@
 """Source connection repository wrapping crud.source_connection."""
 
-from typing import Any, List, Optional
+from typing import Any, Dict, List, Optional
 from uuid import UUID
 
 from sqlalchemy import func, select
@@ -100,6 +100,27 @@ class SourceConnectionRepository(SourceConnectionRepositoryProtocol):
             .distinct()
         )
         return [row[0] for row in rows if row[0]]
+
+    async def get_by_collection_ids(
+        self,
+        db: AsyncSession,
+        *,
+        organization_id: UUID,
+        readable_collection_ids: List[str],
+    ) -> List[SourceConnection]:
+        """Get all source connections for the given collection readable IDs."""
+        query = select(SourceConnection).where(
+            SourceConnection.organization_id == organization_id,
+            SourceConnection.readable_collection_id.in_(readable_collection_ids),
+        )
+        result = await db.execute(query)
+        return list(result.scalars().all())
+
+    async def fetch_last_jobs(
+        self, db: AsyncSession, source_conns: List[SourceConnection]
+    ) -> Dict[UUID, Dict]:
+        """Fetch the most recent sync job for each connection."""
+        return await crud.source_connection._fetch_last_jobs(db, source_conns)
 
     async def update(
         self,

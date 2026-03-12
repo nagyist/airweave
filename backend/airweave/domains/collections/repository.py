@@ -3,7 +3,6 @@
 from typing import Any, Dict, List, Optional
 from uuid import UUID
 
-from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import crud, schemas
@@ -12,16 +11,21 @@ from airweave.core.exceptions import NotFoundException
 from airweave.core.shared_models import CollectionStatus
 from airweave.db.unit_of_work import UnitOfWork
 from airweave.domains.collections.protocols import CollectionRepositoryProtocol
+from airweave.domains.source_connections.protocols import SourceConnectionRepositoryProtocol
 from airweave.domains.sources.protocols import SourceRegistryProtocol
 from airweave.models.collection import Collection
-from airweave.models.source_connection import SourceConnection
 
 
 class CollectionRepository(CollectionRepositoryProtocol):
     """Delegates to crud.collection, enriches with ephemeral status."""
 
-    def __init__(self, source_registry: SourceRegistryProtocol) -> None:  # noqa: D107
+    def __init__(  # noqa: D107
+        self,
+        source_registry: SourceRegistryProtocol,
+        sc_repo: SourceConnectionRepositoryProtocol,
+    ) -> None:
         self._source_registry = source_registry
+        self._sc_repo = sc_repo
 
     def _federated_lookup(self, short_name: str) -> bool:
         try:
@@ -76,21 +80,18 @@ class CollectionRepository(CollectionRepositoryProtocol):
 
         collection_ids = [c.readable_id for c in collections]
 
-        query = select(SourceConnection).where(
-            and_(
-                SourceConnection.organization_id == ctx.organization.id,
-                SourceConnection.readable_collection_id.in_(collection_ids),
-            )
+        all_connections = await self._sc_repo.get_by_collection_ids(
+            db,
+            organization_id=ctx.organization.id,
+            readable_collection_ids=collection_ids,
         )
-        result = await db.execute(query)
-        all_connections = list(result.scalars().all())
 
         if not all_connections:
             for collection in collections:
                 collection.status = CollectionStatus.NEEDS_SOURCE
             return collections
 
-        last_jobs = await crud.source_connection._fetch_last_jobs(db, all_connections)
+        last_jobs = await self._sc_repo.fetch_last_jobs(db, all_connections)
 
         connections_by_collection: Dict[str, List[Dict[str, Any]]] = {}
         for sc in all_connections:

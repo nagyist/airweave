@@ -703,7 +703,7 @@ def _create_source_services(settings: Settings) -> dict:
 
     # Repository adapters
     sc_repo = SourceConnectionRepository(source_registry=source_registry)
-    collection_repo = CollectionRepository(source_registry=source_registry)
+    collection_repo = CollectionRepository(source_registry=source_registry, sc_repo=sc_repo)
     conn_repo = ConnectionRepository()
     cred_repo = IntegrationCredentialRepository()
     sync_repo = SyncRepository()

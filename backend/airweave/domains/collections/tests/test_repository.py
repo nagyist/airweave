@@ -8,6 +8,7 @@ import pytest
 
 from airweave.core.shared_models import CollectionStatus
 from airweave.domains.collections.repository import CollectionRepository
+from airweave.domains.source_connections.fakes.repository import FakeSourceConnectionRepository
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -28,8 +29,14 @@ def _source_registry(federated_map: dict[str, bool] | None = None):
     return reg
 
 
-def _repo(federated_map: dict[str, bool] | None = None) -> CollectionRepository:
-    return CollectionRepository(source_registry=_source_registry(federated_map))
+def _repo(
+    federated_map: dict[str, bool] | None = None,
+    sc_repo: FakeSourceConnectionRepository | None = None,
+) -> CollectionRepository:
+    return CollectionRepository(
+        source_registry=_source_registry(federated_map),
+        sc_repo=sc_repo or FakeSourceConnectionRepository(),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -145,6 +152,18 @@ class TestComputeCollectionStatus:
 # ---------------------------------------------------------------------------
 
 
+def _sc(
+    id=None, readable_collection_id="col", short_name="github", is_authenticated=True
+):
+    """Build a fake SourceConnection-like object for seeding."""
+    obj = MagicMock()
+    obj.id = id or uuid4()
+    obj.readable_collection_id = readable_collection_id
+    obj.short_name = short_name
+    obj.is_authenticated = is_authenticated
+    return obj
+
+
 @pytest.mark.asyncio
 class TestAttachEphemeralStatus:
     async def test_empty_collections_returns_empty(self):
@@ -161,69 +180,43 @@ class TestAttachEphemeralStatus:
         ctx = MagicMock()
         ctx.organization.id = uuid4()
 
-        db = AsyncMock()
-        mock_result = MagicMock()
-        mock_result.scalars.return_value.all.return_value = []
-        db.execute = AsyncMock(return_value=mock_result)
-
-        result = await repo._attach_ephemeral_status(db, [col], ctx)
+        result = await repo._attach_ephemeral_status(MagicMock(), [col], ctx)
         assert len(result) == 1
         assert result[0].status == CollectionStatus.NEEDS_SOURCE  # type: ignore[attr-defined]
 
     async def test_with_connections_computes_status(self):
-        repo = _repo({"github": False})
+        sc = _sc(readable_collection_id="my-col", short_name="github")
+
+        sc_repo = FakeSourceConnectionRepository()
+        sc_repo.seed(sc.id, sc)
+        sc_repo.seed_last_jobs({sc.id: {"status": "completed"}})
+        repo = _repo({"github": False}, sc_repo=sc_repo)
 
         col = MagicMock()
         col.readable_id = "my-col"
 
-        sc = MagicMock()
-        sc.readable_collection_id = "my-col"
-        sc.short_name = "github"
-        sc.is_authenticated = True
-        sc.id = uuid4()
-
         ctx = MagicMock()
         ctx.organization.id = uuid4()
 
-        db = AsyncMock()
-        mock_result = MagicMock()
-        mock_result.scalars.return_value.all.return_value = [sc]
-        db.execute = AsyncMock(return_value=mock_result)
-
-        with patch("airweave.domains.collections.repository.crud") as mock_crud:
-            mock_crud.source_connection._fetch_last_jobs = AsyncMock(
-                return_value={sc.id: {"status": "completed"}}
-            )
-
-            result = await repo._attach_ephemeral_status(db, [col], ctx)
+        result = await repo._attach_ephemeral_status(MagicMock(), [col], ctx)
 
         assert len(result) == 1
         assert result[0].status == CollectionStatus.ACTIVE  # type: ignore[attr-defined]
 
     async def test_federated_source_sets_active(self):
-        repo = _repo({"slack": True})
+        sc = _sc(readable_collection_id="slack-col", short_name="slack")
+
+        sc_repo = FakeSourceConnectionRepository()
+        sc_repo.seed(sc.id, sc)
+        repo = _repo({"slack": True}, sc_repo=sc_repo)
 
         col = MagicMock()
         col.readable_id = "slack-col"
 
-        sc = MagicMock()
-        sc.readable_collection_id = "slack-col"
-        sc.short_name = "slack"
-        sc.is_authenticated = True
-        sc.id = uuid4()
-
         ctx = MagicMock()
         ctx.organization.id = uuid4()
 
-        db = AsyncMock()
-        mock_result = MagicMock()
-        mock_result.scalars.return_value.all.return_value = [sc]
-        db.execute = AsyncMock(return_value=mock_result)
-
-        with patch("airweave.domains.collections.repository.crud") as mock_crud:
-            mock_crud.source_connection._fetch_last_jobs = AsyncMock(return_value={})
-
-            result = await repo._attach_ephemeral_status(db, [col], ctx)
+        result = await repo._attach_ephemeral_status(MagicMock(), [col], ctx)
 
         assert result[0].status == CollectionStatus.ACTIVE  # type: ignore[attr-defined]
 

@@ -13,6 +13,7 @@ from airweave.domains.browse_tree.types import NodeSelectionData
 from airweave.domains.sources.exceptions import SourceAuthError
 from airweave.domains.sources.token_providers.protocol import TokenProviderProtocol
 from airweave.domains.storage.file_service import FileService
+from airweave.domains.sync_pipeline.pipeline.text_builder import TextualRepresentationBuilder
 from airweave.domains.syncs.cursors.cursor import SyncCursor
 from airweave.platform.configs.auth import SlackAuthConfig
 from airweave.platform.configs.config import SlackConfig
@@ -262,7 +263,7 @@ class SlackSource(BaseSource):
             sync_job_id=None,
         )
 
-        entity.textual_representation = text_builder.build_metadata_section(
+        entity.textual_representation = TextualRepresentationBuilder().build_metadata_section(
             entity=entity,
             source_name="slack",
         )

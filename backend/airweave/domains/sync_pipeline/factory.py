@@ -31,8 +31,11 @@ from airweave.domains.sync_pipeline.access_control_dispatcher import ACActionDis
 from airweave.domains.sync_pipeline.access_control_pipeline import AccessControlPipeline
 from airweave.domains.sync_pipeline.access_control_resolver import ACActionResolver
 from airweave.domains.sync_pipeline.builders import SyncContextBuilder
+from airweave.domains.sync_pipeline.builders.destinations import DestinationsContextBuilder
+from airweave.domains.sync_pipeline.builders.source import SourceContextBuilder
 from airweave.domains.sync_pipeline.builders.tracking import TrackingContextBuilder
 from airweave.domains.sync_pipeline.config import SyncConfig, SyncConfigBuilder
+from airweave.domains.sync_pipeline.contexts.infra import InfraContext
 from airweave.domains.sync_pipeline.contexts.runtime import SyncRuntime
 from airweave.domains.sync_pipeline.entity_dispatcher_builder import EntityDispatcherBuilder
 from airweave.domains.sync_pipeline.handlers import ACPostgresHandler
@@ -106,8 +109,6 @@ class SyncFactory:
         # Direct repo call — replaces SyncContextBuilder -> SourceContextBuilder chain
         sc = await self._sc_repo.get_by_sync_id(db, sync_id=sync.id, ctx=ctx)
         if not sc:
-            from airweave.core.exceptions import NotFoundException
-
             raise NotFoundException(f"Source connection record not found for sync {sync.id}")
         source_connection_id = sc.id
 
@@ -232,11 +233,6 @@ class SyncFactory:
     @staticmethod
     async def _build_source(db, sync, sync_job, ctx, force_full_sync, execution_config):
         """Build source and cursor. Returns (source, cursor) tuple."""
-        from airweave.domains.sync_pipeline.builders.source import SourceContextBuilder
-        from airweave.domains.sync_pipeline.contexts.infra import InfraContext
-
-        Returns (source, cursor, files, node_selections) tuple.
-        """
         sync_logger = LoggerConfigurator.configure_logger(
             "airweave.platform.sync.source_build",
             dimensions={
@@ -397,8 +393,6 @@ class SyncFactory:
     @staticmethod
     async def _build_destinations(db, sync, collection, ctx, execution_config):
         """Build destinations and entity map. Returns (destinations, entity_map) tuple."""
-        from airweave.domains.sync_pipeline.builders.destinations import DestinationsContextBuilder
-
         dest_logger = LoggerConfigurator.configure_logger(
             "airweave.platform.sync.dest_build",
             dimensions={

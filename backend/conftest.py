@@ -422,6 +422,14 @@ def fake_entity_repo():
 
 
 @pytest.fixture
+def fake_access_broker():
+    """Fake AccessBroker."""
+    from airweave.domains.access_control.fakes.broker import FakeAccessBroker
+
+    return FakeAccessBroker()
+
+
+@pytest.fixture
 def fake_billing_webhook():
     """Fake BillingWebhookProcessor."""
     from airweave.adapters.payment.fake import FakePaymentGateway
@@ -711,6 +719,7 @@ def test_container(
     fake_agentic_search_v2,
     fake_sync_factory,
     fake_entity_repo,
+    fake_access_broker,
 ):
     """A Container with all dependencies replaced by fakes.
 
@@ -794,4 +803,5 @@ def test_container(
         agentic_search=fake_agentic_search_v2,
         sync_factory=fake_sync_factory,
         entity_repo=fake_entity_repo,
+        access_broker=fake_access_broker,
     )

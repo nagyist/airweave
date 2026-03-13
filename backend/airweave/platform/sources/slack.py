@@ -26,7 +26,6 @@ from airweave.platform.sources.retry_helpers import (
     retry_if_rate_limit_or_timeout,
     wait_rate_limit_with_backoff,
 )
-from airweave.domains.sync_pipeline.pipeline.text_builder import text_builder
 from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
 
 # Pattern for Slack mrkdwn special sequences:

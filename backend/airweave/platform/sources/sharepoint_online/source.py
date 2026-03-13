@@ -31,13 +31,13 @@ import httpx
 from tenacity import retry, stop_after_attempt
 
 from airweave.core.logging import ContextualLogger
+from airweave.domains.access_control.schemas import MembershipTuple
 from airweave.domains.browse_tree.types import BrowseNode, NodeSelectionData
 from airweave.domains.sources.exceptions import SourceAuthError
 from airweave.domains.sources.token_providers.protocol import TokenProviderProtocol
 from airweave.domains.storage import FileSkippedException
 from airweave.domains.storage.file_service import FileService
 from airweave.domains.syncs.cursors.cursor import SyncCursor
-from airweave.platform.access_control.schemas import MembershipTuple
 from airweave.platform.configs.config import SharePointOnlineConfig
 from airweave.platform.cursors.sharepoint_online import SharePointOnlineCursor
 from airweave.platform.decorators import source

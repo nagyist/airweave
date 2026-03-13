@@ -27,12 +27,12 @@ from dataclasses import dataclass
 from typing import Any, AsyncGenerator, Dict, List, Optional
 
 from airweave.core.logging import ContextualLogger
+from airweave.domains.access_control.schemas import MembershipTuple
 from airweave.domains.browse_tree.types import BrowseNode, NodeSelectionData
 from airweave.domains.sources.token_providers.credential import DirectCredentialProvider
 from airweave.domains.storage import FileSkippedException
 from airweave.domains.storage.file_service import FileService
 from airweave.domains.syncs.cursors.cursor import SyncCursor
-from airweave.platform.access_control.schemas import MembershipTuple
 from airweave.platform.configs.auth import SharePoint2019V2AuthConfig
 from airweave.platform.configs.config import SharePoint2019V2Config
 from airweave.platform.cursors.sharepoint2019v2 import SharePoint2019V2Cursor

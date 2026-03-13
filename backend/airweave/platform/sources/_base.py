@@ -18,7 +18,7 @@ from typing import (
 )
 
 if TYPE_CHECKING:
-    from airweave.platform.access_control.schemas import MembershipTuple
+    from airweave.domains.access_control.schemas import MembershipTuple
 
 from pydantic import BaseModel
 

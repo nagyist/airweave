@@ -22,7 +22,6 @@ from airweave.core.protocols.metrics import (
     MetricsService,
     WorkerMetrics,
 )
-from airweave.core.protocols.ocr import OcrProvider
 from airweave.core.protocols.payment import PaymentGatewayProtocol
 from airweave.core.protocols.pubsub import PubSub, PubSubSubscription
 from airweave.core.protocols.rate_limiter import RateLimiter
@@ -35,6 +34,7 @@ from airweave.core.protocols.webhooks import (
     WebhookServiceProtocol,
 )
 from airweave.core.protocols.worker_metrics_registry import WorkerMetricsRegistryProtocol
+from airweave.domains.ocr.protocols import OcrProvider
 
 __all__ = [
     "AgenticSearchMetrics",

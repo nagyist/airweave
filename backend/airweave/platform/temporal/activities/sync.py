@@ -227,6 +227,7 @@ class RunSyncActivity:
             last_redis_check_time = heartbeat_start_time
             redis_check_interval = 30  # check every 30 seconds
             last_known_timestamp = None
+            last_snapshot: dict = {}
             stall_start_time = None
             stall_dump_emitted = False
             stall_threshold = 300  # 5 minutes without progress
@@ -303,8 +304,8 @@ class RunSyncActivity:
                             snapshot_key = f"sync_progress_snapshot:{sync_job.id}"
                             snapshot_raw = await redis_client.client.get(snapshot_key)
                             if snapshot_raw:
-                                snapshot = json.loads(snapshot_raw)
-                                current_timestamp = snapshot.get("last_update_timestamp")
+                                last_snapshot = json.loads(snapshot_raw)
+                                current_timestamp = last_snapshot.get("last_update_timestamp")
 
                                 if current_timestamp != last_known_timestamp:
                                     last_known_timestamp = current_timestamp
@@ -338,8 +339,22 @@ class RunSyncActivity:
                         _emit_stack_dump("periodic", elapsed_seconds)
                         last_stack_dump_time = current_time
 
+                    heartbeat_data: dict = {
+                        "phase": "syncing",
+                        "elapsed_s": elapsed_seconds,
+                    }
+                    if last_known_timestamp:
+                        heartbeat_data["last_progress_at"] = last_known_timestamp
+                    if last_snapshot:
+                        heartbeat_data["inserted"] = last_snapshot.get("inserted", 0)
+                        heartbeat_data["updated"] = last_snapshot.get("updated", 0)
+                        heartbeat_data["deleted"] = last_snapshot.get("deleted", 0)
+                        heartbeat_data["kept"] = last_snapshot.get("kept", 0)
+                    if stall_start_time is not None:
+                        heartbeat_data["stall_s"] = int(current_time - stall_start_time)
+
                     ctx.logger.debug("HEARTBEAT: Sync in progress")
-                    activity.heartbeat("Sync in progress")
+                    activity.heartbeat(heartbeat_data)
 
                 # Publish COMPLETED event
                 await self.event_bus.publish(
@@ -494,7 +509,7 @@ class RunSyncActivity:
             try:
                 await asyncio.wait_for(sync_task, timeout=1)
             except asyncio.TimeoutError:
-                activity.heartbeat("Cancelling sync...")
+                activity.heartbeat({"phase": "cancelling"})
         with suppress(asyncio.CancelledError):
             await sync_task
 
@@ -686,7 +701,7 @@ class CreateSyncJobActivity:
         total_waited = 0
 
         while total_waited < max_wait_time:
-            activity.heartbeat(f"Waiting for running jobs to complete ({total_waited}s)")
+            activity.heartbeat({"phase": "waiting_for_running_jobs", "waited_s": total_waited})
             await asyncio.sleep(wait_interval)
             total_waited += wait_interval
 

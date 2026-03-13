@@ -10,9 +10,9 @@ from uuid import uuid4
 import aiofiles
 from firecrawl import AsyncFirecrawlApp
 
+from airweave.core import container as container_mod
 from airweave.core.config import settings
 from airweave.core.logging import ContextualLogger
-from airweave.domains.storage.sync_file_manager import sync_file_manager
 from airweave.platform.entities._base import WebEntity
 from airweave.platform.entities.web import WebFileEntity
 from airweave.platform.sync.async_helpers import run_in_thread_pool
@@ -289,7 +289,7 @@ async def web_fetcher(web_entity: WebEntity, logger: ContextualLogger) -> List[W
 
     logger.debug(f"🌐 WEB_START [{entity_context}] Starting web fetch for URL: {web_entity.url}")
 
-    is_ctti = sync_file_manager._is_ctti_entity(web_entity)
+    is_ctti = container_mod.container.sync_file_manager._is_ctti_entity(web_entity)
 
     if is_ctti:
         logger.debug(
@@ -331,7 +331,7 @@ async def _get_ctti_cached_content(
     web_entity: WebEntity, entity_context: str, logger: ContextualLogger
 ):
     """Check for and retrieve CTTI content from global storage."""
-    existing_content = await sync_file_manager.get_ctti_file_content(logger, web_entity.entity_id)
+    existing_content = await container_mod.container.sync_file_manager.get_ctti_file_content(logger, web_entity.entity_id)
 
     if existing_content:
         logger.debug(
@@ -377,7 +377,7 @@ async def _scrape_with_firecrawl_internal(
     """Internal function to handle the actual scraping with connection limiting."""
     app, semaphore = await get_firecrawl_client(logger)
 
-    is_ctti = sync_file_manager._is_ctti_entity(web_entity)
+    is_ctti = container_mod.container.sync_file_manager._is_ctti_entity(web_entity)
 
     if is_ctti:
         # Use CTTI-specific semaphore with lower concurrency
@@ -459,7 +459,7 @@ async def _try_scrape_with_timeouts(
     app, web_entity: WebEntity, timeouts: list, entity_context: str, logger: ContextualLogger
 ):
     """Try scraping with progressively longer timeouts."""
-    is_ctti = sync_file_manager._is_ctti_entity(web_entity)
+    is_ctti = container_mod.container.sync_file_manager._is_ctti_entity(web_entity)
 
     # Use longer timeouts for CTTI entities
     if is_ctti:
@@ -491,7 +491,7 @@ async def _try_scrape_with_timeouts(
 
 async def _scrape_web_content(web_entity: WebEntity, entity_context: str, logger: ContextualLogger):
     """Scrape web content using Firecrawl or retrieve from storage for CTTI entities."""
-    is_ctti = sync_file_manager._is_ctti_entity(web_entity)
+    is_ctti = container_mod.container.sync_file_manager._is_ctti_entity(web_entity)
 
     if is_ctti:
         cached_result = await _get_ctti_cached_content(web_entity, entity_context, logger)
@@ -658,7 +658,7 @@ async def _store_file_entity(
     """Store file entity in persistent storage."""
     if is_ctti:
         # Check if CTTI file already exists in global storage
-        if await sync_file_manager.check_ctti_file_exists(logger, file_entity.entity_id):
+        if await container_mod.container.sync_file_manager.check_ctti_file_exists(logger, file_entity.entity_id):
             logger.debug(
                 f"💾 WEB_CTTI_EXISTS [{entity_context}] "
                 f"CTTI file already exists in global storage, skipping upload"
@@ -675,7 +675,7 @@ async def _store_file_entity(
         else:
             # Use CTTI-specific storage (global deduplication)
             with open(temp_file_path, "rb") as f:
-                file_entity = await sync_file_manager.store_ctti_file(logger, file_entity, f)
+                file_entity = await container_mod.container.sync_file_manager.store_ctti_file(logger, file_entity, f)
 
             logger.debug(
                 f"💾 WEB_CTTI_STORED [{entity_context}] "

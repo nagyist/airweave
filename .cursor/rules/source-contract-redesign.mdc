@@ -78,27 +78,46 @@ Protocol with `get_token()` / `force_refresh()`. Three implementations:
 ### oauth2_service
 Added `refresh_and_persist()` — full load + decrypt + refresh + persist-rotation cycle in one call. OAuthTokenProvider is thin (~185 lines, zero infra deps).
 
-## What's remaining
+## What's remaining (prioritized)
 
-### 1. Kill setters, make `create()` explicit
-Remove: `set_logger`, `set_token_provider`, `set_http_client_factory`, `set_file_downloader`, `set_cursor`, `set_sync_identifiers`, `set_node_selections`.
+### Phase 1: Stop the bleeding (URGENT — production bug)
+Sources `except Exception` and swallow everything. A 401 on every API call results in a "successful" sync with 0 entities (observed in Linear sync). ~186 `except Exception` instances across ~30 source files.
 
-The `create()` signature becomes typed. The lifecycle service builds all deps and passes them. Sources receive what they need at construction, not via post-construction mutation.
+**1a. Sources raise typed exceptions:**
+- 401 after refresh attempt → `SourceAuthError` (abort sync)
+- 429 → `SourceRateLimitError` (retry)
+- 403 on single entity → `SourceEntityForbiddenError` (skip entity)
+- 5xx / timeout → `SourceTemporaryError` (retry)
+- File download failure → `SourceFileDownloadError` (skip entity)
 
-For `auth`: token-based sources get `TokenProvider`. Structured-credential sources (NTLM) get their typed `AuthConfig`. The `@source` decorator's `auth_methods` determines which.
+**1b. Pipeline routes exceptions:**
+- `SourceAuthError` → mark sync as auth_failed, abort
+- `SourceEntityError` subtypes → skip entity, increment skipped counter
+- `SourceRateLimitError` / `SourceTemporaryError` → retry or abort after N retries
+- Orchestrator (`platform/sync/orchestrator.py`), stream (`platform/sync/stream.py`) need updates
 
-### 2. Method signatures carry operation context
-`generate_entities(*, cursor: SyncCursor, files: FileService)` — caller passes sync-specific deps. Source doesn't store them on self. SyncFactory call site becomes: `source.generate_entities(cursor=runtime.cursor, files=file_service)`.
+### Phase 2: Kill setters, make construction explicit
+**2a. Construction-time deps into `create()` params** — `logger`, `token_provider`, `http_client_factory` passed at creation, not via `set_*()` after.
 
-`search`, `get_browse_children`, `validate` only use construction-time deps — their signatures stay simple.
+**2b. Operation-time deps into method params** — `generate_entities(*, cursor, files, node_selections)` instead of `self._cursor` / `self._file_downloader` stored on self.
 
-### 3. Lifecycle service consolidation
-Add `create_from_credentials(short_name, credentials, ctx)` for the OAuth validation path (currently bypasses lifecycle via direct `source_cls.create()`). All creation goes through one service.
+**2c. Update SourceLifecycleService** — passes deps at construction.
 
-### 4. Extract utilities from BaseSource
+**2d. Update SourceContextBuilder** — passes cursor/files/selections as method params.
+
+### Phase 3: Make `create()` typed
+**3a. New `create()` signature** — Token sources: `create(*, auth: TokenProvider, config: Optional[BaseModel])`. Structured-credential sources: `create(*, auth: AuthConfig, config: Optional[BaseModel])`.
+
+**3b. Update all ~30 source implementations.**
+
+### Phase 4: Extract utilities from BaseSource
 - `_validate_oauth2` (~150 lines) → standalone or on TokenProvider
 - `clean_content_for_embedding` (~40 lines) → standalone utility
 - `process_entities_concurrent` → stays (used by 5+ sources, only needs self.logger)
+
+### Phase 5: Lifecycle consolidation
+- Validation path currently bypasses lifecycle service (direct `source_cls.create()`) — bring it in
+- Absorb `SourceContextBuilder` sync-specific concerns into lifecycle service
 
 ## Design decisions
 

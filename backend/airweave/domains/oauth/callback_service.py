@@ -38,6 +38,7 @@ from airweave.domains.source_connections.protocols import (
     SourceConnectionRepositoryProtocol,
 )
 from airweave.domains.sources.protocols import SourceRegistryProtocol
+from airweave.domains.sources.token_providers.static import StaticTokenProvider
 from airweave.domains.sources.types import SourceRegistryEntry
 from airweave.domains.syncs.protocols import (
     SyncJobRepositoryProtocol,
@@ -580,6 +581,9 @@ class OAuthCallbackService:
 
             source_instance = await source_cls.create(access_token=access_token, config=None)
             source_instance.set_logger(ctx.logger)
+            source_instance.set_token_provider(
+                StaticTokenProvider(access_token, source_short_name=source_entry.short_name)
+            )
 
             if hasattr(source_instance, "validate"):
                 is_valid = await source_instance.validate()

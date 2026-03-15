@@ -35,6 +35,9 @@ from airweave.domains.sources.protocols import (
     SourceLifecycleServiceProtocol,
     SourceRegistryProtocol,
 )
+from airweave.domains.sources.token_providers.auth_provider import AuthProviderTokenProvider
+from airweave.domains.sources.token_providers.oauth import OAuthTokenProvider
+from airweave.domains.sources.token_providers.static import StaticTokenProvider
 from airweave.domains.sources.types import AuthConfig, SourceConnectionData
 from airweave.platform.auth_providers._base import BaseAuthProvider
 from airweave.platform.auth_providers.auth_result import AuthProviderMode
@@ -42,7 +45,6 @@ from airweave.platform.auth_providers.pipedream import PipedreamAuthProvider
 from airweave.platform.http_client import PipedreamProxyClient
 from airweave.platform.http_client.airweave_client import AirweaveHttpClient
 from airweave.platform.sources._base import BaseSource
-from airweave.platform.sync.token_manager import TokenManager
 from airweave.schemas.source_connection import OAuthType
 
 SourceCredentials = Union[str, dict, BaseModel]
@@ -135,10 +137,7 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
         # 5. Configure source
         self._configure_logger(source, logger)
         self._configure_http_client_factory(source, auth_config)
-        self._configure_sync_identifiers(source, source_connection_data, ctx)
-
-        await self._configure_token_manager(
-            db=db,
+        await self._configure_token_provider(
             source=source,
             source_connection_data=source_connection_data,
             source_credentials=auth_config.credentials,
@@ -166,7 +165,9 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
     ) -> None:
         """Validate credentials by creating a lightweight source and calling .validate().
 
-        No token manager, no HTTP wrapping, no rate limiting — just create + validate.
+        No HTTP wrapping, no rate limiting — just create + validate.
+        A StaticTokenProvider is attached so sources that call
+        ``get_access_token()`` in their validate() method get the token.
 
         Raises:
             SourceNotFoundError: If source short_name is not in the registry.
@@ -184,6 +185,10 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
             source = await source_class.create(credentials, config=config)
         except Exception as exc:
             raise SourceCreationError(short_name, str(exc)) from exc
+
+        token = OAuthTokenProvider.extract_token(credentials)
+        if token and entry.oauth_type:
+            source.set_token_provider(StaticTokenProvider(token, source_short_name=short_name))
 
         try:
             is_valid = await source.validate()
@@ -622,24 +627,8 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
         if auth_config.http_client_factory:
             source.set_http_client_factory(auth_config.http_client_factory)
 
-    @staticmethod
-    def _configure_sync_identifiers(
-        source: BaseSource, source_connection_data: SourceConnectionData, ctx: ApiContext
-    ) -> None:
-        try:
-            organization_id = ctx.organization.id
-            sc_id = source_connection_data.source_connection_id
-            if hasattr(source, "set_sync_identifiers") and sc_id:
-                source.set_sync_identifiers(
-                    organization_id=str(organization_id),
-                    source_connection_id=str(sc_id),
-                )
-        except Exception:
-            pass  # Non-fatal for older sources
-
-    @staticmethod
-    async def _configure_token_manager(
-        db: AsyncSession,
+    async def _configure_token_provider(
+        self,
         source: BaseSource,
         source_connection_data: SourceConnectionData,
         source_credentials: SourceCredentials,
@@ -648,65 +637,62 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
         access_token: Optional[str],
         auth_config: AuthConfig,
     ) -> None:
-        """Set up token manager for OAuth sources that support refresh."""
+        """Set up the appropriate TokenProvider for this source."""
         auth_mode = auth_config.auth_mode
         auth_provider_instance: Optional[BaseAuthProvider] = auth_config.auth_provider_instance
+        short_name = source_connection_data.short_name
 
         if access_token is not None:
-            logger.debug(
-                f"Skipping token manager for {source_connection_data.short_name} "
-                f"— direct token injection"
-            )
+            logger.debug(f"Skipping token provider for {short_name} — direct token injection")
             return
 
         if auth_mode == AuthProviderMode.PROXY:
-            logger.info(
-                f"Skipping token manager for {source_connection_data.short_name} — proxy mode"
-            )
+            logger.info(f"Skipping token provider for {short_name} — proxy mode")
             return
 
-        short_name = source_connection_data.short_name
         oauth_type = source_connection_data.oauth_type
-
         if not oauth_type:
             return
 
-        if oauth_type not in (OAuthType.WITH_REFRESH, OAuthType.WITH_ROTATING_REFRESH):
-            logger.debug(
-                f"Skipping token manager for {short_name} — "
-                f"oauth_type={oauth_type} does not support refresh"
-            )
-            return
-
         try:
-            minimal_connection = type(
-                "SourceConnection",
-                (),
-                {
-                    "id": source_connection_data.connection_id,
-                    "integration_credential_id": source_connection_data.integration_credential_id,
-                    "config_fields": source_connection_data.config_fields,
-                },
-            )()
+            if auth_provider_instance:
+                token_provider = AuthProviderTokenProvider(
+                    auth_provider_instance=auth_provider_instance,
+                    source_short_name=short_name,
+                    source_registry=self._source_registry,
+                    logger=logger,
+                )
+                logger.info(f"AuthProviderTokenProvider initialized for {short_name}")
+            else:
+                initial_token = OAuthTokenProvider.extract_token(source_credentials)
+                if not initial_token:
+                    logger.warning(
+                        f"No access token found in credentials for {short_name}, "
+                        f"skipping token provider"
+                    )
+                    return
 
-            token_manager = TokenManager(
-                db=db,
-                source_short_name=short_name,
-                source_connection=minimal_connection,
-                ctx=ctx,
-                initial_credentials=source_credentials,
-                is_direct_injection=False,
-                logger_instance=logger,
-                auth_provider_instance=auth_provider_instance,
-            )
-            source.set_token_manager(token_manager)
+                can_refresh = oauth_type in (
+                    OAuthType.WITH_REFRESH,
+                    OAuthType.WITH_ROTATING_REFRESH,
+                ) and OAuthTokenProvider.check_has_refresh_token(source_credentials)
 
-            logger.info(
-                f"Token manager initialized for OAuth source {short_name} "
-                f"(auth_provider: {'Yes' if auth_provider_instance else 'None'})"
-            )
+                token_provider = OAuthTokenProvider(
+                    initial_token=initial_token,
+                    oauth2_service=self._oauth2_service,
+                    source_short_name=short_name,
+                    connection_id=source_connection_data.connection_id,
+                    ctx=ctx,
+                    logger=logger,
+                    config_fields=source_connection_data.config_fields,
+                    can_refresh=can_refresh,
+                )
+                logger.info(f"OAuthTokenProvider initialized for {short_name}")
+
+            source.set_token_provider(token_provider)
+
         except Exception as e:
-            logger.error(f"Failed to setup token manager for '{short_name}': {e}")
+            logger.error(f"Failed to setup token provider for '{short_name}': {e}")
 
     # ------------------------------------------------------------------
     # Private: rate limiting wrapper

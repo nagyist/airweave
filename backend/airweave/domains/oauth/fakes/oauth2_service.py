@@ -189,3 +189,22 @@ class FakeOAuth2Service:
         if not resp:
             raise ValueError(f"No seeded refresh response for {integration_short_name}")
         return resp
+
+    async def refresh_and_persist(
+        self,
+        db: AsyncSession,
+        integration_short_name: str,
+        connection_id: UUID,
+        ctx: ApiContext,
+        config_fields: Optional[dict[str, str]] = None,
+    ) -> str:
+        """Fake refresh_and_persist — returns seeded access_token."""
+        self._calls.append(
+            ("refresh_and_persist", db, integration_short_name, connection_id, ctx, config_fields)
+        )
+        if self._should_raise:
+            raise self._should_raise
+        resp = self._refresh_responses.get(integration_short_name)
+        if not resp:
+            raise ValueError(f"No seeded refresh response for {integration_short_name}")
+        return resp.access_token

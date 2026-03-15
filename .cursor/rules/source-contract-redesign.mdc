@@ -1,0 +1,139 @@
+---
+description: Source contract v2 redesign — handover context for continuing the refactor
+alwaysApply: false
+---
+
+# Source Contract v2 Redesign — Handover
+
+## The problem
+
+The `BaseSource` contract was designed 14 months ago for OSS contributors to build sources easily. The system grew complex, but the contract didn't evolve. Result:
+
+- **Setter soup**: 7 `set_*()` calls across 2 files after construction. Source is never "fully configured" at any point.
+- **Untyped creation**: `create(credentials: Optional[Any], config: Optional[Dict])` — nobody knows what credentials actually is.
+- **No exceptions**: Sources catch bare `httpx.HTTPStatusError`, pipeline can't distinguish "skip entity" from "abort sync".
+- **Token tangle**: `self.access_token` dynamic attribute + `TokenManager` + `get_access_token()` fallback with `getattr`.
+- **Hidden deps**: `generate_entities()` takes no params but relies on cursor, file_downloader, node_selections stored on self.
+- **God class**: BaseSource is 800 lines mixing auth, HTTP, content cleaning, concurrency, and OAuth validation.
+
+## The target contract
+
+```python
+class BaseSource:
+    # Construction: typed deps, no setters
+    @classmethod
+    async def create(cls, *, auth: TokenProvider | AuthConfig, config: Optional[BaseModel],
+                     logger: ContextualLogger) -> "BaseSource": ...
+
+    # Methods carry their operation context
+    async def generate_entities(self, *, cursor: SyncCursor, files: FileService) -> AsyncGenerator[BaseEntity, None]: ...
+    async def validate(self) -> bool: ...
+    async def search(self, *, query: str, limit: int) -> AsyncGenerator[BaseEntity, None]: ...
+    async def get_browse_children(self, *, parent_node_id: str | None = None) -> list[BrowseNode]: ...
+    async def execute_tool(self, *, tool_name: str, parameters: dict) -> ToolResult: ...  # future
+```
+
+One factory (`SourceLifecycleService`) for ALL creation contexts: sync, search, browse, validation, tool calls.
+
+## What's done
+
+### Exception hierarchy (`domains/sources/exceptions.py`)
+Full typed hierarchy under `SourceError(AirweaveException)`:
+- `SourceAuthError` > `SourceTokenRefreshError` — 401 / refresh failure
+- `SourceRateLimitError(retry_after)` — 429
+- `SourceTemporaryError(status_code)` — 5xx, timeout
+- `SourcePermanentError(status_code)` — non-retryable
+- `SourceEntityError(entity_id)` > `SourceEntityForbiddenError`, `SourceEntityNotFoundError`, `SourceEntitySkippedError`
+- `SourceFileDownloadError(file_url)`
+- `SourceCreationError`, `SourceValidationError`
+
+Sources should raise these. Pipeline routes by type (skip entity, retry, abort).
+
+### TokenProvider protocol (`domains/sources/token_providers/`)
+Protocol with `get_token()` / `force_refresh()`. Three implementations:
+- `OAuthTokenProvider` — timer (25min) + asyncio.Lock + delegates to `oauth2_service.refresh_and_persist()`
+- `StaticTokenProvider` — raw string, raises `SourceAuthError` on refresh
+- `AuthProviderTokenProvider` — delegates to Pipedream/Composio `BaseAuthProvider.get_creds_for_source()`
+
+**Resolution matrix** (`_configure_token_provider` in lifecycle.py):
+| Situation | Provider | `can_refresh` |
+|-----------|----------|---------------|
+| `oauth_type=None` (GitHub, Slab, Stripe, SharePoint2019) | None — source manages its own auth | n/a |
+| `ACCESS_ONLY` (Linear, Slack, Notion, Monday, ClickUp, Todoist, Intercom) | `OAuthTokenProvider` | `False` |
+| `WITH_REFRESH` (Airtable, Asana, Google Drive, Salesforce, etc.) | `OAuthTokenProvider` | `True` |
+| `WITH_ROTATING_REFRESH` (Confluence, Jira) | `OAuthTokenProvider` | `True` |
+| Auth provider (Pipedream/Composio, any source) | `AuthProviderTokenProvider` | n/a |
+| Direct token injection | None (token passed directly) | n/a |
+| Proxy mode | None (HTTP client handles auth) | n/a |
+| Lightweight `validate()` path | `StaticTokenProvider` | n/a |
+
+`can_refresh` is derived from `oauth_type` AND `check_has_refresh_token(credentials)` — both must be true.
+
+### BaseSource token cleanup
+- `_token_manager` removed. `_token_provider` is the single path.
+- `get_access_token()` → `_token_provider.get_token()`
+- `refresh_on_unauthorized()` → `_token_provider.force_refresh()`
+- All ~25 source files migrated. Zero `token_manager` references remain.
+
+### oauth2_service
+Added `refresh_and_persist()` — full load + decrypt + refresh + persist-rotation cycle in one call. OAuthTokenProvider is thin (~185 lines, zero infra deps).
+
+## What's remaining
+
+### 1. Kill setters, make `create()` explicit
+Remove: `set_logger`, `set_token_provider`, `set_http_client_factory`, `set_file_downloader`, `set_cursor`, `set_sync_identifiers`, `set_node_selections`.
+
+The `create()` signature becomes typed. The lifecycle service builds all deps and passes them. Sources receive what they need at construction, not via post-construction mutation.
+
+For `auth`: token-based sources get `TokenProvider`. Structured-credential sources (NTLM) get their typed `AuthConfig`. The `@source` decorator's `auth_methods` determines which.
+
+### 2. Method signatures carry operation context
+`generate_entities(*, cursor: SyncCursor, files: FileService)` — caller passes sync-specific deps. Source doesn't store them on self. SyncFactory call site becomes: `source.generate_entities(cursor=runtime.cursor, files=file_service)`.
+
+`search`, `get_browse_children`, `validate` only use construction-time deps — their signatures stay simple.
+
+### 3. Lifecycle service consolidation
+Add `create_from_credentials(short_name, credentials, ctx)` for the OAuth validation path (currently bypasses lifecycle via direct `source_cls.create()`). All creation goes through one service.
+
+### 4. Extract utilities from BaseSource
+- `_validate_oauth2` (~150 lines) → standalone or on TokenProvider
+- `clean_content_for_embedding` (~40 lines) → standalone utility
+- `process_entities_concurrent` → stays (used by 5+ sources, only needs self.logger)
+
+## Design decisions
+
+**HTTP client**: NOT abstracting auth into the HTTP layer. Auth header format is too diverse across sources (Bearer, `token`, NTLM, custom headers like `Notion-Version`). AirweaveHttpClient stays as transport + rate limiting only. Sources own their auth headers.
+
+**`get_token_for_resource`**: NOT on the TokenProvider protocol. Only SharePoint Online uses it. Accessed via `hasattr` check on _token_provider. The method exists on OAuthTokenProvider but not on the protocol.
+
+**No backwards compat**: We refactor thoroughly. No shims, no dual support.
+
+**No lazy imports**: Dependencies injected explicitly at construction. No `import` inside methods to avoid circular deps — fix the architecture instead.
+
+**No `Any` types**: Use protocols, typed params, `ContextualLogger` not `Any`.
+
+**Exceptions propagate**: Token providers throw `SourceTokenRefreshError`, not swallow errors. Pipeline/orchestrator decides what to do.
+
+**FileService concern**: When `generate_entities` receives `files: FileService` as param, FileService.download_from_url still needs the source's HTTP client and token provider. Either the pipeline pre-wires FileService with the source's auth, or the source passes them. This needs design thought.
+
+## Key files
+
+| File | Role |
+|------|------|
+| `platform/sources/_base.py` | BaseSource contract (setters still exist, needs `create()` rewrite) |
+| `domains/sources/exceptions.py` | Full exception hierarchy (done) |
+| `domains/sources/token_providers/` | Protocol + 3 implementations (done) |
+| `domains/sources/lifecycle.py` | Creates + configures sources. Has `_configure_token_provider`. |
+| `platform/builders/source.py` | Sync-specific: cursor, file_downloader, node_selections (to be absorbed) |
+| `domains/oauth/oauth2_service.py` | `refresh_and_persist()` (done) |
+| `tests/unit/platform/sync/test_token_providers.py` | 21 tests covering all 3 providers |
+
+## Source auth patterns (reference)
+
+| Pattern | Sources | How token is obtained |
+|---------|---------|----------------------|
+| Bearer OAuth | asana, slack, google_drive, hubspot, airtable, zendesk, sharepoint_online, notion, linear, jira | `get_access_token()` → TokenProvider |
+| Bearer API key | attio, slab | `self.api_key` (static, no refresh) |
+| `token` header (PAT) | github | `self.personal_access_token` |
+| NTLM | sharepoint2019v2 | username/password/domain from auth config |
+| Cross-resource | sharepoint_online | `get_token_for_resource(scope)` on OAuthTokenProvider |

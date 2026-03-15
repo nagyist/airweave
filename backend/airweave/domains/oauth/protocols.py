@@ -124,6 +124,20 @@ class OAuth2ServiceProtocol(Protocol):
         """Refresh an OAuth2 access token."""
         ...
 
+    async def refresh_and_persist(
+        self,
+        db: AsyncSession,
+        integration_short_name: str,
+        connection_id: UUID,
+        ctx: ApiContext,
+        config_fields: Optional[dict] = None,
+    ) -> str:
+        """Load credentials, refresh token, persist rotated refresh_token.
+
+        Returns the new access_token.
+        """
+        ...
+
 
 # ---------------------------------------------------------------------------
 # Init session + redirect session repositories

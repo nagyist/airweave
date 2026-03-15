@@ -151,10 +151,9 @@ class BoxSource(BaseSource):
                 self.logger.warning(f"Received 401 Unauthorized for {url}, refreshing token...")
 
                 # If we have a token manager, try to refresh
-                if self.token_manager:
+                if self.token_provider:
                     try:
-                        # Force refresh the token
-                        new_token = await self.token_manager.refresh_on_unauthorized()
+                        new_token = await self.token_provider.force_refresh()
                         headers = {
                             "Authorization": f"Bearer {new_token}",
                             "Accept": "application/json",

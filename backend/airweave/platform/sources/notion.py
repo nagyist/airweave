@@ -182,8 +182,9 @@ class NotionSource(BaseSource):
         self.logger.debug(f"GET request to {url}")
         self._stats["api_calls"] += 1
 
+        access_token = await self.get_access_token()
         headers = {
-            "Authorization": f"Bearer {self.access_token}",
+            "Authorization": f"Bearer {access_token}",
             "Notion-Version": "2022-06-28",
         }
 
@@ -244,8 +245,9 @@ class NotionSource(BaseSource):
         self.logger.debug(f"POST request to {url}")
         self._stats["api_calls"] += 1
 
+        access_token = await self.get_access_token()
         headers = {
-            "Authorization": f"Bearer {self.access_token}",
+            "Authorization": f"Bearer {access_token}",
             "Notion-Version": "2022-06-28",
         }
 

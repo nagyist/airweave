@@ -371,6 +371,54 @@ class OAuth2Service(OAuth2ServiceProtocol):
             )
             raise
 
+    async def refresh_and_persist(
+        self,
+        db: AsyncSession,
+        integration_short_name: str,
+        connection_id: UUID,
+        ctx: ApiContext,
+        config_fields: Optional[dict[str, str]] = None,
+    ) -> str:
+        """Load credentials, refresh token, persist rotation, return new access token.
+
+        Convenience method that combines credential loading with refresh_access_token.
+
+        Args:
+            db: Database session.
+            integration_short_name: Source short name.
+            connection_id: Connection UUID (for credential lookup and rotation persistence).
+            ctx: API context.
+            config_fields: Optional config fields for templated backend URLs.
+
+        Returns:
+            The new access token string.
+
+        Raises:
+            TokenRefreshError: If refresh fails.
+            NotFoundException: If connection or credential not found.
+        """
+        connection = await self.conn_repo.get(db=db, id=connection_id, ctx=ctx)
+        if not connection or not connection.integration_credential_id:
+            raise TokenRefreshError(f"Connection {connection_id} not found or has no credential")
+
+        credential = await self.cred_repo.get(
+            db=db, id=connection.integration_credential_id, ctx=ctx
+        )
+        if not credential:
+            raise TokenRefreshError("Integration credential not found")
+
+        decrypted = self.encryptor.decrypt(credential.encrypted_credentials)
+
+        response = await self.refresh_access_token(
+            db=db,
+            integration_short_name=integration_short_name,
+            ctx=ctx,
+            connection_id=connection_id,
+            decrypted_credential=decrypted,
+            config_fields=config_fields,
+        )
+        return response.access_token
+
     # ------------------------------------------------------------------
     # Private helpers
     # ------------------------------------------------------------------

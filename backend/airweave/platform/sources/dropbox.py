@@ -108,9 +108,9 @@ class DropboxSource(BaseSource):
 
         except httpx.HTTPStatusError as e:
             # Handle 401 Unauthorized - try refreshing token
-            if e.response.status_code == 401 and self._token_manager:
+            if e.response.status_code == 401 and self._token_provider:
                 self.logger.debug("Received 401 error, attempting to refresh token")
-                refreshed = await self._token_manager.refresh_on_unauthorized()
+                refreshed = await self._token_provider.force_refresh()
 
                 if refreshed:
                     # Retry with new token (the retry decorator will handle this)

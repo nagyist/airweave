@@ -66,7 +66,7 @@ class BaseAuthProvider(ABC):
             True if the connection is valid, False otherwise
 
         Raises:
-            HTTPException: If validation fails with detailed error message
+            AuthProviderError: If validation fails (subclass depends on cause).
         """
         pass
 

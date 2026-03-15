@@ -109,10 +109,10 @@ class ZendeskSource(BaseSource):
             if response.status_code == 401:
                 self.logger.warning(f"Received 401 Unauthorized for {url}")
 
-                if self.token_manager:
+                if self.token_provider:
                     try:
                         # Force refresh the token
-                        new_token = await self.token_manager.refresh_on_unauthorized()
+                        new_token = await self.token_provider.force_refresh()
                         headers = {"Authorization": f"Bearer {new_token}"}
 
                         # Retry the request with the new token
@@ -148,7 +148,7 @@ class ZendeskSource(BaseSource):
 
     async def get_access_token(self) -> Optional[str]:
         """Get the current access token."""
-        if self.token_manager:
+        if self.token_provider:
             # Token manager handles token retrieval
             return getattr(self, "access_token", None)
         return getattr(self, "access_token", None)

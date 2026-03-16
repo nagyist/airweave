@@ -11,7 +11,7 @@ Uses table-driven tests where possible, mocks for Vespa I/O.
 
 from dataclasses import dataclass
 from typing import Optional
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import ANY, AsyncMock, MagicMock, patch
 from uuid import UUID
 
 import httpx
@@ -221,18 +221,13 @@ class TestDeleteByDocIds:
 
         mock_response = MagicMock(spec=httpx.Response)
         mock_response.status_code = 200
+        mock_http = AsyncMock()
+        mock_http.delete = AsyncMock(return_value=mock_response)
 
-        with patch("httpx.AsyncClient") as mock_client_cls:
-            mock_async_client = AsyncMock()
-            mock_async_client.delete = AsyncMock(return_value=mock_response)
-            mock_async_client.__aenter__ = AsyncMock(return_value=mock_async_client)
-            mock_async_client.__aexit__ = AsyncMock(return_value=None)
-            mock_client_cls.return_value = mock_async_client
-
-            count = await client._delete_by_doc_ids(doc_ids)
+        count = await client._delete_by_doc_ids(doc_ids, mock_http)
 
         assert count == 3
-        assert mock_async_client.delete.call_count == 3
+        assert mock_http.delete.call_count == 3
 
     @pytest.mark.asyncio
     async def test_counts_partial_failures(self, client):
@@ -246,22 +241,18 @@ class TestDeleteByDocIds:
         success_resp.status_code = 200
         fail_resp = MagicMock(spec=httpx.Response)
         fail_resp.status_code = 404
+        mock_http = AsyncMock()
+        mock_http.delete = AsyncMock(side_effect=[success_resp, fail_resp])
 
-        with patch("httpx.AsyncClient") as mock_client_cls:
-            mock_async_client = AsyncMock()
-            mock_async_client.delete = AsyncMock(side_effect=[success_resp, fail_resp])
-            mock_async_client.__aenter__ = AsyncMock(return_value=mock_async_client)
-            mock_async_client.__aexit__ = AsyncMock(return_value=None)
-            mock_client_cls.return_value = mock_async_client
-
-            count = await client._delete_by_doc_ids(doc_ids)
+        count = await client._delete_by_doc_ids(doc_ids, mock_http)
 
         assert count == 1
 
     @pytest.mark.asyncio
     async def test_empty_list_returns_zero(self, client):
         """Empty doc_ids list returns 0 without making requests."""
-        count = await client._delete_by_doc_ids([])
+        mock_http = AsyncMock()
+        count = await client._delete_by_doc_ids([], mock_http)
         assert count == 0
 
 
@@ -294,7 +285,7 @@ class TestDeleteByOriginalEntityIds:
         assert len(results) == 1
         assert results[0].deleted_count == 2
         mock_query.assert_awaited_once()
-        mock_delete.assert_awaited_once_with(resolved)
+        mock_delete.assert_awaited_once_with(resolved, http_client=ANY)
 
     @pytest.mark.asyncio
     async def test_empty_original_entity_ids(self, client):

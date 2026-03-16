@@ -287,21 +287,22 @@ class VespaClient:
             return []
 
         total_deleted = 0
-        for i in range(0, len(original_entity_ids), batch_size):
-            batch = original_entity_ids[i : i + batch_size]
-            try:
-                doc_ids = await self._query_doc_ids_by_original_entity_ids(batch, collection_id)
-                if doc_ids:
-                    count = await self._delete_by_doc_ids(doc_ids)
-                    total_deleted += count
-            except Exception as e:
-                self._logger.warning(
-                    f"[VespaClient] Fast delete failed for batch of {len(batch)} "
-                    f"original entity IDs, falling back to selection-based delete: {e}"
-                )
-                total_deleted += await self._delete_by_original_entity_ids_selection(
-                    batch, collection_id
-                )
+        async with httpx.AsyncClient(timeout=settings.VESPA_TIMEOUT) as http_client:
+            for i in range(0, len(original_entity_ids), batch_size):
+                batch = original_entity_ids[i : i + batch_size]
+                try:
+                    doc_ids = await self._query_doc_ids_by_original_entity_ids(batch, collection_id)
+                    if doc_ids:
+                        count = await self._delete_by_doc_ids(doc_ids, http_client=http_client)
+                        total_deleted += count
+                except Exception as e:
+                    self._logger.warning(
+                        f"[VespaClient] Fast delete failed for batch of {len(batch)} "
+                        f"original entity IDs, falling back to selection-based delete: {e}"
+                    )
+                    total_deleted += await self._delete_by_original_entity_ids_selection(
+                        batch, collection_id
+                    )
 
         return [DeleteResult(deleted_count=total_deleted, schema=None)]
 
@@ -395,6 +396,7 @@ class VespaClient:
     async def _delete_by_doc_ids(
         self,
         doc_ids: List[Tuple[str, str]],
+        http_client: httpx.AsyncClient,
     ) -> int:
         """Delete documents by their Vespa document IDs using parallel direct DELETEs.
 
@@ -402,6 +404,7 @@ class VespaClient:
 
         Args:
             doc_ids: List of (schema, doc_id) tuples
+            http_client: httpx client for issuing DELETE requests
 
         Returns:
             Number of successfully deleted documents
@@ -414,24 +417,22 @@ class VespaClient:
         deleted = 0
         failed = 0
 
-        async with httpx.AsyncClient(timeout=settings.VESPA_TIMEOUT) as client:
+        async def _delete_one(schema: str, doc_id: str) -> bool:
+            url = f"{base_url}/document/v1/airweave/{schema}/docid/{quote(doc_id, safe='')}"
+            async with semaphore:
+                resp = await http_client.delete(url)
+                return resp.status_code == 200
 
-            async def _delete_one(schema: str, doc_id: str) -> bool:
-                url = f"{base_url}/document/v1/airweave/{schema}/docid/{quote(doc_id, safe='')}"
-                async with semaphore:
-                    resp = await client.delete(url)
-                    return resp.status_code == 200
+        start = time.perf_counter()
+        tasks = [_delete_one(schema, doc_id) for schema, doc_id in doc_ids]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        elapsed_ms = (time.perf_counter() - start) * 1000
 
-            start = time.perf_counter()
-            tasks = [_delete_one(schema, doc_id) for schema, doc_id in doc_ids]
-            results = await asyncio.gather(*tasks, return_exceptions=True)
-            elapsed_ms = (time.perf_counter() - start) * 1000
-
-            for r in results:
-                if r is True:
-                    deleted += 1
-                else:
-                    failed += 1
+        for r in results:
+            if r is True:
+                deleted += 1
+            else:
+                failed += 1
 
         if failed > 0:
             self._logger.warning(

@@ -497,6 +497,33 @@ async def test_cleanup_stale_entities_nothing_stale():
     assert removed == 0
 
 
+@pytest.mark.asyncio
+async def test_cleanup_stale_entities_uses_filename_comparison_not_json_reads():
+    """Cleanup should not read entity JSONs to determine staleness (perf)."""
+    svc, storage = _build_service()
+    ctx = _make_sync_context()
+    await svc.upsert_entities([_make_entity(f"e-{i}") for i in range(3)], ctx)
+
+    seen = {"e-0", "e-1", "e-2"}
+    runtime = _make_runtime()
+    runtime.entity_tracker = SimpleNamespace(get_all_encountered_ids_flat=lambda: seen)
+
+    read_json_calls = []
+    original_read_json = storage.read_json
+
+    async def tracking_read_json(path):
+        read_json_calls.append(path)
+        return await original_read_json(path)
+
+    storage.read_json = tracking_read_json
+
+    removed = await svc.cleanup_stale_entities(ctx, runtime)
+    assert removed == 0
+    assert len(read_json_calls) == 0, (
+        "cleanup_stale_entities should not read JSON when nothing is stale"
+    )
+
+
 # ---------------------------------------------------------------------------
 # Tests: list_syncs
 # ---------------------------------------------------------------------------

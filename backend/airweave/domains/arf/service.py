@@ -191,16 +191,42 @@ class ArfService(ArfServiceProtocol):
     # =========================================================================
 
     async def cleanup_stale_entities(self, sync_context: SyncContext, runtime: SyncRuntime) -> int:
-        """Delete entities not seen during the current sync."""
+        """Delete entities not seen during the current sync.
+
+        Uses filename comparison (single list_files call) instead of
+        reading every entity JSON to extract entity_id.
+        """
         sync_id = str(sync_context.sync.id)
         seen_ids = runtime.entity_tracker.get_all_encountered_ids_flat()
-        current_ids = await self._list_entity_ids(sync_id)
-        stale_ids = [eid for eid in current_ids if eid not in seen_ids]
 
-        if stale_ids:
-            sync_context.logger.info(f"Cleaning up {len(stale_ids)} stale entities from ARF store")
-            return await self.delete_entities(stale_ids, sync_context)
-        return 0
+        entities_dir = StoragePaths.arf_entities_dir(sync_id)
+        try:
+            stored_files = await self._storage.list_files(entities_dir)
+        except Exception:
+            return 0
+
+        stored_json = {f for f in stored_files if f.endswith(".json")}
+        seen_paths = {self._entity_path(sync_id, eid) for eid in seen_ids}
+        stale_paths = stored_json - seen_paths
+
+        if not stale_paths:
+            return 0
+
+        sync_context.logger.info(
+            f"Cleaning up {len(stale_paths)} stale entities from ARF store"
+        )
+        deleted = 0
+        for path in stale_paths:
+            try:
+                entity_dict = await self._storage.read_json(path)
+                stored_file = entity_dict.get("__stored_file__")
+                if stored_file:
+                    await self._storage.delete(stored_file)
+            except Exception:
+                pass
+            if await self._storage.delete(path):
+                deleted += 1
+        return deleted
 
     # =========================================================================
     # Manifest management
@@ -293,22 +319,3 @@ class ArfService(ArfServiceProtocol):
     # Private helpers
     # =========================================================================
 
-    async def _list_entity_ids(self, sync_id: str) -> List[str]:
-        """List all entity IDs in a sync's ARF store."""
-        entities_dir = f"{self._sync_path(sync_id)}/entities"
-        try:
-            files = await self._storage.list_files(entities_dir)
-        except Exception:
-            return []
-
-        entity_ids: List[str] = []
-        for file_path in files:
-            if file_path.endswith(".json"):
-                try:
-                    entity_dict = await self._storage.read_json(file_path)
-                    entity_id = entity_dict.get("entity_id")
-                    if entity_id:
-                        entity_ids.append(str(entity_id))
-                except Exception:
-                    continue
-        return entity_ids

@@ -68,7 +68,7 @@ class TestAzureBlobBackendMocked:
 
         with patch.dict("sys.modules", {"azure.identity.aio": None}):
             with patch(
-                "airweave.domains.storage.backends.azure_blob.AzureBlobBackend._get_blob_service_client",
+                "airweave.adapters.storage.azure_blob.AzureBlobBackend._get_blob_service_client",
                 side_effect=ImportError("No module named 'azure'"),
             ):
                 # The actual SDK import happens in _get_blob_service_client
@@ -330,17 +330,17 @@ class TestAllBackendsProtocolCompliance:
 
         if backend_class == "FilesystemBackend":
             module = importlib.import_module(
-                "airweave.domains.storage.backends.filesystem"
+                "airweave.adapters.storage.filesystem"
             )
         elif backend_class == "AzureBlobBackend":
             module = importlib.import_module(
-                "airweave.domains.storage.backends.azure_blob"
+                "airweave.adapters.storage.azure_blob"
             )
         elif backend_class == "S3Backend":
-            module = importlib.import_module("airweave.domains.storage.backends.aws_s3")
+            module = importlib.import_module("airweave.adapters.storage.aws_s3")
         elif backend_class == "GCSBackend":
             module = importlib.import_module(
-                "airweave.domains.storage.backends.gcp_gcs"
+                "airweave.adapters.storage.gcp_gcs"
             )
 
         cls = getattr(module, backend_class)

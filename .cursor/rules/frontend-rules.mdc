@@ -341,3 +341,8 @@ try {
 - Sensitive data stripped from errors
 - No credentials in localStorage
 - Secure OAuth state management
+
+### 4. **Randomness**
+- Never use `Math.random()` — it is banned by ESLint
+- Use `crypto.getRandomValues()` for random bytes/integers
+- Use `crypto.randomUUID()` for UUIDs

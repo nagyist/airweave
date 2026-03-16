@@ -1,6 +1,7 @@
 """Unit tests for CollectionRepository — status computation and federated lookup."""
 
 from types import SimpleNamespace
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
@@ -199,11 +200,11 @@ def _sc(
     )
 
 
-def _col(readable_id: str) -> SimpleNamespace:
+def _col(readable_id: str) -> Any:
     return SimpleNamespace(readable_id=readable_id)
 
 
-def _ctx() -> SimpleNamespace:
+def _ctx() -> Any:
     return SimpleNamespace(organization=SimpleNamespace(id=uuid4()))
 
 

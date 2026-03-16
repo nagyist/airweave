@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 
 import { ExternalLink, FileText } from "lucide-react";
-import { useNavigate, Link, useSearchParams } from "react-router-dom";
+import { useNavigate, useLocation, Link, useSearchParams } from "react-router-dom";
 import { useTheme } from "@/lib/theme-provider";
 import {
   CollectionCard,

@@ -9,7 +9,7 @@ import os
 
 import pytest
 
-from airweave.domains.storage.backends.filesystem import FilesystemBackend
+from airweave.adapters.storage.filesystem import FilesystemBackend
 from airweave.domains.storage.exceptions import (
     StorageException,
     StorageNotFoundError,

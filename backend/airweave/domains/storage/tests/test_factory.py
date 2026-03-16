@@ -23,7 +23,7 @@ class TestGetStorageBackend:
 
         backend = get_storage_backend()
 
-        from airweave.domains.storage.backends.filesystem import FilesystemBackend
+        from airweave.adapters.storage.filesystem import FilesystemBackend
 
         assert isinstance(backend, FilesystemBackend)
         assert backend.base_path == tmp_path
@@ -40,7 +40,7 @@ class TestGetStorageBackend:
 
         backend = get_storage_backend()
 
-        from airweave.domains.storage.backends.azure_blob import AzureBlobBackend
+        from airweave.adapters.storage.azure_blob import AzureBlobBackend
 
         assert isinstance(backend, AzureBlobBackend)
         assert backend.storage_account == "testaccount"
@@ -73,7 +73,7 @@ class TestGetStorageBackend:
 
         backend = get_storage_backend()
 
-        from airweave.domains.storage.backends.aws_s3 import S3Backend
+        from airweave.adapters.storage.aws_s3 import S3Backend
 
         assert isinstance(backend, S3Backend)
         assert backend.bucket == "testbucket"
@@ -93,7 +93,7 @@ class TestGetStorageBackend:
 
         backend = get_storage_backend()
 
-        from airweave.domains.storage.backends.aws_s3 import S3Backend
+        from airweave.adapters.storage.aws_s3 import S3Backend
 
         assert isinstance(backend, S3Backend)
         assert backend.endpoint_url == "http://localhost:9000"
@@ -138,7 +138,7 @@ class TestGetStorageBackend:
 
         backend = get_storage_backend()
 
-        from airweave.domains.storage.backends.gcp_gcs import GCSBackend
+        from airweave.adapters.storage.gcp_gcs import GCSBackend
 
         assert isinstance(backend, GCSBackend)
         assert backend.bucket_name == "testbucket"

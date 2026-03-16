@@ -39,7 +39,7 @@ class ArfHandler(EntityActionHandler):
         self._manifest_initialized = False
 
     @property
-    def name(self) -> str:  # noqa: D102
+    def name(self) -> str:
         return "arf"
 
     async def _ensure_manifest(self, sync_context: SyncContext, runtime: SyncRuntime) -> None:
@@ -56,7 +56,7 @@ class ArfHandler(EntityActionHandler):
     # Protocol: Public Interface
     # -------------------------------------------------------------------------
 
-    async def handle_batch(  # noqa: D102
+    async def handle_batch(
         self,
         batch: EntityActionBatch,
         sync_context: SyncContext,
@@ -69,7 +69,7 @@ class ArfHandler(EntityActionHandler):
         if batch.inserts:
             await self.handle_inserts(batch.inserts, sync_context, runtime)
 
-    async def handle_inserts(  # noqa: D102
+    async def handle_inserts(
         self,
         actions: List[EntityInsertAction],
         sync_context: SyncContext,
@@ -81,7 +81,7 @@ class ArfHandler(EntityActionHandler):
         entities = [action.entity for action in actions]
         await self._do_upsert(entities, "insert", sync_context)
 
-    async def handle_updates(  # noqa: D102
+    async def handle_updates(
         self,
         actions: List[EntityUpdateAction],
         sync_context: SyncContext,
@@ -93,7 +93,7 @@ class ArfHandler(EntityActionHandler):
         entities = [action.entity for action in actions]
         await self._do_upsert(entities, "update", sync_context)
 
-    async def handle_deletes(  # noqa: D102
+    async def handle_deletes(
         self,
         actions: List[EntityDeleteAction],
         sync_context: SyncContext,
@@ -103,7 +103,7 @@ class ArfHandler(EntityActionHandler):
         entity_ids = [str(action.entity_id) for action in actions]
         await self._do_delete(entity_ids, "delete", sync_context)
 
-    async def handle_orphan_cleanup(  # noqa: D102
+    async def handle_orphan_cleanup(
         self,
         orphan_entity_ids: List[str],
         sync_context: SyncContext,

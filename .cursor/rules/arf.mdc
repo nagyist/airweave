@@ -22,7 +22,8 @@ raw/{sync_id}/
 - **ArfReplaySource**: `domains/arf/replay_source.py` (internal source for ARF replay)
 - **Protocols**: `domains/arf/protocols.py` (`ArfServiceProtocol`, `ArfReaderProtocol`)
 - **Fakes**: `domains/arf/fakes/` (in-memory test doubles: `FakeArfService`, `FakeArfReader`)
-- **StorageBackend**: `adapters/storage/` (Filesystem, Azure Blob, AWS S3, GCP GCS)
+- **StorageBackend protocol**: `domains/storage/protocols.py` (injected into ArfService/ArfReader)
+- **Storage adapters** (FYI): `adapters/storage/` (Filesystem, Azure Blob, AWS S3, GCP GCS)
 - **Config**: `STORAGE_BACKEND` (filesystem, azure, aws, gcp)
 
 ## Usage

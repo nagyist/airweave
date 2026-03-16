@@ -2,10 +2,11 @@
 
 from typing import Any, AsyncGenerator, Dict, List, Optional
 
+from airweave.domains.arf.protocols import ArfReaderProtocol
 from airweave.platform.entities._base import BaseEntity
 
 
-class FakeArfReader:
+class FakeArfReader(ArfReaderProtocol):
     """In-memory fake for ArfReaderProtocol.
 
     Returns pre-seeded entities and manifest data.

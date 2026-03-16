@@ -2,13 +2,14 @@
 
 from typing import Any, Dict, List, Optional
 
+from airweave.domains.arf.protocols import ArfServiceProtocol
 from airweave.domains.arf.types import SyncManifest
 from airweave.platform.contexts import SyncContext
 from airweave.platform.contexts.runtime import SyncRuntime
 from airweave.platform.entities._base import BaseEntity
 
 
-class FakeArfService:
+class FakeArfService(ArfServiceProtocol):
     """In-memory fake for ArfServiceProtocol.
 
     Stores entities and manifests in dicts for assertions.

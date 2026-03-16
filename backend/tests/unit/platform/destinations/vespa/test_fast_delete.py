@@ -152,6 +152,24 @@ class TestQueryDocIdsByParentIds:
                 await client._query_doc_ids_by_parent_ids(["x"], COLLECTION_ID)
 
     @pytest.mark.asyncio
+    async def test_escapes_single_quotes_in_ids(self, client):
+        """Parent IDs containing single quotes are escaped in the YQL query."""
+        mock_response = MagicMock()
+        mock_response.is_successful.return_value = True
+        mock_response.hits = []
+        mock_response.json = {"root": {"fields": {"totalCount": 0}}}
+
+        with patch("asyncio.to_thread", new_callable=AsyncMock) as mock_thread:
+            mock_thread.return_value = mock_response
+            await client._query_doc_ids_by_parent_ids(["it's", "normal"], COLLECTION_ID)
+
+        call_kwargs = mock_thread.call_args
+        body = call_kwargs.kwargs.get("body") or call_kwargs.args[1]
+        yql_sent = body["yql"]
+        assert r"it\'s" in yql_sent
+        assert "'normal'" in yql_sent
+
+    @pytest.mark.asyncio
     async def test_skips_unparseable_ids(self, client):
         """Hits with malformed document IDs are silently skipped."""
         mock_response = MagicMock()

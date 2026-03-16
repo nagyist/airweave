@@ -320,7 +320,9 @@ class VespaClient:
         Returns:
             List of (schema_name, doc_id) tuples for direct deletion
         """
-        escaped_ids = ", ".join(f"'{pid}'" for pid in parent_ids)
+        escaped_ids = ", ".join(
+            f"'{pid.replace(chr(39), chr(92) + chr(39))}'" for pid in parent_ids
+        )
         source_list = ", ".join(ALL_VESPA_SCHEMAS)
         yql = (
             f"select documentid, sddocname() from sources {source_list} where "
@@ -443,7 +445,8 @@ class VespaClient:
         total = 0
         for schema in ALL_VESPA_SCHEMAS:
             parent_conditions = " or ".join(
-                f"{schema}.airweave_system_metadata_original_entity_id=='{pid}'"
+                f"{schema}.airweave_system_metadata_original_entity_id=="
+                f"'{pid.replace(chr(39), chr(92) + chr(39))}'"
                 for pid in parent_ids
             )
             selection = (

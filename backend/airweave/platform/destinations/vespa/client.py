@@ -335,7 +335,6 @@ class VespaClient:
             "yql": yql,
             "hits": DELETE_QUERY_HITS_LIMIT,
             "timeout": "30s",
-            "summary": "none",
         }
 
         start = time.perf_counter()

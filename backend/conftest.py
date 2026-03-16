@@ -584,6 +584,7 @@ def fake_arf_service():
 
 @pytest.fixture
 def test_container(
+    tmp_path,
     fake_storage_backend,
     fake_arf_service,
     fake_context_cache,
@@ -657,7 +658,10 @@ def test_container(
 
     return Container(
         storage_backend=fake_storage_backend,
-        sync_file_manager=SyncFileManager(backend=fake_storage_backend),
+        sync_file_manager=SyncFileManager(
+            backend=fake_storage_backend,
+            temp_cache_dir=tmp_path / "cache",
+        ),
         arf_service=fake_arf_service,
         context_cache=fake_context_cache,
         rate_limiter=fake_rate_limiter,

@@ -40,10 +40,14 @@ class SyncFileManager(SyncFileManagerProtocol):
     Constructed by the Container factory with an injected StorageBackend.
     """
 
-    def __init__(self, backend: StorageBackend) -> None:
+    def __init__(
+        self,
+        backend: StorageBackend,
+        temp_cache_dir: Optional[Path] = None,
+    ) -> None:
         """Initialize with an injected storage backend."""
         self.backend = backend
-        self.temp_cache_dir = Path(StoragePaths.TEMP_CACHE)
+        self.temp_cache_dir = temp_cache_dir or Path(StoragePaths.TEMP_CACHE)
         self.temp_cache_dir.mkdir(parents=True, exist_ok=True)
 
     def _get_file_path(self, sync_id: UUID, entity_id: str, filename: str = "") -> str:

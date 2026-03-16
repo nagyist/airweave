@@ -1,6 +1,6 @@
-"""Unit tests for storage backend factory.
+"""Unit tests for storage backend factory (_create_storage_backend).
 
-Tests the get_storage_backend() factory function with mocked settings.
+Tests the _create_storage_backend() function in core/container/factory.py.
 """
 
 from unittest.mock import MagicMock, patch
@@ -8,37 +8,34 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from airweave.core.config.enums import StorageBackendType
+from airweave.core.container.factory import _create_storage_backend
 
 
-class TestGetStorageBackend:
-    """Test get_storage_backend factory function."""
+class TestCreateStorageBackend:
+    """Test _create_storage_backend factory function."""
 
-    @patch("airweave.domains.storage.factory.settings")
-    def test_creates_filesystem_backend(self, mock_settings, tmp_path):
+    def test_creates_filesystem_backend(self, tmp_path):
         """Test factory creates FilesystemBackend when configured."""
+        mock_settings = MagicMock()
         mock_settings.STORAGE_BACKEND = StorageBackendType.FILESYSTEM
         mock_settings.STORAGE_PATH = str(tmp_path)
 
-        from airweave.domains.storage.factory import get_storage_backend
-
-        backend = get_storage_backend()
+        backend = _create_storage_backend(mock_settings)
 
         from airweave.adapters.storage.filesystem import FilesystemBackend
 
         assert isinstance(backend, FilesystemBackend)
         assert backend.base_path == tmp_path
 
-    @patch("airweave.domains.storage.factory.settings")
-    def test_creates_azure_backend(self, mock_settings):
+    def test_creates_azure_backend(self):
         """Test factory creates AzureBlobBackend when configured."""
+        mock_settings = MagicMock()
         mock_settings.STORAGE_BACKEND = StorageBackendType.AZURE
         mock_settings.STORAGE_AZURE_ACCOUNT = "testaccount"
         mock_settings.STORAGE_AZURE_CONTAINER = "testcontainer"
         mock_settings.STORAGE_AZURE_PREFIX = "testprefix"
 
-        from airweave.domains.storage.factory import get_storage_backend
-
-        backend = get_storage_backend()
+        backend = _create_storage_backend(mock_settings)
 
         from airweave.adapters.storage.azure_blob import AzureBlobBackend
 
@@ -47,31 +44,27 @@ class TestGetStorageBackend:
         assert backend.container_name == "testcontainer"
         assert backend.prefix == "testprefix/"
 
-    @patch("airweave.domains.storage.factory.settings")
-    def test_azure_backend_requires_account(self, mock_settings):
+    def test_azure_backend_requires_account(self):
         """Test factory raises error when Azure account is missing."""
+        mock_settings = MagicMock()
         mock_settings.STORAGE_BACKEND = StorageBackendType.AZURE
         mock_settings.STORAGE_AZURE_ACCOUNT = None
 
-        from airweave.domains.storage.factory import get_storage_backend
-
         with pytest.raises(ValueError) as exc_info:
-            get_storage_backend()
+            _create_storage_backend(mock_settings)
 
         assert "STORAGE_AZURE_ACCOUNT" in str(exc_info.value)
 
-    @patch("airweave.domains.storage.factory.settings")
-    def test_creates_s3_backend(self, mock_settings):
+    def test_creates_s3_backend(self):
         """Test factory creates S3Backend when configured."""
+        mock_settings = MagicMock()
         mock_settings.STORAGE_BACKEND = StorageBackendType.AWS
         mock_settings.STORAGE_AWS_BUCKET = "testbucket"
         mock_settings.STORAGE_AWS_REGION = "us-west-2"
         mock_settings.STORAGE_AWS_PREFIX = "testprefix"
         mock_settings.STORAGE_AWS_ENDPOINT_URL = None
 
-        from airweave.domains.storage.factory import get_storage_backend
-
-        backend = get_storage_backend()
+        backend = _create_storage_backend(mock_settings)
 
         from airweave.adapters.storage.aws_s3 import S3Backend
 
@@ -80,63 +73,55 @@ class TestGetStorageBackend:
         assert backend.region == "us-west-2"
         assert backend.prefix == "testprefix/"
 
-    @patch("airweave.domains.storage.factory.settings")
-    def test_creates_s3_backend_with_endpoint(self, mock_settings):
+    def test_creates_s3_backend_with_endpoint(self):
         """Test factory creates S3Backend with custom endpoint (MinIO)."""
+        mock_settings = MagicMock()
         mock_settings.STORAGE_BACKEND = StorageBackendType.AWS
         mock_settings.STORAGE_AWS_BUCKET = "testbucket"
         mock_settings.STORAGE_AWS_REGION = "us-east-1"
         mock_settings.STORAGE_AWS_PREFIX = ""
         mock_settings.STORAGE_AWS_ENDPOINT_URL = "http://localhost:9000"
 
-        from airweave.domains.storage.factory import get_storage_backend
-
-        backend = get_storage_backend()
+        backend = _create_storage_backend(mock_settings)
 
         from airweave.adapters.storage.aws_s3 import S3Backend
 
         assert isinstance(backend, S3Backend)
         assert backend.endpoint_url == "http://localhost:9000"
 
-    @patch("airweave.domains.storage.factory.settings")
-    def test_s3_backend_requires_bucket(self, mock_settings):
+    def test_s3_backend_requires_bucket(self):
         """Test factory raises error when S3 bucket is missing."""
+        mock_settings = MagicMock()
         mock_settings.STORAGE_BACKEND = StorageBackendType.AWS
         mock_settings.STORAGE_AWS_BUCKET = None
         mock_settings.STORAGE_AWS_REGION = "us-east-1"
 
-        from airweave.domains.storage.factory import get_storage_backend
-
         with pytest.raises(ValueError) as exc_info:
-            get_storage_backend()
+            _create_storage_backend(mock_settings)
 
         assert "STORAGE_AWS_BUCKET" in str(exc_info.value)
 
-    @patch("airweave.domains.storage.factory.settings")
-    def test_s3_backend_requires_region(self, mock_settings):
+    def test_s3_backend_requires_region(self):
         """Test factory raises error when S3 region is missing."""
+        mock_settings = MagicMock()
         mock_settings.STORAGE_BACKEND = StorageBackendType.AWS
         mock_settings.STORAGE_AWS_BUCKET = "testbucket"
         mock_settings.STORAGE_AWS_REGION = None
 
-        from airweave.domains.storage.factory import get_storage_backend
-
         with pytest.raises(ValueError) as exc_info:
-            get_storage_backend()
+            _create_storage_backend(mock_settings)
 
         assert "STORAGE_AWS_REGION" in str(exc_info.value)
 
-    @patch("airweave.domains.storage.factory.settings")
-    def test_creates_gcs_backend(self, mock_settings):
+    def test_creates_gcs_backend(self):
         """Test factory creates GCSBackend when configured."""
+        mock_settings = MagicMock()
         mock_settings.STORAGE_BACKEND = StorageBackendType.GCP
         mock_settings.STORAGE_GCP_BUCKET = "testbucket"
         mock_settings.STORAGE_GCP_PROJECT = "testproject"
         mock_settings.STORAGE_GCP_PREFIX = "testprefix"
 
-        from airweave.domains.storage.factory import get_storage_backend
-
-        backend = get_storage_backend()
+        backend = _create_storage_backend(mock_settings)
 
         from airweave.adapters.storage.gcp_gcs import GCSBackend
 
@@ -145,41 +130,35 @@ class TestGetStorageBackend:
         assert backend.project == "testproject"
         assert backend.prefix == "testprefix/"
 
-    @patch("airweave.domains.storage.factory.settings")
-    def test_gcs_backend_requires_bucket(self, mock_settings):
+    def test_gcs_backend_requires_bucket(self):
         """Test factory raises error when GCS bucket is missing."""
+        mock_settings = MagicMock()
         mock_settings.STORAGE_BACKEND = StorageBackendType.GCP
         mock_settings.STORAGE_GCP_BUCKET = None
 
-        from airweave.domains.storage.factory import get_storage_backend
-
         with pytest.raises(ValueError) as exc_info:
-            get_storage_backend()
+            _create_storage_backend(mock_settings)
 
         assert "STORAGE_GCP_BUCKET" in str(exc_info.value)
 
-    @patch("airweave.domains.storage.factory.settings")
-    def test_unknown_backend_raises(self, mock_settings):
+    def test_unknown_backend_raises(self):
         """Test factory raises error for unknown backend type."""
+        mock_settings = MagicMock()
         mock_settings.STORAGE_BACKEND = "unknown_backend"
 
-        from airweave.domains.storage.factory import get_storage_backend
-
         with pytest.raises(ValueError) as exc_info:
-            get_storage_backend()
+            _create_storage_backend(mock_settings)
 
         assert "Unknown STORAGE_BACKEND" in str(exc_info.value)
 
-    @patch("airweave.domains.storage.factory.settings")
-    def test_factory_returns_fresh_instance(self, mock_settings, tmp_path):
+    def test_factory_returns_fresh_instance(self, tmp_path):
         """Factory is pure; Container owns the singleton."""
+        mock_settings = MagicMock()
         mock_settings.STORAGE_BACKEND = StorageBackendType.FILESYSTEM
         mock_settings.STORAGE_PATH = str(tmp_path)
 
-        from airweave.domains.storage.factory import get_storage_backend
-
-        backend1 = get_storage_backend()
-        backend2 = get_storage_backend()
+        backend1 = _create_storage_backend(mock_settings)
+        backend2 = _create_storage_backend(mock_settings)
 
         assert backend1 is not backend2
 

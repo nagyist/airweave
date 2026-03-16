@@ -90,7 +90,6 @@ from airweave.domains.sources.lifecycle import SourceLifecycleService
 from airweave.domains.sources.registry import SourceRegistry
 from airweave.domains.sources.service import SourceService
 from airweave.domains.sources.validation import SourceValidationService
-from airweave.domains.storage.factory import get_storage_backend
 from airweave.domains.storage.sync_file_manager import SyncFileManager
 from airweave.domains.syncs.sync_cursor_repository import SyncCursorRepository
 from airweave.domains.syncs.sync_job_repository import SyncJobRepository
@@ -431,7 +430,7 @@ def create_container(settings: Settings) -> Container:
 
     # Storage domain
     # -----------------------------------------------------------------
-    storage_backend = get_storage_backend()
+    storage_backend = _create_storage_backend(settings)
     sync_file_manager = SyncFileManager(backend=storage_backend)
 
     # ARF domain service (raw entity capture / replay)
@@ -1063,3 +1062,59 @@ def _create_rate_limiter(settings: Settings):
     from airweave.adapters.rate_limiter.redis import RedisRateLimiter
 
     return RedisRateLimiter(redis_client=redis_client.client)
+
+
+def _create_storage_backend(settings: Settings):  # -> StorageBackend
+    """Create storage backend from settings.
+
+    Lazy-imports each adapter to avoid pulling in heavy cloud SDKs.
+    """
+    from airweave.core.config import StorageBackendType
+
+    backend_type = settings.STORAGE_BACKEND
+
+    logger.info(f"Initializing storage backend: {backend_type}")
+
+    if backend_type == StorageBackendType.FILESYSTEM:
+        from airweave.adapters.storage.filesystem import FilesystemBackend
+
+        return FilesystemBackend(base_path=settings.STORAGE_PATH)
+
+    if backend_type == StorageBackendType.AZURE:
+        if not settings.STORAGE_AZURE_ACCOUNT:
+            raise ValueError("STORAGE_AZURE_ACCOUNT required for azure backend")
+        from airweave.adapters.storage.azure_blob import AzureBlobBackend
+
+        return AzureBlobBackend(
+            storage_account=settings.STORAGE_AZURE_ACCOUNT,
+            container=settings.STORAGE_AZURE_CONTAINER,
+            prefix=settings.STORAGE_AZURE_PREFIX,
+        )
+
+    if backend_type == StorageBackendType.AWS:
+        if not settings.STORAGE_AWS_BUCKET:
+            raise ValueError("STORAGE_AWS_BUCKET required for aws backend")
+        if not settings.STORAGE_AWS_REGION:
+            raise ValueError("STORAGE_AWS_REGION required for aws backend")
+        from airweave.adapters.storage.aws_s3 import S3Backend
+
+        return S3Backend(
+            bucket=settings.STORAGE_AWS_BUCKET,
+            region=settings.STORAGE_AWS_REGION,
+            prefix=settings.STORAGE_AWS_PREFIX,
+            endpoint_url=settings.STORAGE_AWS_ENDPOINT_URL,
+        )
+
+    if backend_type == StorageBackendType.GCP:
+        if not settings.STORAGE_GCP_BUCKET:
+            raise ValueError("STORAGE_GCP_BUCKET required for gcp backend")
+        from airweave.adapters.storage.gcp_gcs import GCSBackend
+
+        return GCSBackend(
+            bucket=settings.STORAGE_GCP_BUCKET,
+            project=settings.STORAGE_GCP_PROJECT,
+            prefix=settings.STORAGE_GCP_PREFIX,
+        )
+
+    valid_options = ", ".join(t.value for t in StorageBackendType)
+    raise ValueError(f"Unknown STORAGE_BACKEND: {backend_type}. Valid options: {valid_options}")

@@ -8,8 +8,10 @@ from uuid import uuid4
 import pytest
 
 from airweave.core.shared_models import CollectionStatus
+from airweave.domains.collections.protocols import CollectionListResult
 from airweave.domains.collections.repository import CollectionRepository
 from airweave.domains.source_connections.fakes.repository import FakeSourceConnectionRepository
+from airweave.schemas.collection import SourceConnectionSummary
 from airweave.domains.sources.fakes.registry import FakeSourceRegistry
 from airweave.domains.sources.types import SourceRegistryEntry
 from airweave.platform.configs._base import Fields
@@ -212,18 +214,19 @@ def _ctx() -> Any:
 class TestAttachEphemeralStatus:
     async def test_empty_collections_returns_empty(self):
         repo = _repo()
-        collections, summaries = await repo._attach_ephemeral_status(None, [], _ctx())
-        assert collections == []
-        assert summaries == {}
+        result = await repo._attach_ephemeral_status(None, [], _ctx())
+        assert isinstance(result, CollectionListResult)
+        assert result.collections == []
+        assert result.summaries_by_collection == {}
 
     async def test_no_source_connections_sets_needs_source(self):
         repo = _repo()
         col = _col("test-col")
 
-        collections, summaries = await repo._attach_ephemeral_status(None, [col], _ctx())
-        assert len(collections) == 1
-        assert collections[0].status == CollectionStatus.NEEDS_SOURCE
-        assert summaries == {}
+        result = await repo._attach_ephemeral_status(None, [col], _ctx())
+        assert len(result.collections) == 1
+        assert result.collections[0].status == CollectionStatus.NEEDS_SOURCE
+        assert result.summaries_by_collection == {}
 
     async def test_with_connections_computes_status(self):
         sc = _sc(readable_collection_id="my-col", short_name="github", name="GitHub")
@@ -235,11 +238,13 @@ class TestAttachEphemeralStatus:
 
         col = _col("my-col")
 
-        collections, summaries = await repo._attach_ephemeral_status(None, [col], _ctx())
+        result = await repo._attach_ephemeral_status(None, [col], _ctx())
 
-        assert len(collections) == 1
-        assert collections[0].status == CollectionStatus.ACTIVE
-        assert summaries == {"my-col": [{"short_name": "github", "name": "GitHub"}]}
+        assert len(result.collections) == 1
+        assert result.collections[0].status == CollectionStatus.ACTIVE
+        assert result.summaries_by_collection == {
+            "my-col": [SourceConnectionSummary(short_name="github", name="GitHub")]
+        }
 
     async def test_federated_source_sets_active(self):
         sc = _sc(readable_collection_id="slack-col", short_name="slack", name="Slack")
@@ -250,10 +255,12 @@ class TestAttachEphemeralStatus:
 
         col = _col("slack-col")
 
-        collections, summaries = await repo._attach_ephemeral_status(None, [col], _ctx())
+        result = await repo._attach_ephemeral_status(None, [col], _ctx())
 
-        assert collections[0].status == CollectionStatus.ACTIVE
-        assert summaries == {"slack-col": [{"short_name": "slack", "name": "Slack"}]}
+        assert result.collections[0].status == CollectionStatus.ACTIVE
+        assert result.summaries_by_collection == {
+            "slack-col": [SourceConnectionSummary(short_name="slack", name="Slack")]
+        }
 
     async def test_multiple_connections_builds_grouped_summaries(self):
         sc1 = _sc(readable_collection_id="my-col", short_name="github", name="GitHub")
@@ -267,11 +274,11 @@ class TestAttachEphemeralStatus:
 
         col = _col("my-col")
 
-        collections, summaries = await repo._attach_ephemeral_status(None, [col], _ctx())
+        result = await repo._attach_ephemeral_status(None, [col], _ctx())
 
-        assert collections[0].status == CollectionStatus.ACTIVE
-        assert len(summaries["my-col"]) == 2
-        short_names = {s["short_name"] for s in summaries["my-col"]}
+        assert result.collections[0].status == CollectionStatus.ACTIVE
+        assert len(result.summaries_by_collection["my-col"]) == 2
+        short_names = {s.short_name for s in result.summaries_by_collection["my-col"]}
         assert short_names == {"github", "slack"}
 
 
@@ -302,7 +309,7 @@ class TestDelegatingMethods:
 
             attach = patch.object(repo, "_attach_ephemeral_status", new_callable=AsyncMock)
             with attach as mock_attach:
-                mock_attach.return_value = ([col], {})
+                mock_attach.return_value = CollectionListResult(collections=[col])
 
                 result = await repo.get(MagicMock(), id=uuid4(), ctx=MagicMock())
 
@@ -333,7 +340,7 @@ class TestDelegatingMethods:
 
             attach = patch.object(repo, "_attach_ephemeral_status", new_callable=AsyncMock)
             with attach as mock_attach:
-                mock_attach.return_value = ([col], {})
+                mock_attach.return_value = CollectionListResult(collections=[col])
 
                 result = await repo.get_by_readable_id(
                     MagicMock(), readable_id="found", ctx=MagicMock()
@@ -345,16 +352,16 @@ class TestDelegatingMethods:
     async def test_get_multi_delegates_and_attaches_status(self):
         repo = _repo()
         cols = [MagicMock(), MagicMock()]
-        summaries = {"col-1": [{"short_name": "github", "name": "GitHub"}]}
+        expected = CollectionListResult(collections=cols)
 
         with patch("airweave.domains.collections.repository.crud") as mock_crud:
             mock_crud.collection.get_multi = AsyncMock(return_value=cols)
 
             attach = patch.object(repo, "_attach_ephemeral_status", new_callable=AsyncMock)
             with attach as mock_attach:
-                mock_attach.return_value = (cols, summaries)
+                mock_attach.return_value = expected
 
                 result = await repo.get_multi(MagicMock(), ctx=MagicMock())
 
-        assert result == (cols, summaries)
+        assert result is expected
         mock_attach.assert_awaited_once()

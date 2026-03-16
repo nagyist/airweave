@@ -10,10 +10,14 @@ from airweave.api.context import ApiContext
 from airweave.core.exceptions import NotFoundException
 from airweave.core.shared_models import CollectionStatus
 from airweave.db.unit_of_work import UnitOfWork
-from airweave.domains.collections.protocols import CollectionRepositoryProtocol
+from airweave.domains.collections.protocols import (
+    CollectionListResult,
+    CollectionRepositoryProtocol,
+)
 from airweave.domains.source_connections.protocols import SourceConnectionRepositoryProtocol
 from airweave.domains.sources.protocols import SourceRegistryProtocol
 from airweave.models.collection import Collection
+from airweave.schemas.collection import SourceConnectionSummary
 
 
 class CollectionRepository(CollectionRepositoryProtocol):
@@ -73,17 +77,12 @@ class CollectionRepository(CollectionRepositoryProtocol):
 
     async def _attach_ephemeral_status(
         self, db: AsyncSession, collections: List[Collection], ctx: ApiContext
-    ) -> tuple[List[Collection], Dict[str, List[Dict[str, str]]]]:
-        """Compute ephemeral status and build source connection summaries.
-
-        Returns:
-            Tuple of (collections with computed status, summaries keyed by readable_id).
-            Each summary entry is a list of {"short_name": ..., "name": ...} dicts.
-        """
-        summaries: Dict[str, List[Dict[str, str]]] = {}
+    ) -> CollectionListResult:
+        """Compute ephemeral status and build source connection summaries."""
+        summaries: Dict[str, List[SourceConnectionSummary]] = {}
 
         if not collections:
-            return [], summaries
+            return CollectionListResult(collections=[])
 
         collection_ids = [c.readable_id for c in collections]
 
@@ -96,7 +95,7 @@ class CollectionRepository(CollectionRepositoryProtocol):
         if not all_connections:
             for collection in collections:
                 collection.status = CollectionStatus.NEEDS_SOURCE
-            return collections, summaries
+            return CollectionListResult(collections=collections)
 
         last_jobs = await self._sc_repo.fetch_last_jobs(db, all_connections)
 
@@ -120,20 +119,22 @@ class CollectionRepository(CollectionRepositoryProtocol):
 
             if coll_id not in summaries:
                 summaries[coll_id] = []
-            summaries[coll_id].append({"short_name": sc.short_name, "name": sc.name})
+            summaries[coll_id].append(
+                SourceConnectionSummary(short_name=sc.short_name, name=sc.name)
+            )
 
         for collection in collections:
             conn_data = connections_by_collection.get(collection.readable_id, [])
             collection.status = self._compute_collection_status(conn_data)
 
-        return collections, summaries
+        return CollectionListResult(collections=collections, summaries_by_collection=summaries)
 
     async def get(self, db: AsyncSession, id: UUID, ctx: ApiContext) -> Optional[Collection]:
         """Get a collection by ID with ephemeral status."""
         collection = await crud.collection.get(db, id, ctx)
         if collection:
-            enriched, _summaries = await self._attach_ephemeral_status(db, [collection], ctx)
-            collection = enriched[0]
+            result = await self._attach_ephemeral_status(db, [collection], ctx)
+            collection = result.collections[0]
         return collection
 
     async def get_by_readable_id(
@@ -147,8 +148,8 @@ class CollectionRepository(CollectionRepositoryProtocol):
         except NotFoundException:
             return None
         if collection:
-            enriched, _summaries = await self._attach_ephemeral_status(db, [collection], ctx)
-            collection = enriched[0]
+            result = await self._attach_ephemeral_status(db, [collection], ctx)
+            collection = result.collections[0]
         return collection
 
     async def get_multi(
@@ -159,12 +160,8 @@ class CollectionRepository(CollectionRepositoryProtocol):
         skip: int = 0,
         limit: int = 100,
         search_query: Optional[str] = None,
-    ) -> tuple[List[Collection], Dict[str, List[Dict[str, str]]]]:
-        """Get multiple collections with pagination and optional search.
-
-        Returns:
-            Tuple of (collections with status, source connection summaries by readable_id).
-        """
+    ) -> CollectionListResult:
+        """Get multiple collections with pagination, optional search, and ephemeral status."""
         collections = await crud.collection.get_multi(
             db, ctx=ctx, skip=skip, limit=limit, search_query=search_query
         )

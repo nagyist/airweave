@@ -121,11 +121,15 @@ class ArfService(ArfServiceProtocol):
 
         await self._storage.write_json(entity_path, entity_dict)
 
+    _UPSERT_BATCH_SIZE: int = 50
+
     async def upsert_entities(self, entities: List[BaseEntity], sync_context: SyncContext) -> int:
-        """Store or update multiple entities."""
-        for entity in entities:
-            await self.upsert_entity(entity, sync_context)
-        return len(entities)
+        """Store or update multiple entities, batched with asyncio.gather."""
+        total = len(entities)
+        for start in range(0, total, self._UPSERT_BATCH_SIZE):
+            batch = entities[start : start + self._UPSERT_BATCH_SIZE]
+            await asyncio.gather(*(self.upsert_entity(e, sync_context) for e in batch))
+        return total
 
     async def delete_entity(self, entity_id: str, sync_context: SyncContext) -> bool:
         """Delete an entity and its associated files."""

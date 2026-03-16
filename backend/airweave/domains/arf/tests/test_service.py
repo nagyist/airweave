@@ -148,6 +148,18 @@ async def test_upsert_entities_stores_batch():
 
 
 @pytest.mark.asyncio
+async def test_upsert_entities_batches_across_boundary():
+    """Entities exceeding _UPSERT_BATCH_SIZE are stored correctly."""
+    svc, storage = _build_service()
+    ctx = _make_sync_context()
+    n = svc._UPSERT_BATCH_SIZE + 10
+    entities = [_make_entity(f"ent-{i}") for i in range(n)]
+    count = await svc.upsert_entities(entities, ctx)
+    assert count == n
+    assert await svc.get_entity_count(SYNC_ID) == n
+
+
+@pytest.mark.asyncio
 async def test_upsert_entity_overwrites():
     svc, storage = _build_service()
     ctx = _make_sync_context()

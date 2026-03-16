@@ -66,12 +66,15 @@ class FakeStorageBackend:
             del self._file_store[k]
         return len(json_keys) > 0 or len(file_keys) > 0
 
+    def _all_keys(self) -> set[str]:
+        return set(self._json_store) | set(self._file_store)
+
     async def list_files(self, prefix: str = "") -> List[str]:
-        return [k for k in self._json_store if k.startswith(prefix)]
+        return [k for k in self._all_keys() if k.startswith(prefix)]
 
     async def list_dirs(self, prefix: str = "") -> List[str]:
         dirs: set[str] = set()
-        for k in self._json_store:
+        for k in self._all_keys():
             if k.startswith(prefix):
                 rest = k[len(prefix):].lstrip("/")
                 parts = rest.split("/")

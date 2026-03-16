@@ -19,6 +19,7 @@ import aiofiles
 from airweave.core.datetime_utils import utc_now_naive
 from airweave.core.logging import ContextualLogger
 from airweave.domains.storage.exceptions import StorageNotFoundError
+from airweave.domains.storage.paths import StoragePaths
 from airweave.domains.storage.protocols import StorageBackend, SyncFileManagerProtocol
 
 if TYPE_CHECKING:
@@ -39,48 +40,25 @@ class SyncFileManager(SyncFileManagerProtocol):
     Constructed by the Container factory with an injected StorageBackend.
     """
 
-    RAW_DIR = "raw"
-    CTTI_GLOBAL_DIR = "aactmarkdowns"
-
     def __init__(self, backend: StorageBackend) -> None:
         """Initialize with an injected storage backend."""
         self.backend = backend
-        self.temp_cache_dir = Path("/tmp/airweave/cache")
+        self.temp_cache_dir = Path(StoragePaths.TEMP_CACHE)
         self.temp_cache_dir.mkdir(parents=True, exist_ok=True)
 
     def _get_file_path(self, sync_id: UUID, entity_id: str, filename: str = "") -> str:
         """Get storage path for a file: raw/{sync_id}/files/{entity_id}_{name}.{ext}."""
-        safe_id = self._safe_entity_id(entity_id)
-        if filename:
-            safe_name = self._safe_entity_id(Path(filename).stem)
-            ext = Path(filename).suffix or ""
-            return f"{self.RAW_DIR}/{sync_id}/files/{safe_id}_{safe_name}{ext}"
-        return f"{self.RAW_DIR}/{sync_id}/files/{safe_id}"
+        return StoragePaths.arf_file_path(sync_id, entity_id, filename or None)
 
     def _get_metadata_path(self, sync_id: UUID, entity_id: str) -> str:
         """Get storage path for metadata: raw/{sync_id}/metadata/{entity_id}.json."""
-        safe_id = self._safe_entity_id(entity_id)
-        return f"{self.RAW_DIR}/{sync_id}/metadata/{safe_id}.json"
-
-    def _safe_entity_id(self, value: str, max_length: int = 200) -> str:
-        """Convert entity_id or filename to safe storage path."""
-        import hashlib
-        import re
-
-        safe = re.sub(r'[/\\:*?"<>|]', "_", str(value))
-        safe = re.sub(r"_+", "_", safe).strip("_")
-
-        if len(safe) > max_length or safe != value:
-            prefix = safe[:50] if len(safe) > 50 else safe
-            hash_suffix = hashlib.md5(value.encode()).hexdigest()[:12]
-            safe = f"{prefix}_{hash_suffix}"
-
-        return safe[:max_length]
+        safe_id = StoragePaths.safe_filename(entity_id)
+        return f"{StoragePaths.ARF_PREFIX}/{sync_id}/metadata/{safe_id}.json"
 
     def _get_ctti_path(self, entity_id: str) -> str:
         """Get CTTI global storage path."""
         safe_filename = entity_id.replace(":", "_").replace("/", "_") + ".md"
-        return f"{self.CTTI_GLOBAL_DIR}/{safe_filename}"
+        return f"{StoragePaths.CTTI_GLOBAL_DIR}/{safe_filename}"
 
     # =========================================================================
     # Sync-scoped file operations
@@ -370,7 +348,7 @@ class SyncFileManager(SyncFileManagerProtocol):
 
         if not hasattr(entity, "metadata") or entity.metadata is None:
             entity.metadata = {}
-        entity.metadata["ctti_container"] = self.CTTI_GLOBAL_DIR
+        entity.metadata["ctti_container"] = StoragePaths.CTTI_GLOBAL_DIR
         entity.metadata["ctti_global_storage"] = True
 
         # Store metadata alongside

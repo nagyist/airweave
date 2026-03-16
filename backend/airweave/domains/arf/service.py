@@ -11,10 +11,7 @@ Storage layout:
 """
 
 import asyncio
-import hashlib
-import re
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Any, AsyncGenerator, Dict, List, Optional
 
 import aiofiles
@@ -22,6 +19,7 @@ import aiofiles
 from airweave.domains.arf.protocols import ArfServiceProtocol
 from airweave.domains.arf.types import SyncManifest
 from airweave.domains.storage.exceptions import StorageNotFoundError
+from airweave.domains.storage.paths import StoragePaths
 from airweave.domains.storage.protocols import StorageBackend
 from airweave.platform.contexts import SyncContext
 from airweave.platform.contexts.runtime import SyncRuntime
@@ -40,40 +38,26 @@ class ArfService(ArfServiceProtocol):
         self._storage = storage
 
     # =========================================================================
-    # Path helpers
+    # Path helpers (delegated to StoragePaths)
     # =========================================================================
 
     @staticmethod
     def _sync_path(sync_id: str) -> str:
-        return f"raw/{sync_id}"
-
-    @classmethod
-    def _manifest_path(cls, sync_id: str) -> str:
-        return f"{cls._sync_path(sync_id)}/manifest.json"
-
-    @classmethod
-    def _entity_path(cls, sync_id: str, entity_id: str) -> str:
-        safe_id = cls._safe_filename(entity_id)
-        return f"{cls._sync_path(sync_id)}/entities/{safe_id}.json"
-
-    @classmethod
-    def _file_path(cls, sync_id: str, entity_id: str, filename: str = "") -> str:
-        safe_id = cls._safe_filename(entity_id)
-        if filename:
-            safe_name = cls._safe_filename(Path(filename).stem)
-            ext = Path(filename).suffix or ""
-            return f"{cls._sync_path(sync_id)}/files/{safe_id}_{safe_name}{ext}"
-        return f"{cls._sync_path(sync_id)}/files/{safe_id}"
+        return StoragePaths.arf_sync_path(sync_id)
 
     @staticmethod
-    def _safe_filename(value: str, max_length: int = 200) -> str:
-        safe = re.sub(r'[/\\:*?"<>|]', "_", str(value))
-        safe = re.sub(r"_+", "_", safe).strip("_")
-        if len(safe) > max_length or safe != value:
-            prefix = safe[:50] if len(safe) > 50 else safe
-            hash_suffix = hashlib.md5(value.encode(), usedforsecurity=False).hexdigest()[:12]
-            safe = f"{prefix}_{hash_suffix}"
-        return safe[:max_length]
+    def _manifest_path(sync_id: str) -> str:
+        return StoragePaths.arf_manifest_path(sync_id)
+
+    @staticmethod
+    def _entity_path(sync_id: str, entity_id: str) -> str:
+        return StoragePaths.arf_entity_path(sync_id, entity_id)
+
+    @staticmethod
+    def _file_path(sync_id: str, entity_id: str, filename: str = "") -> str:
+        return StoragePaths.arf_file_path(sync_id, entity_id, filename or None)
+
+    _safe_filename = staticmethod(StoragePaths.safe_filename)
 
     # =========================================================================
     # Entity serialization helpers

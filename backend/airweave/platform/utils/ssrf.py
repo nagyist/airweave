@@ -26,6 +26,8 @@ import ipaddress
 import socket
 from urllib.parse import urlparse
 
+from airweave.core.logging import logger
+
 # ---------------------------------------------------------------------------
 # Public exception
 # ---------------------------------------------------------------------------
@@ -124,6 +126,7 @@ def _check_ip(
 
     # Always block metadata IPs
     if canonical in _BLOCKED_METADATA_IPS:
+        logger.warning("SSRF check: blocked metadata IP: %s", canonical)
         raise SSRFViolation(f"blocked metadata IP: {canonical}")
 
     # Unpack IPv4-mapped IPv6 and re-check
@@ -133,11 +136,13 @@ def _check_ip(
 
     # Always block unspecified
     if canonical in _UNSPECIFIED_ADDRS:
+        logger.warning("SSRF check: blocked unspecified address: %s", canonical)
         raise SSRFViolation(f"blocked unspecified address: {canonical}")
 
     if not allow_private:
         for net in _PRIVATE_NETWORKS:
             if addr in net:
+                logger.warning("SSRF check: blocked private/loopback IP: %s", canonical)
                 raise SSRFViolation(f"blocked private/loopback IP: {canonical}")
 
 
@@ -159,6 +164,7 @@ def _check_host_string(host: str, allow_private: bool) -> None:
 
     # It's a hostname — check against blocklist
     if lower in _BLOCKED_HOSTNAMES:
+        logger.warning("SSRF check: blocked hostname: %s", lower)
         raise SSRFViolation(f"blocked hostname: {lower}")
 
 
@@ -194,6 +200,7 @@ def validate_url(url: str, *, allow_private: bool | None = None) -> str:
 
     # Scheme check (only when present)
     if parsed.scheme and parsed.scheme.lower() not in _ALLOWED_SCHEMES:
+        logger.warning("SSRF check: blocked scheme: %s", parsed.scheme)
         raise SSRFViolation(f"blocked scheme: {parsed.scheme}")
 
     hostname = parsed.hostname or ""

@@ -159,9 +159,7 @@ class SyncFileManagerProtocol(Protocol):
         """Store a file entity in persistent storage."""
         ...
 
-    async def is_entity_fully_processed(
-        self, logger: ContextualLogger, cache_key: str
-    ) -> bool:
+    async def is_entity_fully_processed(self, logger: ContextualLogger, cache_key: str) -> bool:
         """Check if an entity has been fully processed."""
         ...
 
@@ -177,9 +175,7 @@ class SyncFileManagerProtocol(Protocol):
         """Get or create a local cache path for a file."""
         ...
 
-    async def cleanup_temp_file(
-        self, logger: ContextualLogger, file_path: str
-    ) -> None:
+    async def cleanup_temp_file(self, logger: ContextualLogger, file_path: str) -> None:
         """Clean up a temporary file after processing."""
         ...
 
@@ -195,9 +191,7 @@ class SyncFileManagerProtocol(Protocol):
         """Get file content as bytes."""
         ...
 
-    async def check_ctti_file_exists(
-        self, logger: ContextualLogger, entity_id: str
-    ) -> bool:
+    async def check_ctti_file_exists(self, logger: ContextualLogger, entity_id: str) -> bool:
         """Check if a CTTI file exists in global storage."""
         ...
 
@@ -207,9 +201,7 @@ class SyncFileManagerProtocol(Protocol):
         """Store a CTTI file in global storage."""
         ...
 
-    async def is_ctti_entity_processed(
-        self, logger: ContextualLogger, entity_id: str
-    ) -> bool:
+    async def is_ctti_entity_processed(self, logger: ContextualLogger, entity_id: str) -> bool:
         """Check if a CTTI entity has been fully processed."""
         ...
 

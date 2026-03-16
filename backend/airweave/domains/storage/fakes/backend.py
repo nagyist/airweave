@@ -76,7 +76,7 @@ class FakeStorageBackend:
         dirs: set[str] = set()
         for k in self._all_keys():
             if k.startswith(prefix):
-                rest = k[len(prefix):].lstrip("/")
+                rest = k[len(prefix) :].lstrip("/")
                 parts = rest.split("/")
                 if len(parts) > 1:
                     dirs.add(f"{prefix}/{parts[0]}")

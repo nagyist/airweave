@@ -331,7 +331,9 @@ async def _get_ctti_cached_content(
     web_entity: WebEntity, entity_context: str, logger: ContextualLogger
 ):
     """Check for and retrieve CTTI content from global storage."""
-    existing_content = await container_mod.container.sync_file_manager.get_ctti_file_content(logger, web_entity.entity_id)
+    existing_content = await container_mod.container.sync_file_manager.get_ctti_file_content(
+        logger, web_entity.entity_id
+    )
 
     if existing_content:
         logger.debug(
@@ -658,7 +660,9 @@ async def _store_file_entity(
     """Store file entity in persistent storage."""
     if is_ctti:
         # Check if CTTI file already exists in global storage
-        if await container_mod.container.sync_file_manager.check_ctti_file_exists(logger, file_entity.entity_id):
+        if await container_mod.container.sync_file_manager.check_ctti_file_exists(
+            logger, file_entity.entity_id
+        ):
             logger.debug(
                 f"💾 WEB_CTTI_EXISTS [{entity_context}] "
                 f"CTTI file already exists in global storage, skipping upload"
@@ -675,7 +679,9 @@ async def _store_file_entity(
         else:
             # Use CTTI-specific storage (global deduplication)
             with open(temp_file_path, "rb") as f:
-                file_entity = await container_mod.container.sync_file_manager.store_ctti_file(logger, file_entity, f)
+                file_entity = await container_mod.container.sync_file_manager.store_ctti_file(
+                    logger, file_entity, f
+                )
 
             logger.debug(
                 f"💾 WEB_CTTI_STORED [{entity_context}] "

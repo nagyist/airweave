@@ -217,9 +217,7 @@ class ArfService(ArfServiceProtocol):
         if not stale_paths:
             return 0
 
-        sync_context.logger.info(
-            f"Cleaning up {len(stale_paths)} stale entities from ARF store"
-        )
+        sync_context.logger.info(f"Cleaning up {len(stale_paths)} stale entities from ARF store")
         deleted = 0
         for path in stale_paths:
             try:
@@ -323,4 +321,3 @@ class ArfService(ArfServiceProtocol):
     # =========================================================================
     # Private helpers
     # =========================================================================
-

@@ -497,4 +497,3 @@ class SyncFileManager(SyncFileManagerProtocol):
         logger.info(f"Batch download completed: {successful}/{len(entity_ids)} successful")
 
         return results
-

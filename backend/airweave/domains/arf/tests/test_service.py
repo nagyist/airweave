@@ -667,31 +667,14 @@ async def test_get_entity_count_tolerates_storage_failure():
 
 
 @pytest.mark.asyncio
-async def test_list_entity_ids_tolerates_list_failure():
-    """_list_entity_ids returns [] when list_files raises."""
+async def test_cleanup_stale_tolerates_list_files_failure():
+    """cleanup_stale_entities returns 0 when list_files raises."""
     svc, storage = _build_service()
     storage.list_files = AsyncMock(side_effect=RuntimeError("unavailable"))
-    assert await svc._list_entity_ids(SYNC_ID) == []
 
-
-@pytest.mark.asyncio
-async def test_list_entity_ids_tolerates_corrupt_entity():
-    """_list_entity_ids skips entities that fail to read."""
-    svc, storage = _build_service()
     ctx = _make_sync_context()
-    await svc.upsert_entities([_make_entity(f"e-{i}") for i in range(3)], ctx)
+    runtime = _make_runtime()
+    runtime.entity_tracker = SimpleNamespace(get_all_encountered_ids_flat=lambda: set())
 
-    original_read = storage.read_json
-    call_count = 0
-
-    async def _fail_second(path):
-        nonlocal call_count
-        if "/entities/" in path:
-            call_count += 1
-            if call_count == 2:
-                raise RuntimeError("corrupt")
-        return await original_read(path)
-
-    storage.read_json = _fail_second
-    ids = await svc._list_entity_ids(SYNC_ID)
-    assert len(ids) == 2
+    removed = await svc.cleanup_stale_entities(ctx, runtime)
+    assert removed == 0

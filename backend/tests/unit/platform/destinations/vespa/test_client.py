@@ -152,20 +152,20 @@ class TestVespaClient:
             assert all(isinstance(r.deleted_count, int) for r in results)
 
     @pytest.mark.asyncio
-    async def test_delete_by_parent_ids(self, client):
-        """Test delete by parent IDs uses query-then-delete path."""
-        parent_ids = ["parent-1", "parent-2", "parent-3"]
+    async def test_delete_by_original_entity_ids(self, client):
+        """Test delete by original entity IDs uses query-then-delete path."""
+        entity_ids = ["entity-1", "entity-2", "entity-3"]
         collection_id = UUID("22222222-2222-2222-2222-222222222222")
 
-        resolved = [("base_entity", "base_entity_parent-1__chunk_0")]
+        resolved = [("base_entity", "base_entity_entity-1__chunk_0")]
         with (
-            patch.object(client, '_query_doc_ids_by_parent_ids', new_callable=AsyncMock) as mock_q,
+            patch.object(client, '_query_doc_ids_by_original_entity_ids', new_callable=AsyncMock) as mock_q,
             patch.object(client, '_delete_by_doc_ids', new_callable=AsyncMock) as mock_d,
         ):
             mock_q.return_value = resolved
             mock_d.return_value = 1
 
-            results = await client.delete_by_parent_ids(parent_ids, collection_id)
+            results = await client.delete_by_original_entity_ids(entity_ids, collection_id)
 
             assert len(results) == 1
             assert results[0].deleted_count == 1

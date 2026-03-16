@@ -261,13 +261,13 @@ class VespaClient:
             results.append(result)
         return results
 
-    async def delete_by_parent_ids(
+    async def delete_by_original_entity_ids(
         self,
-        parent_ids: List[str],
+        original_entity_ids: List[str],
         collection_id: UUID,
         batch_size: int = DELETE_BATCH_SIZE,
     ) -> List[DeleteResult]:
-        """Delete all chunk documents for the given parent entity IDs.
+        """Delete all chunk documents for the given original entity IDs.
 
         Uses a two-step indexed approach:
         1. YQL query on indexed original_entity_id to resolve Vespa doc IDs
@@ -276,52 +276,54 @@ class VespaClient:
         Falls back to the old visitor-based selection delete on query failure.
 
         Args:
-            parent_ids: List of parent entity IDs (pre-chunking IDs)
+            original_entity_ids: List of original entity IDs (pre-chunking IDs)
             collection_id: Collection ID to scope deletion
-            batch_size: Max parent IDs per query batch
+            batch_size: Max original entity IDs per query batch
 
         Returns:
             List of DeleteResult for all operations
         """
-        if not parent_ids:
+        if not original_entity_ids:
             return []
 
         total_deleted = 0
-        for i in range(0, len(parent_ids), batch_size):
-            batch = parent_ids[i : i + batch_size]
+        for i in range(0, len(original_entity_ids), batch_size):
+            batch = original_entity_ids[i : i + batch_size]
             try:
-                doc_ids = await self._query_doc_ids_by_parent_ids(batch, collection_id)
+                doc_ids = await self._query_doc_ids_by_original_entity_ids(batch, collection_id)
                 if doc_ids:
                     count = await self._delete_by_doc_ids(doc_ids)
                     total_deleted += count
             except Exception as e:
                 self._logger.warning(
-                    f"[VespaClient] Fast delete failed for batch of {len(batch)} parent IDs, "
-                    f"falling back to selection-based delete: {e}"
+                    f"[VespaClient] Fast delete failed for batch of {len(batch)} "
+                    f"original entity IDs, falling back to selection-based delete: {e}"
                 )
-                total_deleted += await self._delete_by_parent_ids_selection(batch, collection_id)
+                total_deleted += await self._delete_by_original_entity_ids_selection(
+                    batch, collection_id
+                )
 
         return [DeleteResult(deleted_count=total_deleted, schema=None)]
 
-    async def _query_doc_ids_by_parent_ids(
+    async def _query_doc_ids_by_original_entity_ids(
         self,
-        parent_ids: List[str],
+        original_entity_ids: List[str],
         collection_id: UUID,
     ) -> List[Tuple[str, str]]:
-        """Query Vespa for all chunk document IDs belonging to the given parent entity IDs.
+        """Query Vespa for all chunk document IDs belonging to the given original entity IDs.
 
         Uses indexed fields (both fast-search) for an efficient B-tree lookup
         instead of a visitor scan.
 
         Args:
-            parent_ids: Batch of parent entity IDs to resolve
+            original_entity_ids: Batch of original entity IDs to resolve
             collection_id: Collection ID to scope the query
 
         Returns:
             List of (schema_name, doc_id) tuples for direct deletion
         """
         escaped_ids = ", ".join(
-            f"'{pid.replace(chr(39), chr(92) + chr(39))}'" for pid in parent_ids
+            f"'{eid.replace(chr(39), chr(92) + chr(39))}'" for eid in original_entity_ids
         )
         source_list = ", ".join(ALL_VESPA_SCHEMAS)
         yql = (
@@ -355,8 +357,8 @@ class VespaClient:
             )
 
         self._logger.debug(
-            f"[VespaClient] Resolved {len(hits)} doc IDs for {len(parent_ids)} parent IDs "
-            f"in {elapsed_ms:.1f}ms"
+            f"[VespaClient] Resolved {len(hits)} doc IDs for "
+            f"{len(original_entity_ids)} original entity IDs in {elapsed_ms:.1f}ms"
         )
 
         results: List[Tuple[str, str]] = []
@@ -444,21 +446,21 @@ class VespaClient:
 
         return deleted
 
-    async def _delete_by_parent_ids_selection(
+    async def _delete_by_original_entity_ids_selection(
         self,
-        parent_ids: List[str],
+        original_entity_ids: List[str],
         collection_id: UUID,
     ) -> int:
-        """Fallback: delete by parent IDs using the old visitor-based selection scan."""
+        """Fallback: delete by original entity IDs using the old visitor-based selection scan."""
         total = 0
         for schema in ALL_VESPA_SCHEMAS:
-            parent_conditions = " or ".join(
+            id_conditions = " or ".join(
                 f"{schema}.airweave_system_metadata_original_entity_id=="
-                f"'{pid.replace(chr(39), chr(92) + chr(39))}'"
-                for pid in parent_ids
+                f"'{eid.replace(chr(39), chr(92) + chr(39))}'"
+                for eid in original_entity_ids
             )
             selection = (
-                f"({parent_conditions}) and "
+                f"({id_conditions}) and "
                 f"{schema}.airweave_system_metadata_collection_id=='{collection_id}'"
             )
             result = await self.delete_by_selection(schema, selection)

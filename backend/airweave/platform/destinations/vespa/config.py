@@ -35,7 +35,7 @@ FEED_MAX_CONNECTIONS = 16
 # Delete Settings
 # =============================================================================
 
-# Max parent IDs per query batch in bulk_delete_by_parent_ids
+# Max original entity IDs per query batch in delete_by_original_entity_ids
 DELETE_BATCH_SIZE = 200
 
 # Max concurrent direct-delete HTTP requests (semaphore limit)

@@ -2,9 +2,9 @@
 
 Covers:
 - _parse_vespa_document_id (ID parsing from Vespa's full document URI)
-- _query_doc_ids_by_parent_ids (indexed YQL query to resolve doc IDs)
+- _query_doc_ids_by_original_entity_ids (indexed YQL query to resolve doc IDs)
 - _delete_by_doc_ids (parallel direct deletes by document ID)
-- delete_by_parent_ids (end-to-end with fallback)
+- delete_by_original_entity_ids (end-to-end with fallback)
 
 Uses table-driven tests where possible, mocks for Vespa I/O.
 """
@@ -98,11 +98,11 @@ def test_parse_vespa_document_id(case: ParseIdCase):
 
 
 # ---------------------------------------------------------------------------
-# _query_doc_ids_by_parent_ids
+# _query_doc_ids_by_original_entity_ids
 # ---------------------------------------------------------------------------
 
 
-class TestQueryDocIdsByParentIds:
+class TestQueryDocIdsByOriginalEntityIds:
 
     @pytest.mark.asyncio
     async def test_resolves_hits_to_schema_doc_id_tuples(self, client):
@@ -119,7 +119,7 @@ class TestQueryDocIdsByParentIds:
 
         with patch("asyncio.to_thread", new_callable=AsyncMock) as mock_thread:
             mock_thread.return_value = mock_response
-            result = await client._query_doc_ids_by_parent_ids(["abc", "def"], COLLECTION_ID)
+            result = await client._query_doc_ids_by_original_entity_ids(["abc", "def"], COLLECTION_ID)
 
         assert len(result) == 3
         assert result[0] == ("file_entity", "file_entity_abc__chunk_0")
@@ -137,7 +137,7 @@ class TestQueryDocIdsByParentIds:
 
         with patch("asyncio.to_thread", new_callable=AsyncMock) as mock_thread:
             mock_thread.return_value = mock_response
-            result = await client._query_doc_ids_by_parent_ids(["nonexistent"], COLLECTION_ID)
+            result = await client._query_doc_ids_by_original_entity_ids(["nonexistent"], COLLECTION_ID)
 
         assert result == []
 
@@ -151,11 +151,11 @@ class TestQueryDocIdsByParentIds:
         with patch("asyncio.to_thread", new_callable=AsyncMock) as mock_thread:
             mock_thread.return_value = mock_response
             with pytest.raises(RuntimeError, match="Doc ID query failed"):
-                await client._query_doc_ids_by_parent_ids(["x"], COLLECTION_ID)
+                await client._query_doc_ids_by_original_entity_ids(["x"], COLLECTION_ID)
 
     @pytest.mark.asyncio
     async def test_escapes_single_quotes_in_ids(self, client):
-        """Parent IDs containing single quotes are escaped in the YQL query."""
+        """Original entity IDs containing single quotes are escaped in the YQL query."""
         mock_response = MagicMock()
         mock_response.is_successful.return_value = True
         mock_response.hits = []
@@ -163,7 +163,7 @@ class TestQueryDocIdsByParentIds:
 
         with patch("asyncio.to_thread", new_callable=AsyncMock) as mock_thread:
             mock_thread.return_value = mock_response
-            await client._query_doc_ids_by_parent_ids(["it's", "normal"], COLLECTION_ID)
+            await client._query_doc_ids_by_original_entity_ids(["it's", "normal"], COLLECTION_ID)
 
         call_kwargs = mock_thread.call_args
         body = call_kwargs.kwargs.get("body") or call_kwargs.args[1]
@@ -182,7 +182,7 @@ class TestQueryDocIdsByParentIds:
         with patch("asyncio.to_thread", new_callable=AsyncMock) as mock_thread:
             mock_thread.return_value = mock_response
             with pytest.raises(RuntimeError, match="exceeds DELETE_QUERY_HITS_LIMIT"):
-                await client._query_doc_ids_by_parent_ids(["x"], COLLECTION_ID)
+                await client._query_doc_ids_by_original_entity_ids(["x"], COLLECTION_ID)
 
     @pytest.mark.asyncio
     async def test_skips_unparseable_ids(self, client):
@@ -198,7 +198,7 @@ class TestQueryDocIdsByParentIds:
 
         with patch("asyncio.to_thread", new_callable=AsyncMock) as mock_thread:
             mock_thread.return_value = mock_response
-            result = await client._query_doc_ids_by_parent_ids(["ok", "ok2"], COLLECTION_ID)
+            result = await client._query_doc_ids_by_original_entity_ids(["ok", "ok2"], COLLECTION_ID)
 
         assert len(result) == 2
 
@@ -266,11 +266,11 @@ class TestDeleteByDocIds:
 
 
 # ---------------------------------------------------------------------------
-# delete_by_parent_ids (end-to-end composition)
+# delete_by_original_entity_ids (end-to-end composition)
 # ---------------------------------------------------------------------------
 
 
-class TestDeleteByParentIds:
+class TestDeleteByOriginalEntityIds:
 
     @pytest.mark.asyncio
     async def test_happy_path_query_then_delete(self, client):
@@ -282,14 +282,14 @@ class TestDeleteByParentIds:
 
         with (
             patch.object(
-                client, "_query_doc_ids_by_parent_ids", new_callable=AsyncMock
+                client, "_query_doc_ids_by_original_entity_ids", new_callable=AsyncMock
             ) as mock_query,
             patch.object(client, "_delete_by_doc_ids", new_callable=AsyncMock) as mock_delete,
         ):
             mock_query.return_value = resolved
             mock_delete.return_value = 2
 
-            results = await client.delete_by_parent_ids(["p1"], COLLECTION_ID)
+            results = await client.delete_by_original_entity_ids(["p1"], COLLECTION_ID)
 
         assert len(results) == 1
         assert results[0].deleted_count == 2
@@ -297,20 +297,20 @@ class TestDeleteByParentIds:
         mock_delete.assert_awaited_once_with(resolved)
 
     @pytest.mark.asyncio
-    async def test_empty_parent_ids(self, client):
+    async def test_empty_original_entity_ids(self, client):
         """Empty input returns empty results without any calls."""
-        results = await client.delete_by_parent_ids([], COLLECTION_ID)
+        results = await client.delete_by_original_entity_ids([], COLLECTION_ID)
         assert results == []
 
     @pytest.mark.asyncio
     async def test_no_chunks_found(self, client):
-        """Parent IDs with no chunks in Vespa result in 0 deleted."""
+        """Original entity IDs with no chunks in Vespa result in 0 deleted."""
         with patch.object(
-            client, "_query_doc_ids_by_parent_ids", new_callable=AsyncMock
+            client, "_query_doc_ids_by_original_entity_ids", new_callable=AsyncMock
         ) as mock_query:
             mock_query.return_value = []
 
-            results = await client.delete_by_parent_ids(["orphan"], COLLECTION_ID)
+            results = await client.delete_by_original_entity_ids(["orphan"], COLLECTION_ID)
 
         assert results[0].deleted_count == 0
 
@@ -319,36 +319,36 @@ class TestDeleteByParentIds:
         """Query failure triggers fallback to selection-based delete."""
         with (
             patch.object(
-                client, "_query_doc_ids_by_parent_ids", new_callable=AsyncMock
+                client, "_query_doc_ids_by_original_entity_ids", new_callable=AsyncMock
             ) as mock_query,
             patch.object(
-                client, "_delete_by_parent_ids_selection", new_callable=AsyncMock
+                client, "_delete_by_original_entity_ids_selection", new_callable=AsyncMock
             ) as mock_fallback,
         ):
             mock_query.side_effect = RuntimeError("query boom")
             mock_fallback.return_value = 3
 
-            results = await client.delete_by_parent_ids(["p1"], COLLECTION_ID)
+            results = await client.delete_by_original_entity_ids(["p1"], COLLECTION_ID)
 
         assert results[0].deleted_count == 3
         mock_fallback.assert_awaited_once()
 
     @pytest.mark.asyncio
-    async def test_batches_large_parent_id_lists(self, client):
-        """Parent IDs exceeding batch_size are split into multiple queries."""
-        parent_ids = [f"p{i}" for i in range(5)]
+    async def test_batches_large_original_entity_id_lists(self, client):
+        """Original entity IDs exceeding batch_size are split into multiple queries."""
+        entity_ids = [f"p{i}" for i in range(5)]
 
         with (
             patch.object(
-                client, "_query_doc_ids_by_parent_ids", new_callable=AsyncMock
+                client, "_query_doc_ids_by_original_entity_ids", new_callable=AsyncMock
             ) as mock_query,
             patch.object(client, "_delete_by_doc_ids", new_callable=AsyncMock) as mock_delete,
         ):
             mock_query.return_value = [("base_entity", "base_entity_px__chunk_0")]
             mock_delete.return_value = 1
 
-            results = await client.delete_by_parent_ids(
-                parent_ids, COLLECTION_ID, batch_size=2
+            results = await client.delete_by_original_entity_ids(
+                entity_ids, COLLECTION_ID, batch_size=2
             )
 
         # ceil(5/2) = 3 batches

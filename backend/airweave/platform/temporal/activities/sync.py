@@ -65,6 +65,7 @@ class RunSyncActivity:
     sparse_embedder: SparseEmbedderProtocol
     sync_service: SyncServiceProtocol
     sync_job_service: SyncJobServiceProtocol
+    collection_repo: CollectionRepositoryProtocol
 
     @activity.defn(name="run_sync_activity")
     async def run(  # noqa: C901
@@ -130,7 +131,7 @@ class RunSyncActivity:
                 )
                 sync = schemas.Sync(**sync_dict)
 
-            collection_model = await crud.collection.get(db=db, id=collection_id, ctx=ctx)
+            collection_model = await self.collection_repo.get(db=db, id=collection_id, ctx=ctx)
             if not collection_model:
                 raise ValueError(f"Collection {collection_id} not found in database")
 
@@ -226,6 +227,7 @@ class RunSyncActivity:
             last_redis_check_time = heartbeat_start_time
             redis_check_interval = 30  # check every 30 seconds
             last_known_timestamp = None
+            last_snapshot: dict = {}
             stall_start_time = None
             stall_dump_emitted = False
             stall_threshold = 300  # 5 minutes without progress
@@ -302,8 +304,8 @@ class RunSyncActivity:
                             snapshot_key = f"sync_progress_snapshot:{sync_job.id}"
                             snapshot_raw = await redis_client.client.get(snapshot_key)
                             if snapshot_raw:
-                                snapshot = json.loads(snapshot_raw)
-                                current_timestamp = snapshot.get("last_update_timestamp")
+                                last_snapshot = json.loads(snapshot_raw)
+                                current_timestamp = last_snapshot.get("last_update_timestamp")
 
                                 if current_timestamp != last_known_timestamp:
                                     last_known_timestamp = current_timestamp
@@ -337,8 +339,22 @@ class RunSyncActivity:
                         _emit_stack_dump("periodic", elapsed_seconds)
                         last_stack_dump_time = current_time
 
+                    heartbeat_data: dict = {
+                        "phase": "syncing",
+                        "elapsed_s": elapsed_seconds,
+                    }
+                    if last_known_timestamp:
+                        heartbeat_data["last_progress_at"] = last_known_timestamp
+                    if last_snapshot:
+                        heartbeat_data["inserted"] = last_snapshot.get("inserted", 0)
+                        heartbeat_data["updated"] = last_snapshot.get("updated", 0)
+                        heartbeat_data["deleted"] = last_snapshot.get("deleted", 0)
+                        heartbeat_data["kept"] = last_snapshot.get("kept", 0)
+                    if stall_start_time is not None:
+                        heartbeat_data["stall_s"] = int(current_time - stall_start_time)
+
                     ctx.logger.debug("HEARTBEAT: Sync in progress")
-                    activity.heartbeat("Sync in progress")
+                    activity.heartbeat(heartbeat_data)
 
                 # Publish COMPLETED event
                 await self.event_bus.publish(
@@ -493,7 +509,7 @@ class RunSyncActivity:
             try:
                 await asyncio.wait_for(sync_task, timeout=1)
             except asyncio.TimeoutError:
-                activity.heartbeat("Cancelling sync...")
+                activity.heartbeat({"phase": "cancelling"})
         with suppress(asyncio.CancelledError):
             await sync_task
 
@@ -646,14 +662,15 @@ class CreateSyncJobActivity:
                 if force_full_sync:
                     await self._wait_for_running_jobs(db, sync_id, ctx, running_jobs)
                 else:
-                    ctx.logger.warning(
-                        f"Sync {sync_id} already has {len(running_jobs)} running jobs. "
-                        f"Skipping new job creation."
+                    ctx.logger.info(
+                        f"Sync {sync_id} already has {len(running_jobs)} running "
+                        f"job(s). Skipping scheduled run."
                     )
-                    raise Exception(
-                        f"Sync {sync_id} already has a running job. "
-                        f"Skipping this scheduled run to avoid conflicts."
-                    )
+                    return {
+                        "_skipped": True,
+                        "sync_id": sync_id,
+                        "reason": f"Already has {len(running_jobs)} running job(s)",
+                    }
 
             sync_job_in = schemas.SyncJobCreate(sync_id=UUID(sync_id))
             sync_job = await self.sync_job_repo.create(db=db, obj_in=sync_job_in, ctx=ctx)
@@ -684,7 +701,7 @@ class CreateSyncJobActivity:
         total_waited = 0
 
         while total_waited < max_wait_time:
-            activity.heartbeat(f"Waiting for running jobs to complete ({total_waited}s)")
+            activity.heartbeat({"phase": "waiting_for_running_jobs", "waited_s": total_waited})
             await asyncio.sleep(wait_interval)
             total_waited += wait_interval
 

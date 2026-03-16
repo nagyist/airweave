@@ -2,19 +2,15 @@
 
 """CRUD operations for collections."""
 
-from typing import Any, Dict, List, Optional
-from uuid import UUID
+from typing import List, Optional
 
-from sqlalchemy import and_, func, select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from airweave import crud
 from airweave.core.context import BaseContext
 from airweave.core.exceptions import NotFoundException, PermissionException
-from airweave.core.shared_models import CollectionStatus
 from airweave.crud._base_organization import CRUDBaseOrganization
 from airweave.models.collection import Collection
-from airweave.models.source_connection import SourceConnection
 from airweave.schemas.collection import CollectionCreate, CollectionUpdate
 
 
@@ -164,19 +160,16 @@ class CRUDCollection(CRUDBaseOrganization[Collection, CollectionCreate, Collecti
     async def get_by_readable_id(
         self, db: AsyncSession, readable_id: str, ctx: BaseContext
     ) -> Optional[Collection]:
-        """Get a collection by its readable ID with computed ephemeral status."""
+        """Get a collection by its readable ID."""
         result = await db.execute(select(Collection).where(Collection.readable_id == readable_id))
         collection = result.scalar_one_or_none()
 
         if not collection:
             raise NotFoundException(f"Collection '{readable_id}' not found.")
 
-        # Validate organization access - convert PermissionException to NotFoundException
-        # to avoid leaking information about collection existence across organizations
         try:
             await self._validate_organization_access(ctx, collection.organization_id)
         except PermissionException:
-            # Don't reveal that the collection exists but belongs to another organization
             raise NotFoundException(f"Collection '{readable_id}' not found.")
 
         collections, _summaries = await self._attach_ephemeral_status(db, [collection], ctx)
@@ -221,23 +214,13 @@ class CRUDCollection(CRUDBaseOrganization[Collection, CollectionCreate, Collecti
     async def count(
         self, db: AsyncSession, ctx: BaseContext, search_query: Optional[str] = None
     ) -> int:
-        """Get total count of collections for the organization.
-
-        Args:
-            db: Database session
-            ctx: API context
-            search_query: Optional search term to filter by name or readable_id
-
-        Returns:
-            Count of collections matching criteria
-        """
+        """Get total count of collections for the organization."""
         query = (
             select(func.count())
             .select_from(Collection)
             .where(Collection.organization_id == ctx.organization.id)
         )
 
-        # Apply search filter if provided
         if search_query:
             search_pattern = f"%{search_query.lower()}%"
             query = query.where(

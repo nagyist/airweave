@@ -3,7 +3,6 @@
 import asyncio
 import base64
 import hashlib
-import random
 import secrets
 from typing import Any, Optional, Tuple
 from urllib.parse import urlencode
@@ -21,12 +20,10 @@ from airweave.core.logging import ContextualLogger
 from airweave.core.protocols.encryption import CredentialEncryptor
 from airweave.core.shared_models import ConnectionStatus
 from airweave.db.unit_of_work import UnitOfWork
-from airweave.domains.oauth.protocols import (
-    OAuth2ServiceProtocol,
-    OAuthConnectionRepositoryProtocol,
-    OAuthCredentialRepositoryProtocol,
-    OAuthSourceRepositoryProtocol,
-)
+from airweave.domains.connections.protocols import ConnectionRepositoryProtocol
+from airweave.domains.credentials.protocols import IntegrationCredentialRepositoryProtocol
+from airweave.domains.oauth.protocols import OAuth2ServiceProtocol
+from airweave.domains.sources.protocols import SourceRegistryProtocol
 from airweave.models.integration_credential import IntegrationType
 from airweave.platform.auth.schemas import (
     BaseAuthSettings,
@@ -34,6 +31,7 @@ from airweave.platform.auth.schemas import (
     OAuth2TokenResponse,
 )
 from airweave.platform.auth.settings import integration_settings
+from airweave.platform.utils.ssrf import validate_url
 
 
 class OAuth2Service(OAuth2ServiceProtocol):
@@ -42,17 +40,17 @@ class OAuth2Service(OAuth2ServiceProtocol):
     def __init__(
         self,
         settings: Settings,
-        conn_repo: OAuthConnectionRepositoryProtocol,
-        cred_repo: OAuthCredentialRepositoryProtocol,
+        conn_repo: ConnectionRepositoryProtocol,
+        cred_repo: IntegrationCredentialRepositoryProtocol,
         encryptor: CredentialEncryptor,
-        source_repo: OAuthSourceRepositoryProtocol,
+        source_registry: SourceRegistryProtocol,
     ):
         """Initialize with injected dependencies."""
         self.settings = settings
         self.conn_repo = conn_repo
         self.cred_repo = cred_repo
         self.encryptor = encryptor
-        self.source_repo = source_repo
+        self._source_registry = source_registry
 
     async def generate_auth_url(
         self,
@@ -332,12 +330,9 @@ class OAuth2Service(OAuth2ServiceProtocol):
                     )
 
                 try:
-                    source = await self.source_repo.get_by_short_name(db, integration_short_name)
-                    if source and source.config_class:
-                        from airweave.platform.locator import resource_locator
-
-                        config_class = resource_locator.get_config(source.config_class)
-                        template_config_values = config_class.extract_template_configs(
+                    entry = self._source_registry.get(integration_short_name)
+                    if entry.config_ref is not None:
+                        template_config_values = entry.config_ref.extract_template_configs(
                             config_fields
                         )
                     else:
@@ -578,7 +573,7 @@ class OAuth2Service(OAuth2ServiceProtocol):
                     logger.info(f"Received response: Status {response.status_code}, ")
 
                     if self._is_oauth_rate_limit_error(response):
-                        delay = base_delay * (2**attempt) + random.uniform(0, 2)
+                        delay = base_delay * (2**attempt) + secrets.randbelow(2001) / 1000
                         logger.warning(
                             f"OAuth rate limit hit, waiting {delay:.1f}s before retry "
                             f"(attempt {attempt + 1}/{max_retries})"
@@ -591,7 +586,7 @@ class OAuth2Service(OAuth2ServiceProtocol):
 
             except httpx.HTTPStatusError as e:
                 if self._is_oauth_rate_limit_error(e.response):
-                    delay = base_delay * (2**attempt) + random.uniform(0, 2)
+                    delay = base_delay * (2**attempt) + secrets.randbelow(2001) / 1000
                     logger.warning(
                         f"OAuth rate limit hit (exception), waiting {delay:.1f}s before retry "
                         f"(attempt {attempt + 1}/{max_retries})"
@@ -724,6 +719,8 @@ class OAuth2Service(OAuth2ServiceProtocol):
 
         Supports both standard OAuth 2.0 and PKCE (Proof Key for Code Exchange).
         """
+        validate_url(backend_url)
+
         headers = {
             "Content-Type": integration_config.content_type,
         }

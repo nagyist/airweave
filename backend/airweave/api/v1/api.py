@@ -7,7 +7,9 @@ from airweave.api.v1.endpoints import (
     api_keys,
     auth_providers,
     billing,
+    browse_tree,
     collections,
+    connect,
     entities,
     entity_counts,
     file_retrieval,
@@ -47,4 +49,10 @@ api_router.include_router(entities.router, prefix="/entities", tags=["entities"]
 api_router.include_router(entity_counts.router, prefix="/entity-counts", tags=["entity-counts"])
 api_router.include_router(file_retrieval.router, prefix="/files", tags=["files"])
 api_router.include_router(admin.router, prefix="/admin", tags=["admin"])
+api_router.include_router(
+    browse_tree.router,
+    prefix="/source-connections",
+    tags=["browse-tree"],
+)
 api_router.include_router(webhooks.router, prefix="/webhooks", tags=["webhooks"])
+api_router.include_router(connect.router, prefix="/connect", tags=["connect"])

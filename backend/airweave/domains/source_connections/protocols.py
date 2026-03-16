@@ -1,7 +1,7 @@
 """Protocols for source connection domain."""
 
 from datetime import datetime
-from typing import Any, List, Optional, Protocol
+from typing import Any, Dict, List, Optional, Protocol
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -79,6 +79,22 @@ class SourceConnectionRepositoryProtocol(Protocol):
         """Get all sync IDs for source connections in a collection."""
         ...
 
+    async def get_by_collection_ids(
+        self,
+        db: AsyncSession,
+        *,
+        organization_id: UUID,
+        readable_collection_ids: List[str],
+    ) -> List[SourceConnection]:
+        """Get all source connections for the given collection readable IDs."""
+        ...
+
+    async def fetch_last_jobs(
+        self, db: AsyncSession, source_conns: List[SourceConnection]
+    ) -> Dict[UUID, Dict]:
+        """Fetch the most recent sync job for each connection."""
+        ...
+
     async def update(
         self,
         db: AsyncSession,
@@ -128,6 +144,7 @@ class ResponseBuilderProtocol(Protocol):
         *,
         auth_url_override: Optional[str] = None,
         auth_url_expiry_override: Optional[datetime] = None,
+        claim_token: Optional[str] = None,
     ) -> SourceConnectionSchema:
         """Build full SourceConnection response from ORM object."""
         ...

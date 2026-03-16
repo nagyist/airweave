@@ -4,7 +4,10 @@ Replaces the legacy source_connection_service callback methods and
 source_connection_service_helpers completion logic with proper DI.
 """
 
+import hashlib
+import hmac
 from collections.abc import Mapping
+from datetime import datetime, timezone
 from typing import Any, Dict
 from uuid import UUID, uuid4
 
@@ -13,7 +16,7 @@ from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import schemas
-from airweave.api.context import ApiContext
+from airweave.api.context import ApiContext, ConnectContext
 from airweave.core.events.source_connection import SourceConnectionLifecycleEvent
 from airweave.core.events.sync import SyncLifecycleEvent
 from airweave.core.logging import logger
@@ -27,7 +30,6 @@ from airweave.domains.credentials.protocols import IntegrationCredentialReposito
 from airweave.domains.oauth.protocols import (
     OAuthFlowServiceProtocol,
     OAuthInitSessionRepositoryProtocol,
-    OAuthSourceRepositoryProtocol,
 )
 from airweave.domains.oauth.types import OAuth1TokenResponse
 from airweave.domains.organizations.protocols import OrganizationRepositoryProtocol
@@ -47,7 +49,6 @@ from airweave.domains.temporal.protocols import TemporalWorkflowServiceProtocol
 from airweave.models.collection import Collection
 from airweave.models.connection_init_session import ConnectionInitSession, ConnectionInitStatus
 from airweave.models.integration_credential import IntegrationType
-from airweave.models.source import Source
 from airweave.models.source_connection import SourceConnection
 from airweave.platform.auth.schemas import OAuth1Settings, OAuth2TokenResponse
 from airweave.platform.auth.settings import integration_settings
@@ -83,7 +84,6 @@ class OAuthCallbackService:
         temporal_workflow_service: TemporalWorkflowServiceProtocol,
         event_bus: EventBus,
         organization_repo: OrganizationRepositoryProtocol,
-        source_repo: OAuthSourceRepositoryProtocol,
         sc_repo: SourceConnectionRepositoryProtocol,
         credential_repo: IntegrationCredentialRepositoryProtocol,
         connection_repo: ConnectionRepositoryProtocol,
@@ -102,7 +102,6 @@ class OAuthCallbackService:
         self._temporal_workflow_service = temporal_workflow_service
         self._event_bus = event_bus
         self._organization_repo = organization_repo
-        self._source_repo = source_repo
         self._sc_repo = sc_repo
         self._credential_repo = credential_repo
         self._connection_repo = connection_repo
@@ -160,10 +159,17 @@ class OAuthCallbackService:
         if not init_session:
             raise HTTPException(status_code=404, detail="OAuth2 session not found or expired")
 
+        if init_session.expires_at < datetime.now(timezone.utc):
+            raise HTTPException(status_code=410, detail="OAuth session expired")
+
         if init_session.status != ConnectionInitStatus.PENDING:
             raise HTTPException(
                 status_code=400, detail=f"OAuth session already {init_session.status}"
             )
+
+        init_session.status = ConnectionInitStatus.IN_PROGRESS
+        db.add(init_session)
+        await db.flush()
 
         ctx = await self._reconstruct_context(db, init_session)
 
@@ -177,15 +183,20 @@ class OAuthCallbackService:
             init_session.short_name, code, init_session.overrides, ctx
         )
 
-        source = await self._source_repo.get_by_short_name(db, short_name=init_session.short_name)
+        try:
+            source_entry = self._source_registry.get(init_session.short_name)
+        except KeyError:
+            raise HTTPException(
+                status_code=404, detail=f"Source '{init_session.short_name}' not found"
+            )
         await self._validate_oauth2_token_or_raise(
-            source=source,
+            source_entry=source_entry,
             access_token=token_response.access_token,
             ctx=ctx,
         )
 
         source_conn = await self._complete_oauth2_connection(
-            db, source_conn_shell, init_session, token_response, ctx
+            db, source_conn_shell, init_session, token_response, source_entry, ctx
         )
 
         return await self._finalize_callback(db, source_conn, ctx)
@@ -209,10 +220,17 @@ class OAuthCallbackService:
                 ),
             )
 
+        if init_session.expires_at < datetime.now(timezone.utc):
+            raise HTTPException(status_code=410, detail="OAuth session expired")
+
         if init_session.status != ConnectionInitStatus.PENDING:
             raise HTTPException(
                 status_code=400, detail=f"OAuth session already {init_session.status}"
             )
+
+        init_session.status = ConnectionInitStatus.IN_PROGRESS
+        db.add(init_session)
+        await db.flush()
 
         ctx = await self._reconstruct_context(db, init_session)
 
@@ -291,8 +309,9 @@ class OAuthCallbackService:
         ctx: ApiContext,
     ) -> SourceConnection:
         """Complete OAuth1 connection after callback."""
-        source = await self._source_repo.get_by_short_name(db, short_name=init_session.short_name)
-        if not source:
+        try:
+            source_entry = self._source_registry.get(init_session.short_name)
+        except KeyError:
             raise HTTPException(
                 status_code=404, detail=f"Source '{init_session.short_name}' not found"
             )
@@ -333,7 +352,7 @@ class OAuthCallbackService:
 
         return await self._complete_connection_common(
             db,
-            source,
+            source_entry,
             source_conn_shell,
             init_session_id,
             payload,
@@ -341,6 +360,7 @@ class OAuthCallbackService:
             auth_method_to_save,
             is_oauth1=True,
             ctx=ctx,
+            has_claim_token=bool(init_session.claim_token_hash),
         )
 
     async def _complete_oauth2_connection(
@@ -349,15 +369,10 @@ class OAuthCallbackService:
         source_conn_shell: SourceConnection,
         init_session: ConnectionInitSession,
         token_response: OAuth2TokenResponse,
+        source_entry: SourceRegistryEntry,
         ctx: ApiContext,
     ) -> SourceConnection:
         """Complete OAuth2 connection after callback."""
-        source = await self._source_repo.get_by_short_name(db, short_name=init_session.short_name)
-        if not source:
-            raise HTTPException(
-                status_code=404, detail=f"Source '{init_session.short_name}' not found"
-            )
-
         init_session_id = init_session.id
         payload = init_session.payload or {}
         overrides = init_session.overrides or {}
@@ -393,7 +408,7 @@ class OAuthCallbackService:
 
         return await self._complete_connection_common(
             db,
-            source,
+            source_entry,
             source_conn_shell,
             init_session_id,
             payload,
@@ -401,6 +416,7 @@ class OAuthCallbackService:
             auth_method_to_save,
             is_oauth1=False,
             ctx=ctx,
+            has_claim_token=bool(init_session.claim_token_hash),
         )
 
     # ------------------------------------------------------------------
@@ -410,7 +426,7 @@ class OAuthCallbackService:
     async def _complete_connection_common(  # noqa: C901
         self,
         db: AsyncSession,
-        source: Source,
+        source_entry: SourceRegistryEntry,
         source_conn_shell: SourceConnection,
         init_session_id: UUID,
         payload: Dict[str, Any],
@@ -418,24 +434,28 @@ class OAuthCallbackService:
         auth_method_to_save: AuthenticationMethod,
         is_oauth1: bool,
         ctx: ApiContext,
+        has_claim_token: bool = False,
     ) -> SourceConnection:
         """Common logic for completing OAuth connections (shared by OAuth1/OAuth2)."""
-        validated_config = self._validate_config(source, payload.get("config"))
+        validated_config = self._validate_config(source_entry, payload.get("config"))
 
         auth_type_name = "OAuth1" if is_oauth1 else "OAuth2"
+        auth_config_class = (
+            source_entry.auth_config_ref.__name__ if source_entry.auth_config_ref else None
+        )
 
         async with UnitOfWork(db) as uow:
             encrypted = self._credential_encryptor.encrypt(auth_fields)
 
             cred_in = schemas.IntegrationCredentialCreateEncrypted(
-                name=f"{source.name} {auth_type_name} Credential",
-                description=f"{auth_type_name} credentials for {source.name}",
-                integration_short_name=source.short_name,
+                name=f"{source_entry.name} {auth_type_name} Credential",
+                description=f"{auth_type_name} credentials for {source_entry.name}",
+                integration_short_name=source_entry.short_name,
                 integration_type=IntegrationType.SOURCE,
                 authentication_method=auth_method_to_save,
-                oauth_type=getattr(source, "oauth_type", None),
+                oauth_type=source_entry.oauth_type,
                 encrypted_credentials=encrypted,
-                auth_config_class=source.auth_config_class,
+                auth_config_class=auth_config_class,
             )
             credential = await self._credential_repo.create(
                 uow.session, obj_in=cred_in, ctx=ctx, uow=uow
@@ -445,11 +465,11 @@ class OAuthCallbackService:
             await uow.session.refresh(credential)
 
             conn_in = schemas.ConnectionCreate(
-                name=payload.get("name", f"Connection to {source.name}"),
+                name=payload.get("name", f"Connection to {source_entry.name}"),
                 integration_type=IntegrationType.SOURCE,
                 status=ConnectionStatus.ACTIVE,
                 integration_credential_id=credential.id,
-                short_name=source.short_name,
+                short_name=source_entry.short_name,
             )
             connection = await self._connection_repo.create(
                 uow.session, obj_in=conn_in, ctx=ctx, uow=uow
@@ -464,14 +484,14 @@ class OAuthCallbackService:
             await uow.session.flush()
             await uow.session.refresh(connection)
 
-            entry: SourceRegistryEntry = self._source_registry.get(source.short_name)
-            source_class = entry.source_class_ref
+            source_class = source_entry.source_class_ref
 
             is_federated = getattr(source_class, "federated_search", False)
 
             if is_federated:
                 ctx.logger.info(
-                    f"Skipping sync creation for federated search source '{source.short_name}'. "
+                    f"Skipping sync creation for federated search source "
+                    f"'{source_entry.short_name}'. "
                     "Federated search sources are searched at query time."
                 )
                 sc_update: Dict[str, Any] = {
@@ -504,12 +524,12 @@ class OAuthCallbackService:
 
                 sync_result = await self._sync_lifecycle.provision_sync(
                     uow.session,
-                    name=payload.get("name") or source.name,
+                    name=payload.get("name") or source_entry.name,
                     source_connection_id=connection.id,
                     destination_connection_ids=destination_ids,
                     collection_id=collection.id,
                     collection_readable_id=collection.readable_id,
-                    source_entry=entry,
+                    source_entry=source_entry,
                     schedule_config=schedule_config,
                     run_immediately=True,
                     ctx=ctx,
@@ -531,12 +551,13 @@ class OAuthCallbackService:
                     uow=uow,
                 )
 
-            await self._init_session_repo.mark_completed(
-                uow.session,
-                session_id=init_session_id,
-                final_connection_id=sc_update["connection_id"],
-                ctx=ctx,
-            )
+            if not has_claim_token:
+                await self._init_session_repo.mark_completed(
+                    uow.session,
+                    session_id=init_session_id,
+                    final_connection_id=sc_update["connection_id"],
+                    ctx=ctx,
+                )
 
             await uow.commit()
             await uow.session.refresh(source_conn)
@@ -546,16 +567,16 @@ class OAuthCallbackService:
     async def _validate_oauth2_token_or_raise(
         self,
         *,
-        source: Source | None,
+        source_entry: SourceRegistryEntry | None,
         access_token: str,
         ctx: ApiContext,
     ) -> None:
         """Validate OAuth2 token using source implementation; fail callback if invalid."""
-        if not source:
+        if not source_entry:
             return
 
         try:
-            source_cls = self._source_registry.get(source.short_name).source_class_ref
+            source_cls = source_entry.source_class_ref
 
             source_instance = await source_cls.create(access_token=access_token, config=None)
             source_instance.set_logger(ctx.logger)
@@ -573,6 +594,20 @@ class OAuthCallbackService:
     # Private: finalization (response + sync trigger)
     # ------------------------------------------------------------------
 
+    async def _has_claim_token(
+        self,
+        db: AsyncSession,
+        source_conn: SourceConnection,
+        ctx: ApiContext,
+    ) -> bool:
+        """Check if source connection's init session has a claim token."""
+        if not source_conn.connection_init_session_id:
+            return False
+        session = await self._init_session_repo.get(
+            db, id=source_conn.connection_init_session_id, ctx=ctx
+        )
+        return bool(session and session.claim_token_hash)
+
     async def _finalize_callback(
         self,
         db: AsyncSession,
@@ -582,64 +617,18 @@ class OAuthCallbackService:
         """Build response and trigger sync workflow if needed."""
         source_conn_response = await self._response_builder.build_response(db, source_conn, ctx)
 
-        if source_conn.sync_id:
-            sync = await self._sync_repo.get(db, id=source_conn.sync_id, ctx=ctx)
-            if sync:
-                jobs = await self._sync_job_repo.get_all_by_sync_id(db, sync_id=sync.id, ctx=ctx)
-                if jobs and len(jobs) > 0:
-                    sync_job = jobs[0]
-                    if sync_job.status == SyncJobStatus.PENDING:
-                        collection = await self._collection_repo.get_by_readable_id(
-                            db, readable_id=source_conn.readable_collection_id, ctx=ctx
-                        )
-                        if collection:
-                            collection_schema = schemas.CollectionRecord.model_validate(
-                                collection, from_attributes=True
-                            )
-                            sync_job_schema = schemas.SyncJob.model_validate(
-                                sync_job, from_attributes=True
-                            )
-                            sync_schema = schemas.Sync.model_validate(sync, from_attributes=True)
+        should_defer_sync = bool(
+            source_conn.connection_init_session_id
+            and await self._has_claim_token(db, source_conn, ctx)
+        )
 
-                            if not source_conn.connection_id:
-                                raise ValueError(
-                                    f"Source connection {source_conn.id} has no connection_id"
-                                )
-                            conn_model = await self._connection_repo.get(
-                                db, id=source_conn.connection_id, ctx=ctx
-                            )
-                            if not conn_model:
-                                raise ValueError(
-                                    f"Connection {source_conn.connection_id} not found"
-                                )
-                            connection_schema = schemas.Connection.model_validate(
-                                conn_model, from_attributes=True
-                            )
+        if source_conn.sync_id and not should_defer_sync:
+            await self._run_sync_workflow(db, source_conn, ctx)
 
-                            try:
-                                await self._event_bus.publish(
-                                    SyncLifecycleEvent.pending(
-                                        organization_id=ctx.organization.id,
-                                        source_connection_id=source_conn.id,
-                                        sync_job_id=sync_job_schema.id,
-                                        sync_id=sync_schema.id,
-                                        collection_id=collection_schema.id,
-                                        source_type=connection_schema.short_name,
-                                        collection_name=collection_schema.name,
-                                        collection_readable_id=collection_schema.readable_id,
-                                    )
-                                )
-                            except Exception as e:
-                                ctx.logger.warning(f"Failed to publish sync.pending event: {e}")
-
-                            await self._temporal_workflow_service.run_source_connection_workflow(
-                                sync=sync_schema,
-                                sync_job=sync_job_schema,
-                                collection=collection_schema,
-                                connection=connection_schema,
-                                ctx=ctx,
-                            )
-
+        # auth_completed fires at callback time regardless of whether the sync
+        # is deferred.  Auth *is* complete once the provider redirects back;
+        # the subsequent verify-oauth call proves *who* initiated the flow,
+        # it does not change the auth state.
         await self._event_bus.publish(
             SourceConnectionLifecycleEvent.auth_completed(
                 organization_id=ctx.organization.id,
@@ -652,36 +641,181 @@ class OAuthCallbackService:
         return source_conn_response
 
     # ------------------------------------------------------------------
+    # Verify OAuth flow ownership
+    # ------------------------------------------------------------------
+
+    async def verify_oauth_flow(
+        self,
+        db: AsyncSession,
+        *,
+        source_connection_id: UUID,
+        claim_token: str,
+        ctx: ApiContext | ConnectContext,
+    ) -> SourceConnectionSchema:
+        """Verify OAuth flow ownership via claim token and trigger deferred sync."""
+        source_conn = await self._sc_repo.get(db, id=source_connection_id, ctx=ctx)
+        if not source_conn:
+            raise HTTPException(status_code=404, detail="Source connection not found")
+
+        if not source_conn.connection_init_session_id:
+            raise HTTPException(status_code=400, detail="No OAuth session for this connection")
+
+        init_session = await self._init_session_repo.get(
+            db, id=source_conn.connection_init_session_id, ctx=ctx
+        )
+        if not init_session or not init_session.claim_token_hash:
+            raise HTTPException(status_code=400, detail="No claim token on OAuth session")
+
+        expected_hash = hashlib.sha256(claim_token.encode()).hexdigest()
+        if not hmac.compare_digest(expected_hash, init_session.claim_token_hash):
+            raise HTTPException(status_code=403, detail="Invalid claim token")
+
+        if init_session.status != ConnectionInitStatus.IN_PROGRESS:
+            raise HTTPException(
+                status_code=400,
+                detail=f"OAuth session is {init_session.status}, expected in_progress",
+            )
+
+        # Identity check last: avoids leaking session state to wrong-identity callers
+        caller_user_id = getattr(ctx, "user_id", None)
+        caller_session_id = getattr(ctx, "session_id", None)
+        has_initiator = (
+            init_session.initiator_user_id is not None
+            or init_session.initiator_session_id is not None
+        )
+        if has_initiator:
+            user_match = (
+                caller_user_id is not None
+                and init_session.initiator_user_id is not None
+                and caller_user_id == init_session.initiator_user_id
+            )
+            session_match = (
+                caller_session_id is not None
+                and init_session.initiator_session_id is not None
+                and caller_session_id == init_session.initiator_session_id
+            )
+            if not user_match and not session_match:
+                raise HTTPException(status_code=403, detail="Caller identity mismatch")
+
+        # Mark session completed
+        await self._init_session_repo.mark_completed(
+            db,
+            session_id=init_session.id,
+            final_connection_id=source_conn.connection_id,
+            ctx=ctx,
+        )
+        await db.flush()
+
+        # Trigger deferred sync
+        api_ctx = (
+            ctx
+            if isinstance(ctx, ApiContext)
+            else await self._reconstruct_context(db, init_session)
+        )
+        return await self._trigger_deferred_sync(db, source_conn, api_ctx)
+
+    async def _trigger_deferred_sync(
+        self,
+        db: AsyncSession,
+        source_conn: SourceConnection,
+        ctx: ApiContext,
+    ) -> SourceConnectionSchema:
+        """Trigger sync workflow that was deferred during callback."""
+        source_conn_response = await self._response_builder.build_response(db, source_conn, ctx)
+
+        if source_conn.sync_id:
+            await self._run_sync_workflow(db, source_conn, ctx)
+
+        return source_conn_response
+
+    async def _run_sync_workflow(
+        self,
+        db: AsyncSession,
+        source_conn: SourceConnection,
+        ctx: ApiContext,
+    ) -> None:
+        """Publish sync.pending event and start the Temporal workflow.
+
+        Shared by the immediate callback path and the deferred verify path.
+        """
+        sync = await self._sync_repo.get(db, id=source_conn.sync_id, ctx=ctx)
+        if not sync:
+            return
+
+        jobs = await self._sync_job_repo.get_all_by_sync_id(db, sync_id=sync.id, ctx=ctx)
+        if not jobs:
+            return
+
+        sync_job = jobs[0]
+        if sync_job.status != SyncJobStatus.PENDING:
+            return
+
+        collection = await self._collection_repo.get_by_readable_id(
+            db, readable_id=source_conn.readable_collection_id, ctx=ctx
+        )
+        if not collection:
+            return
+
+        collection_schema = schemas.CollectionRecord.model_validate(
+            collection, from_attributes=True
+        )
+        sync_job_schema = schemas.SyncJob.model_validate(sync_job, from_attributes=True)
+        sync_schema = schemas.Sync.model_validate(sync, from_attributes=True)
+
+        if not source_conn.connection_id:
+            raise ValueError(f"Source connection {source_conn.id} has no connection_id")
+        conn_model = await self._connection_repo.get(db, id=source_conn.connection_id, ctx=ctx)
+        if not conn_model:
+            raise ValueError(f"Connection {source_conn.connection_id} not found")
+        connection_schema = schemas.Connection.model_validate(conn_model, from_attributes=True)
+
+        try:
+            await self._event_bus.publish(
+                SyncLifecycleEvent.pending(
+                    organization_id=ctx.organization.id,
+                    source_connection_id=source_conn.id,
+                    sync_job_id=sync_job_schema.id,
+                    sync_id=sync_schema.id,
+                    collection_id=collection_schema.id,
+                    source_type=connection_schema.short_name,
+                    collection_name=collection_schema.name,
+                    collection_readable_id=collection_schema.readable_id,
+                )
+            )
+        except Exception as e:
+            ctx.logger.warning(f"Failed to publish sync.pending event: {e}")
+
+        await self._temporal_workflow_service.run_source_connection_workflow(
+            sync=sync_schema,
+            sync_job=sync_job_schema,
+            collection=collection_schema,
+            connection=connection_schema,
+            ctx=ctx,
+        )
+
+    # ------------------------------------------------------------------
     # Private: inline helpers
     # ------------------------------------------------------------------
 
     def _validate_config(
         self,
-        source: Source,
+        source_entry: SourceRegistryEntry,
         config_fields: Mapping[str, Any] | None,
     ) -> Dict[str, Any]:
         """Validate config fields using source_registry."""
         if not config_fields:
             return {}
 
-        try:
-            entry = self._source_registry.get(source.short_name)
-        except KeyError:
-            raise HTTPException(
-                status_code=500,
-                detail=f"Source '{source.short_name}' is not registered",
-            )
-
         if not isinstance(config_fields, Mapping):
             raise HTTPException(status_code=422, detail="Invalid config fields: expected object")
 
         payload = dict(config_fields)
 
-        if not entry.config_ref:
+        if not source_entry.config_ref:
             return payload
 
         try:
-            config_class = entry.config_ref
+            config_class = source_entry.config_ref
             model = config_class.model_validate(payload)
             return model.model_dump()
 

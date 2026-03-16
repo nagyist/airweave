@@ -3,15 +3,13 @@
 A collection is a group of different data sources that you can search using a single endpoint.
 """
 
-import random
-import re
-import string
 from datetime import datetime
 from typing import List, Optional
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, model_validator
 
+from airweave.core.readable_id import generate_readable_id
 from airweave.core.shared_models import CollectionStatus
 from airweave.platform.sync.config.base import SyncConfig
 

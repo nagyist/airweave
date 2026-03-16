@@ -6,20 +6,12 @@ from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from airweave.api.context import ApiContext
+from airweave.api.context import ApiContext, ConnectContext
 from airweave.core.logging import ContextualLogger
 from airweave.db.unit_of_work import UnitOfWork
 from airweave.domains.oauth.types import OAuth1TokenResponse, OAuthBrowserInitiationResult
-from airweave.models.connection import Connection
 from airweave.models.connection_init_session import ConnectionInitSession
-from airweave.models.integration_credential import IntegrationCredential
-from airweave.models.source import Source
 from airweave.platform.auth.schemas import OAuth1Settings, OAuth2Settings, OAuth2TokenResponse
-from airweave.schemas.connection import ConnectionCreate
-from airweave.schemas.integration_credential import (
-    IntegrationCredentialCreateEncrypted,
-    IntegrationCredentialUpdate,
-)
 from airweave.schemas.source_connection import SourceConnection as SourceConnectionSchema
 
 
@@ -133,63 +125,6 @@ class OAuth2ServiceProtocol(Protocol):
         ...
 
 
-class OAuthConnectionRepositoryProtocol(Protocol):
-    """Connection data access needed by OAuth flows."""
-
-    async def get(self, db: AsyncSession, id: UUID, ctx: ApiContext) -> Connection:
-        """Get a connection by ID."""
-        ...
-
-    async def create(
-        self,
-        db: AsyncSession,
-        *,
-        obj_in: ConnectionCreate,
-        ctx: ApiContext,
-        uow: UnitOfWork,
-    ) -> Connection:
-        """Create a connection within a unit of work."""
-        ...
-
-
-class OAuthCredentialRepositoryProtocol(Protocol):
-    """Integration credential data access needed by OAuth flows."""
-
-    async def get(self, db: AsyncSession, id: UUID, ctx: ApiContext) -> IntegrationCredential:
-        """Get an integration credential by ID."""
-        ...
-
-    async def update(
-        self,
-        db: AsyncSession,
-        *,
-        db_obj: IntegrationCredential,
-        obj_in: IntegrationCredentialUpdate,
-        ctx: ApiContext,
-    ) -> IntegrationCredential:
-        """Update an integration credential."""
-        ...
-
-    async def create(
-        self,
-        db: AsyncSession,
-        *,
-        obj_in: IntegrationCredentialCreateEncrypted,
-        ctx: ApiContext,
-        uow: UnitOfWork,
-    ) -> IntegrationCredential:
-        """Create an integration credential within a unit of work."""
-        ...
-
-
-class OAuthSourceRepositoryProtocol(Protocol):
-    """Source lookup needed for template URL rendering during token refresh."""
-
-    async def get_by_short_name(self, db: AsyncSession, short_name: str) -> Optional[Source]:
-        """Get a source by short_name. Returns None if not found."""
-        ...
-
-
 # ---------------------------------------------------------------------------
 # Init session + redirect session repositories
 # ---------------------------------------------------------------------------
@@ -219,6 +154,16 @@ class OAuthInitSessionRepositoryProtocol(Protocol):
         uow: UnitOfWork,
     ) -> ConnectionInitSession:
         """Persist a new init session."""
+        ...
+
+    async def get(
+        self,
+        db: AsyncSession,
+        *,
+        id: UUID,
+        ctx: ApiContext,
+    ) -> Optional[ConnectionInitSession]:
+        """Fetch an init session by ID (org-scoped)."""
         ...
 
     async def mark_completed(
@@ -342,6 +287,9 @@ class OAuthFlowServiceProtocol(Protocol):
         redirect_url: Optional[str] = None,
         template_configs: Optional[dict] = None,
         additional_overrides: Optional[Dict[str, Any]] = None,
+        initiator_user_id: Optional[UUID] = None,
+        initiator_session_id: Optional[UUID] = None,
+        claim_token_hash: Optional[str] = None,
     ) -> ConnectionInitSession:
         """Persist an init session for a new OAuth flow."""
         ...
@@ -393,4 +341,15 @@ class OAuthCallbackServiceProtocol(Protocol):
 
         Exchange verifier, wire credential + connection, trigger sync.
         """
+        ...
+
+    async def verify_oauth_flow(
+        self,
+        db: AsyncSession,
+        *,
+        source_connection_id: UUID,
+        claim_token: str,
+        ctx: ApiContext | ConnectContext,
+    ) -> SourceConnectionSchema:
+        """Verify OAuth flow ownership via claim token and trigger deferred sync."""
         ...

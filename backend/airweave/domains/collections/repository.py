@@ -102,7 +102,10 @@ class CollectionRepository(CollectionRepositoryProtocol):
 
         connections_by_collection: Dict[str, List[Dict[str, Any]]] = {}
         for sc in all_connections:
-            coll_id = sc.readable_collection_id
+            coll_id: str | None = sc.readable_collection_id
+            if coll_id is None:
+                continue
+
             if coll_id not in connections_by_collection:
                 connections_by_collection[coll_id] = []
 

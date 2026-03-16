@@ -23,6 +23,7 @@ from airweave.domains.embedders.protocols import DenseEmbedderRegistryProtocol
 from airweave.domains.source_connections.protocols import SourceConnectionRepositoryProtocol
 from airweave.domains.syncs.protocols import SyncLifecycleServiceProtocol
 from airweave.models.collection import Collection
+from airweave.schemas.collection import SourceConnectionSummary
 
 
 class CollectionService(CollectionServiceProtocol):
@@ -55,11 +56,12 @@ class CollectionService(CollectionServiceProtocol):
         """Convert an ORM Collection to a CollectionResponse with embedding metadata."""
         vd = db_obj.vector_db_deployment_metadata
         base = schemas.CollectionRecord.model_validate(db_obj, from_attributes=True)
+        summaries = [SourceConnectionSummary(**s) for s in (source_connection_summaries or [])]
         return schemas.Collection(
             **base.model_dump(),
             vector_size=vd.embedding_dimensions,
             embedding_model_name=self._dense_registry.get(vd.dense_embedder).api_model_name,
-            source_connection_summaries=source_connection_summaries or [],
+            source_connection_summaries=summaries,
         )
 
     async def list(

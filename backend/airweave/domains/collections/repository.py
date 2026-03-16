@@ -73,10 +73,17 @@ class CollectionRepository(CollectionRepositoryProtocol):
 
     async def _attach_ephemeral_status(
         self, db: AsyncSession, collections: List[Collection], ctx: ApiContext
-    ) -> List[Collection]:
-        """Compute and attach ephemeral status to collections."""
+    ) -> tuple[List[Collection], Dict[str, List[Dict[str, str]]]]:
+        """Compute ephemeral status and build source connection summaries.
+
+        Returns:
+            Tuple of (collections with computed status, summaries keyed by readable_id).
+            Each summary entry is a list of {"short_name": ..., "name": ...} dicts.
+        """
+        summaries: Dict[str, List[Dict[str, str]]] = {}
+
         if not collections:
-            return []
+            return [], summaries
 
         collection_ids = [c.readable_id for c in collections]
 
@@ -89,16 +96,17 @@ class CollectionRepository(CollectionRepositoryProtocol):
         if not all_connections:
             for collection in collections:
                 collection.status = CollectionStatus.NEEDS_SOURCE
-            return collections
+            return collections, summaries
 
         last_jobs = await self._sc_repo.fetch_last_jobs(db, all_connections)
 
         connections_by_collection: Dict[str, List[Dict[str, Any]]] = {}
         for sc in all_connections:
-            if sc.readable_collection_id not in connections_by_collection:
-                connections_by_collection[sc.readable_collection_id] = []
+            coll_id = sc.readable_collection_id
+            if coll_id not in connections_by_collection:
+                connections_by_collection[coll_id] = []
 
-            connections_by_collection[sc.readable_collection_id].append(
+            connections_by_collection[coll_id].append(
                 {
                     "is_authenticated": sc.is_authenticated,
                     "federated_search": self._federated_lookup(sc.short_name),
@@ -106,17 +114,22 @@ class CollectionRepository(CollectionRepositoryProtocol):
                 }
             )
 
+            if coll_id not in summaries:
+                summaries[coll_id] = []
+            summaries[coll_id].append({"short_name": sc.short_name, "name": sc.name})
+
         for collection in collections:
             conn_data = connections_by_collection.get(collection.readable_id, [])
             collection.status = self._compute_collection_status(conn_data)
 
-        return collections
+        return collections, summaries
 
     async def get(self, db: AsyncSession, id: UUID, ctx: ApiContext) -> Optional[Collection]:
         """Get a collection by ID with ephemeral status."""
         collection = await crud.collection.get(db, id, ctx)
         if collection:
-            collection = (await self._attach_ephemeral_status(db, [collection], ctx))[0]
+            enriched, _summaries = await self._attach_ephemeral_status(db, [collection], ctx)
+            collection = enriched[0]
         return collection
 
     async def get_by_readable_id(
@@ -130,7 +143,8 @@ class CollectionRepository(CollectionRepositoryProtocol):
         except NotFoundException:
             return None
         if collection:
-            collection = (await self._attach_ephemeral_status(db, [collection], ctx))[0]
+            enriched, _summaries = await self._attach_ephemeral_status(db, [collection], ctx)
+            collection = enriched[0]
         return collection
 
     async def get_multi(
@@ -145,9 +159,9 @@ class CollectionRepository(CollectionRepositoryProtocol):
         """Get multiple collections with pagination and optional search.
 
         Returns:
-            Tuple of (collections, source connection summaries by readable_id).
+            Tuple of (collections with status, source connection summaries by readable_id).
         """
-        return await crud.collection.get_multi(
+        collections = await crud.collection.get_multi(
             db, ctx=ctx, skip=skip, limit=limit, search_query=search_query
         )
         return await self._attach_ephemeral_status(db, collections, ctx)

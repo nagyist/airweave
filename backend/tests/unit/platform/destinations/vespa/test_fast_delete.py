@@ -114,6 +114,7 @@ class TestQueryDocIdsByParentIds:
             {"id": "id:airweave:file_entity::file_entity_abc__chunk_1"},
             {"id": "id:airweave:base_entity::base_entity_def__chunk_0"},
         ]
+        mock_response.json = {"root": {"fields": {"totalCount": 3}}}
         client.app.query = MagicMock(return_value=mock_response)
 
         with patch("asyncio.to_thread", new_callable=AsyncMock) as mock_thread:
@@ -131,6 +132,7 @@ class TestQueryDocIdsByParentIds:
         mock_response = MagicMock()
         mock_response.is_successful.return_value = True
         mock_response.hits = []
+        mock_response.json = {"root": {"fields": {"totalCount": 0}}}
         client.app.query = MagicMock(return_value=mock_response)
 
         with patch("asyncio.to_thread", new_callable=AsyncMock) as mock_thread:
@@ -170,6 +172,19 @@ class TestQueryDocIdsByParentIds:
         assert "'normal'" in yql_sent
 
     @pytest.mark.asyncio
+    async def test_truncation_raises_runtime_error(self, client):
+        """Raises RuntimeError when totalCount exceeds returned hits (truncation)."""
+        mock_response = MagicMock()
+        mock_response.is_successful.return_value = True
+        mock_response.hits = [{"id": "id:airweave:base_entity::be_x__chunk_0"}]
+        mock_response.json = {"root": {"fields": {"totalCount": 15000}}}
+
+        with patch("asyncio.to_thread", new_callable=AsyncMock) as mock_thread:
+            mock_thread.return_value = mock_response
+            with pytest.raises(RuntimeError, match="exceeds DELETE_QUERY_HITS_LIMIT"):
+                await client._query_doc_ids_by_parent_ids(["x"], COLLECTION_ID)
+
+    @pytest.mark.asyncio
     async def test_skips_unparseable_ids(self, client):
         """Hits with malformed document IDs are silently skipped."""
         mock_response = MagicMock()
@@ -179,6 +194,7 @@ class TestQueryDocIdsByParentIds:
             {"id": "garbage"},
             {"id": "id:airweave:base_entity::base_entity_ok2__chunk_0"},
         ]
+        mock_response.json = {"root": {"fields": {"totalCount": 3}}}
 
         with patch("asyncio.to_thread", new_callable=AsyncMock) as mock_thread:
             mock_thread.return_value = mock_response

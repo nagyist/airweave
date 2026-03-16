@@ -346,6 +346,14 @@ class VespaClient:
             raise RuntimeError(f"Doc ID query failed: {error_msg}")
 
         hits: List[Dict[str, Any]] = response.hits or []
+        raw_json = response.json if hasattr(response, "json") else {}
+        total_count = raw_json.get("root", {}).get("fields", {}).get("totalCount", len(hits))
+        if total_count > len(hits):
+            raise RuntimeError(
+                f"Query returned {len(hits)} of {total_count} matching docs, "
+                f"exceeds DELETE_QUERY_HITS_LIMIT={DELETE_QUERY_HITS_LIMIT}"
+            )
+
         self._logger.debug(
             f"[VespaClient] Resolved {len(hits)} doc IDs for {len(parent_ids)} parent IDs "
             f"in {elapsed_ms:.1f}ms"

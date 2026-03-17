@@ -33,9 +33,9 @@ export function CollectionPicker({
           }
         }}
         className={cn(
-          "h-8 pl-3 pr-8 text-[11px] font-medium rounded-lg border border-border/30 bg-background text-foreground",
-          "focus:outline-none focus:ring-1 focus:ring-primary/20",
-          "appearance-none cursor-pointer",
+          "h-8 pl-3 pr-8 text-xs font-medium rounded-lg border border-border/40 bg-transparent text-foreground",
+          "hover:bg-muted/50 focus:outline-none focus:ring-1 focus:ring-primary/20",
+          "appearance-none cursor-pointer transition-colors",
           isNew && "text-primary"
         )}
         style={{

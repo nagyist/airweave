@@ -40,12 +40,12 @@ export default function ConnectPlayground() {
               Configure and preview the embeddable widget.
             </p>
           </div>
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-2">
             <a
               href="https://docs.airweave.ai/connect"
               target="_blank"
               rel="noopener noreferrer"
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-accent/30 transition-colors"
+              className="flex items-center gap-1.5 h-8 px-3 rounded-lg text-xs font-medium border border-border/40 text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
             >
               <ExternalLink className="h-3.5 w-3.5" />
               Docs

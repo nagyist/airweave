@@ -11,12 +11,14 @@ The factory is responsible for:
 import asyncio
 import time
 from typing import Optional
+from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from airweave import schemas
-from airweave.core import container as container_mod  # [code blue] todo
+from airweave import crud, schemas
+from airweave.core import container as container_mod
 from airweave.core.context import BaseContext
+from airweave.core.exceptions import NotFoundException
 from airweave.core.logging import LoggerConfigurator, logger
 from airweave.domains.embedders.protocols import DenseEmbedderProtocol, SparseEmbedderProtocol
 from airweave.platform.builders import SyncContextBuilder
@@ -105,7 +107,7 @@ class SyncFactory:
             ),
         )
 
-        source, cursor = source_result
+        source, cursor, files, node_selections = source_result
         destinations, entity_map = destinations_result
 
         # Step 3: Build SyncContext (data only)
@@ -197,10 +199,11 @@ class SyncFactory:
     async def _build_source(
         cls, db, sync, sync_job, ctx, access_token, force_full_sync, execution_config
     ):
-        """Build source and cursor. Returns (source, cursor) tuple."""
-        from airweave.core.logging import LoggerConfigurator
-        from airweave.platform.builders.source import SourceContextBuilder
-        from airweave.platform.contexts.infra import InfraContext
+        """Build source, cursor, file service, and node selections.
+
+        Returns (source, cursor, files, node_selections) tuple.
+        """
+        from airweave.domains.storage.file_service import FileService
 
         sync_logger = LoggerConfigurator.configure_logger(
             "airweave.platform.sync.source_build",
@@ -209,23 +212,160 @@ class SyncFactory:
                 "organization_id": str(ctx.organization.id),
             },
         )
-        infra = InfraContext(ctx=ctx, logger=sync_logger)
 
-        builder = SourceContextBuilder(
-            source_lifecycle_service=container_mod.container.source_lifecycle_service,
-            sync_cursor_service=container_mod.container.sync_cursor_service,
+        if execution_config and execution_config.behavior.replay_from_arf:
+            source, cursor = await cls._build_arf_replay_source(
+                db=db, sync=sync, ctx=ctx, logger=sync_logger,
+            )
+            return source, cursor, None, None
+
+        source_connection_obj = await crud.source_connection.get_by_sync_id(
+            db, sync_id=sync.id, ctx=ctx
+        )
+        if not source_connection_obj:
+            raise NotFoundException(
+                f"Source connection record not found for sync {sync.id}. "
+                f"This typically occurs when a source connection is deleted while a "
+                f"scheduled workflow is queued. The workflow should self-destruct and "
+                f"clean up orphaned schedules."
+            )
+
+        cls._validate_not_completed_snapshot(source_connection_obj)
+
+        source = await container_mod.container.source_lifecycle_service.create(
+            db=db,
+            source_connection_id=UUID(str(source_connection_obj.id)),
+            ctx=ctx,
+            access_token=access_token,
+        )
+
+        files = FileService(
+            sync_job_id=sync_job.id,
             storage_backend=container_mod.container.storage_backend,
         )
-        source_ctx = await builder.build(
-            db=db,
-            sync=sync,
-            sync_job=sync_job,
-            infra=infra,
-            access_token=access_token,
-            force_full_sync=force_full_sync,
+        source.set_file_downloader(files)
+
+        cursor = await cls._create_cursor(
+            db=db, sync=sync, source_class=type(source), ctx=ctx,
+            logger=sync_logger, force_full_sync=force_full_sync,
             execution_config=execution_config,
         )
-        return source_ctx.source, source_ctx.cursor
+        source.set_cursor(cursor)
+
+        node_selections = await cls._load_node_selections(
+            db, UUID(str(source_connection_obj.id)), ctx
+        )
+        if node_selections:
+            source.set_node_selections(node_selections)
+            sync_logger.info(
+                f"Loaded {len(node_selections)} node selections for targeted sync"
+            )
+
+        return source, cursor, files, node_selections
+
+    @classmethod
+    async def _build_arf_replay_source(cls, db, sync, ctx, logger):
+        """Build source for ARF replay mode. Returns (source, cursor)."""
+        from airweave.domains.arf.replay_source import ArfReplaySource
+        from airweave.domains.syncs.cursors.cursor import SyncCursor
+
+        source_connection = await crud.source_connection.get_by_sync_id(
+            db, sync_id=sync.id, ctx=ctx
+        )
+        original_short_name = source_connection.short_name if source_connection else None
+
+        logger.info(
+            f"ARF Replay mode: Creating ArfReplaySource for sync {sync.id} "
+            f"(masquerading as '{original_short_name}')"
+        )
+
+        source = await ArfReplaySource.create(
+            sync_id=sync.id,
+            storage=container_mod.container.storage_backend,
+            logger=logger,
+            restore_files=True,
+            original_short_name=original_short_name,
+        )
+        if hasattr(source, "set_logger"):
+            source.set_logger(logger)
+
+        if not await source.validate():
+            raise NotFoundException(
+                f"ARF data not found for sync {sync.id}. "
+                f"Cannot replay - ensure ARF capture was enabled for previous syncs."
+            )
+
+        cursor = SyncCursor(sync_id=sync.id, cursor_schema=None, cursor_data=None)
+        return source, cursor
+
+    @staticmethod
+    def _validate_not_completed_snapshot(source_connection_obj) -> None:
+        """Guard: completed snapshots that had their short_name restored cannot re-sync."""
+        if source_connection_obj.short_name != "snapshot":
+            from pydantic import ValidationError
+
+            from airweave.platform.configs.config import SnapshotConfig
+
+            try:
+                SnapshotConfig(**(source_connection_obj.config_fields or {}))
+                from airweave.platform.sync.exceptions import SyncFailureError
+
+                raise SyncFailureError(
+                    f"Cannot re-sync a completed snapshot source connection "
+                    f"('{source_connection_obj.name}'). Snapshot data is immutable — "
+                    f"create a new snapshot source connection instead."
+                )
+            except ValidationError:
+                pass
+
+    @classmethod
+    async def _create_cursor(cls, db, sync, source_class, ctx, logger, force_full_sync,
+                             execution_config):
+        """Create sync cursor with optional data loading."""
+        from airweave.domains.syncs.cursors.cursor import SyncCursor
+
+        cursor_schema = None
+        if hasattr(source_class, "cursor_class") and source_class.cursor_class:
+            cursor_schema = source_class.cursor_class
+            logger.debug(f"Source has typed cursor: {cursor_schema.__name__}")
+
+        if force_full_sync:
+            logger.info(
+                "FORCE FULL SYNC: Skipping cursor data to ensure all entities are fetched "
+                "for accurate orphaned entity cleanup."
+            )
+            cursor_data = None
+        elif execution_config and execution_config.cursor.skip_load:
+            logger.info("SKIP CURSOR LOAD: Fetching all entities (skip_load=True)")
+            cursor_data = None
+        else:
+            cursor_data = await container_mod.container.sync_cursor_service.get_cursor_data(
+                db=db, sync_id=sync.id, ctx=ctx
+            )
+            if cursor_data:
+                logger.info(
+                    f"Incremental sync: Using cursor data with {len(cursor_data)} keys"
+                )
+
+        return SyncCursor(sync_id=sync.id, cursor_schema=cursor_schema, cursor_data=cursor_data)
+
+    @staticmethod
+    async def _load_node_selections(db, source_connection_id, ctx):
+        """Load node selections for a source connection (for targeted sync)."""
+        from airweave.domains.browse_tree.repository import NodeSelectionRepository
+        from airweave.domains.browse_tree.types import NodeSelectionData
+
+        repo = NodeSelectionRepository()
+        rows = await repo.get_by_source_connection(db, source_connection_id, ctx.organization.id)
+        return [
+            NodeSelectionData(
+                source_node_id=row.source_node_id,
+                node_type=row.node_type,
+                node_title=row.node_title,
+                node_metadata=row.node_metadata,
+            )
+            for row in rows
+        ]
 
     @classmethod
     async def _build_destinations(cls, db, sync, collection, ctx, execution_config):

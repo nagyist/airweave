@@ -9,7 +9,7 @@ from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from airweave import schemas
+from airweave import crud, schemas
 from airweave.core.context import BaseContext
 from airweave.core.logging import ContextualLogger, LoggerConfigurator
 from airweave.platform.contexts.sync import SyncContext
@@ -111,6 +111,13 @@ class SyncContextBuilder:
         ctx: BaseContext,
     ) -> UUID:
         """Get user-facing source connection ID for logging and scoping."""
-        from airweave.platform.builders.source import SourceContextBuilder
+        source_connection_obj = await crud.source_connection.get_by_sync_id(
+            db, sync_id=sync.id, ctx=ctx
+        )
+        if not source_connection_obj:
+            from airweave.core.exceptions import NotFoundException
 
-        return await SourceContextBuilder.get_source_connection_id(db, sync, ctx)
+            raise NotFoundException(
+                f"Source connection record not found for sync {sync.id}"
+            )
+        return UUID(str(source_connection_obj.id))

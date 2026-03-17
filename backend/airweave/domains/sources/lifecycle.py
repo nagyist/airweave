@@ -39,9 +39,9 @@ from airweave.domains.sources.token_providers.auth_provider import AuthProviderT
 from airweave.domains.sources.token_providers.oauth import OAuthTokenProvider
 from airweave.domains.sources.token_providers.static import StaticTokenProvider
 from airweave.domains.sources.types import AuthConfig, SourceConnectionData, SourceRegistryEntry
-from airweave.platform.auth_providers._base import BaseAuthProvider
-from airweave.platform.auth_providers.auth_result import AuthProviderMode
-from airweave.platform.auth_providers.pipedream import PipedreamAuthProvider
+from airweave.domains.auth_provider._base import BaseAuthProvider
+from airweave.domains.auth_provider.auth_result import AuthProviderMode
+from airweave.domains.auth_provider.providers.pipedream import PipedreamAuthProvider
 from airweave.platform.http_client import PipedreamProxyClient
 from airweave.platform.http_client.airweave_client import AirweaveHttpClient
 from airweave.platform.sources._base import BaseSource

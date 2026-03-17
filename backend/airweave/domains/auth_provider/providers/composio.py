@@ -8,8 +8,8 @@ from airweave.core.credential_sanitizer import (
     safe_log_credentials,
     sanitize_credentials_dict,
 )
-from airweave.platform.auth_providers._base import BaseAuthProvider
-from airweave.platform.auth_providers.exceptions import (
+from airweave.domains.auth_provider._base import BaseAuthProvider
+from airweave.domains.auth_provider.exceptions import (
     AuthProviderAccountNotFoundError,
     AuthProviderMissingFieldsError,
     AuthProviderRateLimitError,
@@ -129,7 +129,7 @@ class ComposioAuthProvider(BaseAuthProvider):
             AuthProviderRateLimitError: 429 from Composio.
             AuthProviderTemporaryError: 5xx or network error.
         """
-        from airweave.platform.auth_providers.exceptions import AuthProviderAuthError
+        from airweave.domains.auth_provider.exceptions import AuthProviderAuthError
 
         headers = {"x-api-key": self.api_key}
 
@@ -521,7 +521,7 @@ class ComposioAuthProvider(BaseAuthProvider):
             AuthProviderTemporaryError: Transient failure from Composio.
             AuthProviderConfigError: Other non-transient failure.
         """
-        from airweave.platform.auth_providers.exceptions import (
+        from airweave.domains.auth_provider.exceptions import (
             AuthProviderAuthError,
             AuthProviderConfigError,
         )

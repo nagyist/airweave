@@ -6,9 +6,9 @@ from typing import Any, Dict, List, Optional, Set
 import httpx
 
 from airweave.core.credential_sanitizer import safe_log_credentials
-from airweave.platform.auth_providers._base import BaseAuthProvider
-from airweave.platform.auth_providers.auth_result import AuthResult
-from airweave.platform.auth_providers.exceptions import (
+from airweave.domains.auth_provider._base import BaseAuthProvider
+from airweave.domains.auth_provider.auth_result import AuthResult
+from airweave.domains.auth_provider.exceptions import (
     AuthProviderAccountNotFoundError,
     AuthProviderAuthError,
     AuthProviderConfigError,

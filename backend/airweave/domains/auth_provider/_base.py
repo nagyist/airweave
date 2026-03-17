@@ -4,7 +4,7 @@ from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional, Set
 
 from airweave.core.logging import logger
-from airweave.platform.auth_providers.auth_result import AuthResult
+from airweave.domains.auth_provider.auth_result import AuthResult
 
 
 class BaseAuthProvider(ABC):

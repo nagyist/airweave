@@ -20,8 +20,8 @@ from airweave.domains.sources.token_providers.exceptions import (
     TokenProviderServerError,
 )
 from airweave.domains.sources.token_providers.protocol import TokenProviderProtocol
-from airweave.platform.auth_providers._base import BaseAuthProvider
-from airweave.platform.auth_providers.exceptions import (
+from airweave.domains.auth_provider._base import BaseAuthProvider
+from airweave.domains.auth_provider.exceptions import (
     AuthProviderAccountNotFoundError,
     AuthProviderAuthError,
     AuthProviderConfigError,

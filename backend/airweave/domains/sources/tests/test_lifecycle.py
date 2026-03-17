@@ -28,7 +28,7 @@ from airweave.domains.sources.fakes.registry import FakeSourceRegistry
 from airweave.domains.sources.lifecycle import SourceLifecycleService
 from airweave.domains.sources.tests.conftest import _make_ctx, _make_entry
 from airweave.domains.sources.types import AuthConfig, SourceConnectionData
-from airweave.platform.auth_providers.auth_result import AuthProviderMode
+from airweave.domains.auth_provider.auth_result import AuthProviderMode
 from airweave.platform.configs._base import Fields
 
 

@@ -41,6 +41,7 @@ from airweave.core.logging import logger
 from airweave.core.shared_models import AuthMethod, IntegrationType
 from airweave.domains.connections.fakes.repository import FakeConnectionRepository
 from airweave.domains.credentials.fakes.repository import FakeIntegrationCredentialRepository
+from airweave.domains.oauth.exceptions import OAuthRefreshCredentialMissingError, OAuthRefreshServerError
 from airweave.domains.oauth.oauth2_service import OAuth2Service
 from airweave.domains.sources.fakes.registry import FakeSourceRegistry
 from airweave.models.connection import Connection
@@ -1150,14 +1151,14 @@ REFRESH_CASES = [
         expect_access_token="new-at",
     ),
     RefreshCase(
-        "no refresh token → TokenRefreshError",
+        "no refresh token → OAuthRefreshCredentialMissingError",
         {"access_token": "only-at"},
         True,
         "with_refresh",
         200,
         {},
         True,
-        TokenRefreshError,
+        OAuthRefreshCredentialMissingError,
     ),
     RefreshCase(
         "integration config not found → NotFoundException",
@@ -1448,7 +1449,7 @@ async def test_make_token_request_zoho_style_rate_limit():
 
 @pytest.mark.asyncio
 async def test_make_token_request_non_retryable_error_raises():
-    """500 error (not rate limit) → raises immediately."""
+    """500 error (not rate limit) → raises OAuthRefreshServerError."""
     svc = _svc()
     log = logger.with_context(test="non_retry")
 
@@ -1465,7 +1466,7 @@ async def test_make_token_request_non_retryable_error_raises():
         "airweave.domains.oauth.oauth2_service.httpx.AsyncClient",
         return_value=mock_client,
     ):
-        with pytest.raises(httpx.HTTPStatusError):
+        with pytest.raises(OAuthRefreshServerError):
             await svc._make_token_request(log, "https://p.com/token", {}, {})
 
 

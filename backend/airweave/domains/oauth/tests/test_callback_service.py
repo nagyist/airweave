@@ -24,6 +24,7 @@ from airweave.domains.oauth.fakes.repository import FakeOAuthInitSessionReposito
 from airweave.domains.oauth.types import OAuth1TokenResponse
 from airweave.domains.organizations.fakes.repository import FakeOrganizationRepository
 from airweave.domains.source_connections.fakes.repository import FakeSourceConnectionRepository
+from airweave.domains.sources.exceptions import SourceValidationError
 from airweave.domains.syncs.fakes.sync_job_repository import FakeSyncJobRepository
 from airweave.domains.syncs.fakes.sync_repository import FakeSyncRepository
 from airweave.models.connection_init_session import ConnectionInitSession, ConnectionInitStatus
@@ -251,21 +252,14 @@ class TestCompleteOAuth2Callback:
             OAuth2TokenResponse(access_token="bad-token", token_type="bearer")
         )
 
-        class _InvalidSource:
-            def set_logger(self, _logger):
-                return None
-
-            async def validate(self):
-                return False
-
-        class _SourceClass:
-            @staticmethod
-            async def create(access_token, config):  # noqa: ARG004
-                return _InvalidSource()
-
         registry = MagicMock()
         registry.get.return_value = SimpleNamespace(
-            source_class_ref=_SourceClass, short_name="github"
+            source_class_ref=MagicMock(), short_name="github", auth_config_ref=None,
+        )
+
+        source_lifecycle = AsyncMock()
+        source_lifecycle.validate = AsyncMock(
+            side_effect=SourceValidationError("github", "validate() returned False")
         )
 
         svc = _service(
@@ -274,12 +268,13 @@ class TestCompleteOAuth2Callback:
             sc_repo=sc_repo,
             oauth_flow_service=oauth_flow,
             source_registry=registry,
+            source_lifecycle=source_lifecycle,
         )
         with pytest.raises(HTTPException) as exc:
             await svc.complete_oauth2_callback(DB, state="state-abc", code="c")
 
         assert exc.value.status_code == 400
-        assert "token" in exc.value.detail.lower()
+        assert "validation failed" in exc.value.detail.lower()
         assert all(call[0] != "mark_completed" for call in init_repo._calls)
 
     async def test_validation_exception_fails_fast_with_400(self):
@@ -300,21 +295,14 @@ class TestCompleteOAuth2Callback:
             OAuth2TokenResponse(access_token="token", token_type="bearer")
         )
 
-        class _BrokenSource:
-            def set_logger(self, _logger):
-                return None
-
-            async def validate(self):
-                raise RuntimeError("provider error")
-
-        class _SourceClass:
-            @staticmethod
-            async def create(access_token, config):  # noqa: ARG004
-                return _BrokenSource()
-
         registry = MagicMock()
         registry.get.return_value = SimpleNamespace(
-            source_class_ref=_SourceClass, short_name="github"
+            source_class_ref=MagicMock(), short_name="github", auth_config_ref=None,
+        )
+
+        source_lifecycle = AsyncMock()
+        source_lifecycle.validate = AsyncMock(
+            side_effect=SourceValidationError("github", "validation raised: provider error")
         )
 
         svc = _service(
@@ -323,6 +311,7 @@ class TestCompleteOAuth2Callback:
             sc_repo=sc_repo,
             oauth_flow_service=oauth_flow,
             source_registry=registry,
+            source_lifecycle=source_lifecycle,
         )
         with pytest.raises(HTTPException) as exc:
             await svc.complete_oauth2_callback(DB, state="state-abc", code="c")

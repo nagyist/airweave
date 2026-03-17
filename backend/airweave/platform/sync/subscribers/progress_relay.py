@@ -162,17 +162,19 @@ class SyncProgressRelay(EventSubscriber):
             await self._handle_acl_batch(event)
         elif isinstance(event, SyncLifecycleEvent):
             if event.event_type == SyncEventType.RUNNING:
-                self._handle_running(event)
+                await self._handle_running(event)
             elif event.event_type in _TERMINAL_SYNC_EVENTS:
                 await self._handle_terminal(event)
 
-    def _handle_running(self, event: SyncLifecycleEvent) -> None:
-        """Auto-create session when a sync starts running."""
+    async def _handle_running(self, event: SyncLifecycleEvent) -> None:
+        """Auto-create session and notify SSE clients that sync is running."""
         self._reap_expired()
-        self._sessions[event.sync_job_id] = _RelaySession(
+        session = _RelaySession(
             job_id=event.sync_job_id,
             sync_id=event.sync_id,
         )
+        self._sessions[event.sync_job_id] = session
+        await self._publish_state(session)
 
     async def _handle_batch(self, event: EntityBatchProcessedEvent) -> None:
         session = self._sessions.get(event.sync_job_id)

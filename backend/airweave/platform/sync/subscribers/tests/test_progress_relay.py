@@ -105,6 +105,19 @@ class TestSessionCreation:
         assert relay.active_session_count == 1
 
     @pytest.mark.asyncio
+    async def test_running_publishes_initial_state(self):
+        """sync.running should immediately publish entity state to SSE clients."""
+        relay, pubsub = _make_relay()
+
+        await relay.handle(_running_event())
+
+        state_msgs = pubsub.published.get(("sync_job_state", str(JOB_ID)), [])
+        assert len(state_msgs) == 1
+        state = json.loads(state_msgs[0])
+        assert state["job_status"] == SyncJobStatus.RUNNING
+        assert state["total_entities"] == 0
+
+    @pytest.mark.asyncio
     async def test_multiple_syncs_create_separate_sessions(self):
         relay, _ = _make_relay()
         job_a, job_b = uuid4(), uuid4()

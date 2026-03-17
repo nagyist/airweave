@@ -9,10 +9,6 @@ export interface ConnectRouterContext {
   sessionError: SessionError | null;
 }
 
-function NotFound() {
-  return null;
-}
-
 // Create a new router instance
 export const getRouter = () => {
   const router = createRouter({
@@ -23,7 +19,7 @@ export const getRouter = () => {
     } satisfies ConnectRouterContext,
     scrollRestoration: true,
     defaultPreloadStaleTime: 0,
-    defaultNotFoundComponent: NotFound,
+    defaultNotFoundComponent: () => null,
   });
 
   return router;

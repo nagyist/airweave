@@ -1715,6 +1715,132 @@ class TestDeferredSync:
         assert result is response
         temporal_svc.run_source_connection_workflow.assert_awaited_once()
 
+    async def test_two_step_contract_callback_defers_then_verify_triggers(self):
+        """Full two-step contract: callback defers sync, verify-oauth triggers it."""
+        import hashlib
+        import secrets
+
+        claim_token = secrets.token_urlsafe(32)
+        claim_hash = hashlib.sha256(claim_token.encode()).hexdigest()
+        user_id = uuid4()
+
+        init_session_id = uuid4()
+        init_repo = FakeOAuthInitSessionRepository()
+        session = _init_session(
+            session_id=init_session_id,
+            status=ConnectionInitStatus.PENDING,
+            claim_token_hash=claim_hash,
+            initiator_user_id=user_id,
+        )
+        init_repo.seed_by_id(init_session_id, session)
+
+        response = MagicMock(id=uuid4(), short_name="github", readable_collection_id="col-abc")
+        builder = AsyncMock()
+        builder.build_response = AsyncMock(return_value=response)
+
+        temporal_svc = AsyncMock()
+        temporal_svc.run_source_connection_workflow = AsyncMock()
+
+        event_bus = AsyncMock()
+        event_bus.publish = AsyncMock()
+
+        sync_id = uuid4()
+        conn_id = uuid4()
+
+        sc_repo = FakeSourceConnectionRepository()
+        shell = _source_conn_shell(init_session_id=init_session_id, org_id=ORG_ID)
+        shell.sync_id = sync_id
+        shell.connection_id = conn_id
+        sc_repo.seed(shell.id, shell)
+
+        source_conn = SimpleNamespace(
+            id=shell.id,
+            sync_id=sync_id,
+            connection_id=conn_id,
+            connection_init_session_id=init_session_id,
+            readable_collection_id="col-abc",
+        )
+
+        from airweave import schemas
+
+        sync_repo = FakeSyncRepository()
+        sync_repo.seed(
+            sync_id,
+            schemas.Sync(
+                id=sync_id,
+                name="test-sync",
+                source_connection_id=conn_id,
+                collection_id=uuid4(),
+                collection_readable_id="col-abc",
+                organization_id=ORG_ID,
+                created_at=NOW,
+                modified_at=NOW,
+                cron_schedule=None,
+                status="active",
+                source_connections=[],
+                destination_connections=[],
+                destination_connection_ids=[],
+            ),
+        )
+
+        from airweave.models.sync_job import SyncJob
+
+        sync_job_repo = FakeSyncJobRepository()
+        sync_job_repo.seed_jobs_for_sync(
+            sync_id,
+            [
+                SyncJob(
+                    id=uuid4(),
+                    sync_id=sync_id,
+                    status=SyncJobStatus.PENDING,
+                    organization_id=ORG_ID,
+                    scheduled=False,
+                )
+            ],
+        )
+
+        org_repo = FakeOrganizationRepository()
+        org_repo.seed(ORG_ID, _organization())
+
+        svc = _service(
+            init_session_repo=init_repo,
+            sc_repo=sc_repo,
+            response_builder=builder,
+            temporal_workflow_service=temporal_svc,
+            event_bus=event_bus,
+            sync_repo=sync_repo,
+            sync_job_repo=sync_job_repo,
+            organization_repo=org_repo,
+        )
+
+        # Step 1: callback finalizes — sync must be DEFERRED
+        await svc._finalize_callback(DB, source_conn, _ctx())
+        temporal_svc.run_source_connection_workflow.assert_not_awaited()
+
+        # Advance init session to IN_PROGRESS (as real callback would)
+        session.status = ConnectionInitStatus.IN_PROGRESS
+
+        # Step 2: verify-oauth with correct claim token — sync must be TRIGGERED
+        ctx = _ctx()
+        from airweave.schemas.user import User
+
+        ctx.user = User(
+            id=user_id,
+            email="test@example.com",
+            created_at=NOW,
+            modified_at=NOW,
+        )
+
+        result = await svc.verify_oauth_flow(
+            DB,
+            source_connection_id=shell.id,
+            claim_token=claim_token,
+            ctx=ctx,
+        )
+
+        assert result is response
+        assert any(call[0] == "mark_completed" for call in init_repo._calls)
+
 
 # ---------------------------------------------------------------------------
 # verify_oauth_flow

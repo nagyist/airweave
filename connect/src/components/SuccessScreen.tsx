@@ -19,8 +19,8 @@ import { ConnectionItem } from "./ConnectionItem";
 import { ConnectionsErrorView } from "./ConnectionsErrorView";
 import { EmptyState } from "./EmptyState";
 import { FolderSelectionView } from "./FolderSelectionView";
-import { LoadingScreen } from "./LoadingScreen";
 import { PageLayout } from "./PageLayout";
+import { ConnectionItemSkeleton } from "./Skeleton";
 import { SourceConfigView } from "./SourceConfigView";
 import { SourcesList } from "./SourcesList";
 
@@ -136,6 +136,9 @@ export function SuccessScreen({
 
   const reconnectPopupRef = useRef<Window | null>(null);
   const [isReconnecting, setIsReconnecting] = useState(false);
+  const [reconnectingConnectionId, setReconnectingConnectionId] = useState<
+    string | null
+  >(null);
 
   const handleOAuthResult = useCallback(
     (result: OAuthCallbackResult) => {
@@ -144,6 +147,7 @@ export function SuccessScreen({
       }
       reconnectPopupRef.current = null;
       setIsReconnecting(false);
+      setReconnectingConnectionId(null);
 
       if (result.status === "success" && result.source_connection_id) {
         setRecentConnectionId(result.source_connection_id);
@@ -164,6 +168,7 @@ export function SuccessScreen({
   const handleReconnect = async (connectionId: string) => {
     try {
       setIsReconnecting(true);
+      setReconnectingConnectionId(connectionId);
       const connection = await apiClient.getSourceConnection(connectionId);
 
       if (connection.auth?.auth_url) {
@@ -178,6 +183,7 @@ export function SuccessScreen({
       }
     } catch {
       setIsReconnecting(false);
+      setReconnectingConnectionId(null);
       setActionError(labels.errorReconnectFailed);
     }
   };
@@ -250,7 +256,17 @@ export function SuccessScreen({
     );
   }
 
-  if (isLoading) return <LoadingScreen />;
+  if (isLoading) {
+    return (
+      <PageLayout title={labels.sourcesHeading}>
+        <div className="flex flex-col gap-3 pb-4">
+          <ConnectionItemSkeleton />
+          <ConnectionItemSkeleton />
+          <ConnectionItemSkeleton />
+        </div>
+      </PageLayout>
+    );
+  }
 
   if (error) {
     return <ConnectionsErrorView error={error} labels={labels} />;
@@ -291,6 +307,7 @@ export function SuccessScreen({
                   ? () => handleReconnect(connection.id)
                   : undefined
               }
+              isReconnectLoading={reconnectingConnectionId === connection.id}
               onDelete={() => deleteMutation.mutate(connection.id)}
               labels={labels}
               syncProgress={getProgress(connection.id)}

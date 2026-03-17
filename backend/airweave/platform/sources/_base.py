@@ -44,8 +44,8 @@ class BaseSource:
     auth_methods: ClassVar[list[AuthenticationMethod]] = []
     oauth_type: ClassVar[Optional[OAuthType]] = None
     requires_byoc: ClassVar[bool] = False
-    auth_config_class: ClassVar[Optional[type]] = None
-    config_class: ClassVar[Optional[type]] = None
+    auth_config_class: ClassVar[Optional[type[BaseModel]]] = None
+    config_class: ClassVar[Optional[type[BaseModel]]] = None
 
     # Capabilities (set by @source decorator)
     supports_continuous: ClassVar[bool] = False
@@ -286,7 +286,8 @@ class BaseSource:
     @abstractmethod
     async def generate_entities(self) -> AsyncGenerator[BaseEntity, None]:
         """Generate entities for the source."""
-        pass
+        return
+        yield  # Make it a generator
 
     async def generate_access_control_memberships(
         self,

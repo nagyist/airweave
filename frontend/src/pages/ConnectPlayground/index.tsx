@@ -35,9 +35,9 @@ export default function ConnectPlayground() {
         {/* Header */}
         <div className="flex items-center justify-between mb-5 shrink-0">
           <div>
-            <h1 className="text-2xl font-bold">Connect</h1>
+            <h1 className="text-2xl font-bold">Airweave Connect</h1>
             <p className="text-sm text-muted-foreground mt-0.5">
-              Configure and preview the embeddable widget.
+              Drop-in widget that lets your users connect their apps to your product. Configure the theme, choose which sources to show, and grab the integration code.
             </p>
           </div>
           <div className="flex items-center gap-1.5">

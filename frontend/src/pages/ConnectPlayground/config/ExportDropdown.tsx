@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ClipboardCopy, Check, FileText, FileCode, Braces, BotMessageSquare } from "lucide-react";
+import { ClipboardCopy, Check, FileText, FileCode, BotMessageSquare } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { posthog } from "@/lib/posthog-provider";
 import {
@@ -43,24 +43,6 @@ ${generateVanillaClient(config)}
 `;
 }
 
-function buildLlmsTxt(config: PlaygroundConfig): string {
-  return `# Airweave Connect
-> Embeddable widget for connecting data sources to Airweave.
-
-## Quick Start
-${generatePythonServer(config)}
-
-## React Integration
-${generateReactClient(config)}
-
-## API Reference
-- POST /connect/sessions — create a session token (server-side, API key auth)
-- Session tokens are scoped to a single collection, expire in 10 minutes
-- Modes: all, connect, manage, reauth
-- Docs: https://docs.airweave.ai/connect
-`;
-}
-
 function buildCursorRules(config: PlaygroundConfig): string {
   return `---
 description: Airweave Connect integration guide
@@ -93,7 +75,6 @@ ${generateReactClient(config)}
 
 const FORMATS = [
   { id: "markdown", label: "Markdown", description: "Formatted documentation", icon: FileText, build: buildMarkdown },
-  { id: "llms", label: "llms.txt", description: "LLM-optimized context", icon: Braces, build: buildLlmsTxt },
   { id: "cursor", label: "Cursor Rules", description: "Agent coding rules", icon: FileCode, build: buildCursorRules },
   { id: "claude", label: "Claude", description: "Markdown for Claude", icon: BotMessageSquare, build: buildMarkdown },
 ] as const;

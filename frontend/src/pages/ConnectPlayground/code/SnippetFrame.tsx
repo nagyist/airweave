@@ -4,7 +4,7 @@ import { cn } from "@/lib/utils";
 import { posthog } from "@/lib/posthog-provider";
 import { useTheme } from "@/lib/theme-provider";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
-import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism";
+import { oneDark, oneLight } from "react-syntax-highlighter/dist/esm/styles/prism";
 
 export interface Tab {
   id: string;
@@ -16,23 +16,30 @@ export interface Tab {
 interface SnippetFrameProps {
   label: string;
   tabs: Tab[];
+  stepNumber?: number;
+  description?: string;
 }
 
-const highlightStyle = {
-  ...oneDark,
-  'pre[class*="language-"]': {
-    ...(oneDark['pre[class*="language-"]'] as Record<string, unknown>),
-    background: "transparent",
-    margin: 0,
-    padding: 0,
-  },
-  'code[class*="language-"]': {
-    ...(oneDark['code[class*="language-"]'] as Record<string, unknown>),
-    background: "transparent",
-  },
-};
+function makeStyle(base: Record<string, unknown>) {
+  return {
+    ...base,
+    'pre[class*="language-"]': {
+      ...(base['pre[class*="language-"]'] as Record<string, unknown>),
+      background: "transparent",
+      margin: 0,
+      padding: 0,
+    },
+    'code[class*="language-"]': {
+      ...(base['code[class*="language-"]'] as Record<string, unknown>),
+      background: "transparent",
+    },
+  };
+}
 
-export function SnippetFrame({ label, tabs }: SnippetFrameProps) {
+const darkStyle = makeStyle(oneDark as Record<string, unknown>);
+const lightStyle = makeStyle(oneLight as Record<string, unknown>);
+
+export function SnippetFrame({ label, tabs, stepNumber, description }: SnippetFrameProps) {
   const [activeTab, setActiveTab] = useState(tabs[0]?.id ?? "");
   const [copied, setCopied] = useState(false);
   const { resolvedTheme } = useTheme();
@@ -51,19 +58,35 @@ export function SnippetFrame({ label, tabs }: SnippetFrameProps) {
     setTimeout(() => setCopied(false), 1500);
   };
 
+  const bg = isDark ? "bg-[#0d1117]" : "bg-[#f6f8fa]";
+  const tabBarBg = isDark ? "bg-[#161b22]" : "bg-[#ebedf0]";
+  const tabBarBorder = isDark ? "border-white/5" : "border-black/5";
+  const labelColor = isDark ? "text-white/20" : "text-black/30";
+  const tabActive = isDark ? "bg-white/15 text-white/80" : "bg-black/10 text-black/70";
+  const tabInactive = isDark ? "text-white/25 hover:text-white/45" : "text-black/20 hover:text-black/40";
+  const copyColor = isDark ? "text-white/40 hover:text-white/70 hover:bg-white/10" : "text-black/30 hover:text-black/60 hover:bg-black/5";
+  const descColor = isDark ? "text-white/30" : "text-black/40";
+
   return (
     <div
       className={cn(
-        "flex flex-col h-full rounded-xl overflow-hidden bg-[#0d1117]",
-        isDark ? "ring-1 ring-border/40" : "",
+        "flex flex-col h-full rounded-xl overflow-hidden",
+        bg,
       )}
     >
       {/* Tab bar */}
-      <div className="flex items-center justify-between px-3 py-2 bg-[#161b22] border-b border-white/5 shrink-0">
+      <div className={cn("flex items-center justify-between px-3 py-2 border-b shrink-0", tabBarBg, tabBarBorder)}>
         <div className="flex items-center gap-3">
-          <span className="text-[10px] font-medium uppercase tracking-wider text-white/20">
-            {label}
-          </span>
+          <div className="flex items-center gap-2">
+            {stepNumber !== undefined && (
+              <span className="inline-flex items-center justify-center w-4.5 h-4.5 rounded text-[10px] font-bold bg-primary/20 text-primary">
+                {stepNumber}
+              </span>
+            )}
+            <span className={cn("text-[10px] font-medium uppercase tracking-wider", labelColor)}>
+              {label}
+            </span>
+          </div>
           <div className="flex gap-0.5">
             {tabs.map((tab) => (
               <button
@@ -71,9 +94,7 @@ export function SnippetFrame({ label, tabs }: SnippetFrameProps) {
                 onClick={() => setActiveTab(tab.id)}
                 className={cn(
                   "px-2.5 py-1 rounded-md text-xs font-medium transition-colors",
-                  activeTab === tab.id
-                    ? "bg-white/10 text-white/70"
-                    : "text-white/30 hover:text-white/50",
+                  activeTab === tab.id ? tabActive : tabInactive,
                 )}
               >
                 {tab.label}
@@ -83,7 +104,7 @@ export function SnippetFrame({ label, tabs }: SnippetFrameProps) {
         </div>
         <button
           onClick={handleCopy}
-          className="text-white/40 hover:text-white/70 hover:bg-white/10 transition-colors p-1.5 rounded-md shrink-0"
+          className={cn("transition-colors p-1.5 rounded-md shrink-0", copyColor)}
         >
           {copied ? (
             <Check className="h-3.5 w-3.5 text-emerald-400" />
@@ -93,11 +114,18 @@ export function SnippetFrame({ label, tabs }: SnippetFrameProps) {
         </button>
       </div>
 
+      {/* Description */}
+      {description && (
+        <div className="px-3 pt-2 pb-1 shrink-0">
+          <p className={cn("text-[11px] leading-relaxed", descColor)}>{description}</p>
+        </div>
+      )}
+
       {/* Code */}
       <div className="flex-1 overflow-auto px-3 py-2">
         <SyntaxHighlighter
           language={active?.language ?? "javascript"}
-          style={highlightStyle}
+          style={isDark ? darkStyle : lightStyle}
           customStyle={{
             fontSize: "0.625rem",
             lineHeight: "1.5",

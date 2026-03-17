@@ -31,8 +31,6 @@ class OAuthTokenProvider(TokenProviderProtocol):
     - Concurrent-refresh prevention via asyncio.Lock
     - Token caching between refreshes
 
-    All credential loading, decryption, and persistence is handled by
-    ``oauth2_service.refresh_and_persist()``.
     """
 
     def __init__(

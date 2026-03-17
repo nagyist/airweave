@@ -703,7 +703,6 @@ class TokenManagerCase:
 TOKEN_MANAGER_TABLE = [
     TokenManagerCase(id="direct-injection", access_token="injected",
                      expect_tm_set=True),
-    TokenManagerCase(id="skip-proxy-mode", auth_mode=AuthProviderMode.PROXY),
     TokenManagerCase(id="skip-no-oauth-type", oauth_type=None),
     TokenManagerCase(id="access-only-no-refresh", oauth_type="access_only",
                      expect_tm_set=True),

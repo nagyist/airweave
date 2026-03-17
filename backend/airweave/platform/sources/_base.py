@@ -128,10 +128,10 @@ class BaseSource:
                 response = await client.get(url, headers=headers)
 
         Yields:
-            HTTP client (either vanilla httpx or Pipedream proxy)
+            HTTP client instance
         """
         if self._http_client_factory:
-            # Use factory-provided client (could be Pipedream proxy)
+            # Use factory-provided client
             client = self._http_client_factory(**kwargs)
             if hasattr(client, "__aenter__"):
                 # Client supports context management

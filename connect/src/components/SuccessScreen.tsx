@@ -13,6 +13,7 @@ import type {
   Source,
   SourceConnectionListItem,
 } from "../lib/types";
+import { ActionErrorBanner } from "./ActionErrorBanner";
 import { Button } from "./Button";
 import { ConnectionItem } from "./ConnectionItem";
 import { ConnectionsErrorView } from "./ConnectionsErrorView";
@@ -42,6 +43,8 @@ export function SuccessScreen({
   const [recentConnectionId, setRecentConnectionId] = useState<string | null>(
     null,
   );
+
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const defaultView: NavigateView =
     session.mode === "connect" ? "sources" : "connections";
@@ -98,6 +101,7 @@ export function SuccessScreen({
           context.previousConnections,
         );
       }
+      setActionError(labels.errorDeleteFailed);
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ["source-connections"] });
@@ -174,6 +178,7 @@ export function SuccessScreen({
       }
     } catch {
       setIsReconnecting(false);
+      setActionError(labels.errorReconnectFailed);
     }
   };
 
@@ -271,6 +276,12 @@ export function SuccessScreen({
     >
       {hasConnections ? (
         <div className="flex flex-col gap-3 pb-4">
+          {actionError && (
+            <ActionErrorBanner
+              message={actionError}
+              onDismiss={() => setActionError(null)}
+            />
+          )}
           {connections.map((connection) => (
             <ConnectionItem
               key={connection.id}

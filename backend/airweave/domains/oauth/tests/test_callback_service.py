@@ -1802,6 +1802,36 @@ class TestDeferredSync:
         org_repo = FakeOrganizationRepository()
         org_repo.seed(ORG_ID, _organization())
 
+        from airweave.models.collection import Collection
+
+        collection_repo = FakeCollectionRepository()
+        col = Collection(
+            id=uuid4(),
+            name="Col",
+            readable_id="col-abc",
+            organization_id=ORG_ID,
+            vector_db_deployment_metadata_id=uuid4(),
+        )
+        col.created_at = NOW
+        col.modified_at = NOW
+        collection_repo.seed_readable("col-abc", col)
+
+        from airweave.models.connection import Connection
+
+        connection_repo = FakeConnectionRepository()
+        connection = Connection(
+            id=conn_id,
+            organization_id=ORG_ID,
+            name="github-conn",
+            readable_id="conn-github-abc",
+            short_name="github",
+            integration_type="source",
+            status=ConnectionStatus.ACTIVE,
+        )
+        connection.created_at = NOW
+        connection.modified_at = NOW
+        connection_repo.seed(conn_id, connection)
+
         svc = _service(
             init_session_repo=init_repo,
             sc_repo=sc_repo,
@@ -1810,6 +1840,8 @@ class TestDeferredSync:
             event_bus=event_bus,
             sync_repo=sync_repo,
             sync_job_repo=sync_job_repo,
+            collection_repo=collection_repo,
+            connection_repo=connection_repo,
             organization_repo=org_repo,
         )
 
@@ -1840,6 +1872,7 @@ class TestDeferredSync:
 
         assert result is response
         assert any(call[0] == "mark_completed" for call in init_repo._calls)
+        temporal_svc.run_source_connection_workflow.assert_awaited_once()
 
 
 # ---------------------------------------------------------------------------

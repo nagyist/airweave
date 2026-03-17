@@ -1437,6 +1437,139 @@ class TestFinalizeCallback:
         assert any(call[0] == "get" for call in connection_repo._calls)
         temporal_svc.run_source_connection_workflow.assert_awaited_once()
 
+    async def test_no_jobs_skips_workflow(self):
+        """_run_sync_workflow returns early when no sync jobs exist (line 757)."""
+        response = MagicMock(id=uuid4(), short_name="github", readable_collection_id="col-abc")
+        builder = AsyncMock()
+        builder.build_response = AsyncMock(return_value=response)
+
+        temporal_svc = AsyncMock()
+        temporal_svc.run_source_connection_workflow = AsyncMock()
+
+        event_bus = AsyncMock()
+        event_bus.publish = AsyncMock()
+
+        sync_id = uuid4()
+        source_conn = SimpleNamespace(
+            id=uuid4(),
+            sync_id=sync_id,
+            connection_id=uuid4(),
+            readable_collection_id="col-abc",
+            connection_init_session_id=None,
+        )
+
+        from airweave import schemas
+
+        sync_repo = FakeSyncRepository()
+        sync_repo.seed(
+            sync_id,
+            schemas.Sync(
+                id=sync_id,
+                name="test-sync",
+                source_connection_id=source_conn.connection_id,
+                collection_id=uuid4(),
+                collection_readable_id="col-abc",
+                organization_id=ORG_ID,
+                created_at=NOW,
+                modified_at=NOW,
+                cron_schedule=None,
+                status="active",
+                source_connections=[],
+                destination_connections=[],
+                destination_connection_ids=[],
+            ),
+        )
+
+        sync_job_repo = FakeSyncJobRepository()
+
+        svc = _service(
+            response_builder=builder,
+            temporal_workflow_service=temporal_svc,
+            event_bus=event_bus,
+            sync_repo=sync_repo,
+            sync_job_repo=sync_job_repo,
+        )
+
+        result = await svc._finalize_callback(DB, source_conn, _ctx())
+
+        assert result is response
+        temporal_svc.run_source_connection_workflow.assert_not_awaited()
+
+    async def test_no_collection_skips_workflow(self):
+        """_run_sync_workflow returns early when collection not found (line 775)."""
+        response = MagicMock(id=uuid4(), short_name="github", readable_collection_id="col-abc")
+        builder = AsyncMock()
+        builder.build_response = AsyncMock(return_value=response)
+
+        temporal_svc = AsyncMock()
+        temporal_svc.run_source_connection_workflow = AsyncMock()
+
+        event_bus = AsyncMock()
+        event_bus.publish = AsyncMock()
+
+        sync_id = uuid4()
+        source_conn = SimpleNamespace(
+            id=uuid4(),
+            sync_id=sync_id,
+            connection_id=uuid4(),
+            readable_collection_id="col-missing",
+            connection_init_session_id=None,
+        )
+
+        from airweave import schemas
+
+        sync_repo = FakeSyncRepository()
+        sync_repo.seed(
+            sync_id,
+            schemas.Sync(
+                id=sync_id,
+                name="test-sync",
+                source_connection_id=source_conn.connection_id,
+                collection_id=uuid4(),
+                collection_readable_id="col-missing",
+                organization_id=ORG_ID,
+                created_at=NOW,
+                modified_at=NOW,
+                cron_schedule=None,
+                status="active",
+                source_connections=[],
+                destination_connections=[],
+                destination_connection_ids=[],
+            ),
+        )
+
+        from airweave.models.sync_job import SyncJob
+
+        sync_job_repo = FakeSyncJobRepository()
+        sync_job_repo.seed_jobs_for_sync(
+            sync_id,
+            [
+                SyncJob(
+                    id=uuid4(),
+                    sync_id=sync_id,
+                    status=SyncJobStatus.PENDING,
+                    organization_id=ORG_ID,
+                    scheduled=False,
+                )
+            ],
+        )
+
+        collection_repo = FakeCollectionRepository()
+
+        svc = _service(
+            response_builder=builder,
+            temporal_workflow_service=temporal_svc,
+            event_bus=event_bus,
+            sync_repo=sync_repo,
+            sync_job_repo=sync_job_repo,
+            collection_repo=collection_repo,
+        )
+
+        result = await svc._finalize_callback(DB, source_conn, _ctx())
+
+        assert result is response
+        temporal_svc.run_source_connection_workflow.assert_not_awaited()
+
 
 class TestTokenValidation:
     async def test_validate_token_returns_early_when_source_missing(self):

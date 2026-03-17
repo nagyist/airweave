@@ -13,8 +13,7 @@ SourceError (AirweaveException)  — base for ALL source runtime errors
 ├── SourceAuthError              — 401 after token refresh attempt → abort sync
 │   └── SourceTokenRefreshError  — token refresh itself failed
 ├── SourceRateLimitError         — 429 from upstream API → retry with backoff
-├── SourceTemporaryError         — 5xx / timeout → retryable
-├── SourcePermanentError         — non-retryable upstream failure → abort sync
+├── SourceServerError            — upstream server error (5xx / timeout / connection)
 │
 │   Per-entity errors (skip the entity, continue the sync)
 ├── SourceEntityError            — base for single-entity failures
@@ -199,24 +198,21 @@ class SourceRateLimitError(SourceError):
 
 
 # ---------------------------------------------------------------------------
-# Transient / permanent upstream failures
+# Upstream server errors
 # ---------------------------------------------------------------------------
 
 
-class SourceTemporaryError(SourceError):
-    """Transient upstream failure (5xx, timeout, connection reset).
-
-    Retryable — the pipeline or retry decorator should attempt again.
-    """
+class SourceServerError(SourceError):
+    """Upstream server error (5xx, timeout, connection reset, or other non-auth failure)."""
 
     def __init__(
         self,
-        message: str = "Temporary upstream error",
+        message: str = "Upstream server error",
         *,
         source_short_name: str = "",
         status_code: Optional[int] = None,
     ):
-        """Create a new SourceTemporaryError.
+        """Create a new SourceServerError.
 
         Args:
             message: Human-readable error description.
@@ -227,28 +223,8 @@ class SourceTemporaryError(SourceError):
         super().__init__(message, source_short_name=source_short_name)
 
 
-class SourcePermanentError(SourceError):
-    """Non-retryable upstream failure.
-
-    The pipeline should abort the sync.
-    """
-
-    def __init__(
-        self,
-        message: str = "Permanent upstream error",
-        *,
-        source_short_name: str = "",
-        status_code: Optional[int] = None,
-    ):
-        """Create a new SourcePermanentError.
-
-        Args:
-            message: Human-readable error description.
-            source_short_name: Source identifier.
-            status_code: HTTP status code if applicable.
-        """
-        self.status_code = status_code
-        super().__init__(message, source_short_name=source_short_name)
+SourceTemporaryError = SourceServerError
+SourcePermanentError = SourceServerError
 
 
 # ---------------------------------------------------------------------------

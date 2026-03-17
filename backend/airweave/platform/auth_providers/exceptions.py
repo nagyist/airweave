@@ -8,15 +8,15 @@ AuthProviderError                   — base for all auth-provider failures
 ├── AuthProviderMissingFieldsError  — response lacks required credential fields
 ├── AuthProviderConfigError         — app mismatch, unsupported source, etc.
 ├── AuthProviderRateLimitError      — provider is throttling us (429)
-└── AuthProviderTemporaryError      — 5xx / timeout / connection issue
+└── AuthProviderServerError         — 5xx / timeout / connection issue
 
 Translation to source exceptions (done by the token provider):
     AuthProviderAuthError           → SourceTokenRefreshError
-    AuthProviderAccountNotFoundError→ SourcePermanentError
-    AuthProviderMissingFieldsError  → SourcePermanentError
-    AuthProviderConfigError         → SourcePermanentError
+    AuthProviderAccountNotFoundError→ SourceServerError
+    AuthProviderMissingFieldsError  → SourceServerError
+    AuthProviderConfigError         → SourceServerError
     AuthProviderRateLimitError      → SourceRateLimitError
-    AuthProviderTemporaryError      → SourceTemporaryError
+    AuthProviderServerError         → SourceServerError
 """
 
 from typing import Optional
@@ -87,7 +87,7 @@ class AuthProviderConfigError(AuthProviderError):
     pass
 
 
-# -- Transient / rate-limit ----------------------------------------------------
+# -- Rate-limit / server errors ------------------------------------------------
 
 
 class AuthProviderRateLimitError(AuthProviderError):
@@ -105,19 +105,19 @@ class AuthProviderRateLimitError(AuthProviderError):
         super().__init__(message, provider_name=provider_name)
 
 
-class AuthProviderTemporaryError(AuthProviderError):
-    """Transient failure — 5xx, timeout, connection refused.
-
-    Retryable after a short backoff.
-    """
+class AuthProviderServerError(AuthProviderError):
+    """Server error — 5xx, timeout, connection refused."""
 
     def __init__(
         self,
-        message: str = "Auth provider temporarily unavailable",
+        message: str = "Auth provider server error",
         *,
         provider_name: str = "",
         status_code: Optional[int] = None,
     ):
-        """Initialize AuthProviderTemporaryError."""
+        """Initialize AuthProviderServerError."""
         self.status_code = status_code
         super().__init__(message, provider_name=provider_name)
+
+
+AuthProviderTemporaryError = AuthProviderServerError

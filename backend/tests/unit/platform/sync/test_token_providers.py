@@ -11,11 +11,12 @@ from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
 from airweave.core.logging import ContextualLogger
-from airweave.domains.sources.exceptions import (
-    SourceAuthError,
-    SourceTokenRefreshError,
-)
+from airweave.domains.oauth.types import RefreshResult
 from airweave.domains.sources.token_providers.auth_provider import AuthProviderTokenProvider
+from airweave.domains.sources.token_providers.exceptions import (
+    TokenProviderError,
+    TokenRefreshNotSupportedError,
+)
 from airweave.domains.sources.token_providers.oauth import OAuthTokenProvider
 from airweave.domains.sources.token_providers.static import StaticTokenProvider
 
@@ -25,17 +26,26 @@ def _mock_logger() -> ContextualLogger:
     return MagicMock(spec=ContextualLogger)
 
 
-def _oauth_provider(initial_token="test_token", can_refresh=False, **overrides):
-    """Create an OAuthTokenProvider with sensible defaults."""
+def _oauth_provider(
+    credentials="test_token",
+    oauth_type=None,
+    **overrides,
+):
+    """Create an OAuthTokenProvider with sensible defaults.
+
+    Args:
+        credentials: Raw credentials (str, dict, or object).
+        oauth_type: OAuth type string — use "with_refresh" to enable refresh.
+    """
     return OAuthTokenProvider(
-        initial_token=initial_token,
+        credentials=credentials,
+        oauth_type=oauth_type,
         oauth2_service=overrides.get("oauth2_service", MagicMock()),
         source_short_name=overrides.get("source_short_name", "test_source"),
         connection_id=overrides.get("connection_id", uuid4()),
         ctx=overrides.get("ctx", MagicMock()),
         logger=overrides.get("logger", _mock_logger()),
         config_fields=overrides.get("config_fields", None),
-        can_refresh=can_refresh,
     )
 
 
@@ -49,17 +59,20 @@ class TestOAuthGetToken:
 
     @pytest.mark.asyncio
     async def test_returns_token_when_no_refresh(self):
-        """When can_refresh=False, get_token returns the initial token."""
-        p = _oauth_provider("my_token", can_refresh=False)
+        """When oauth_type doesn't support refresh, returns the initial token."""
+        p = _oauth_provider("my_token", oauth_type="access_only")
         assert await p.get_token() == "my_token"
 
     @pytest.mark.asyncio
     async def test_returns_token_when_recently_refreshed(self):
         """When last refresh was recent, returns cached token without calling service."""
         mock_service = MagicMock()
-        mock_service.refresh_and_persist = AsyncMock(return_value="refreshed")
+        mock_service.refresh_and_persist = AsyncMock(
+            return_value=RefreshResult(access_token="refreshed", expires_in=3600)
+        )
 
-        p = _oauth_provider("initial", can_refresh=True, oauth2_service=mock_service)
+        creds = {"access_token": "initial", "refresh_token": "rt"}
+        p = _oauth_provider(creds, oauth_type="with_refresh", oauth2_service=mock_service)
 
         token = await p.get_token()
         assert token == "refreshed"
@@ -71,7 +84,7 @@ class TestOAuthGetToken:
 
     @pytest.mark.asyncio
     async def test_raises_on_refresh_failure(self):
-        """When refresh fails, raises SourceTokenRefreshError."""
+        """When refresh fails, raises TokenProviderError."""
         from airweave.core.exceptions import TokenRefreshError
 
         mock_service = MagicMock()
@@ -79,9 +92,10 @@ class TestOAuthGetToken:
             side_effect=TokenRefreshError("network error")
         )
 
-        p = _oauth_provider("fallback_token", can_refresh=True, oauth2_service=mock_service)
+        creds = {"access_token": "tok", "refresh_token": "rt"}
+        p = _oauth_provider(creds, oauth_type="with_refresh", oauth2_service=mock_service)
 
-        with pytest.raises(SourceTokenRefreshError):
+        with pytest.raises(TokenProviderError):
             await p.get_token()
 
 
@@ -90,24 +104,27 @@ class TestOAuthForceRefresh:
 
     @pytest.mark.asyncio
     async def test_raises_when_no_refresh(self):
-        """force_refresh raises SourceAuthError when can_refresh=False."""
-        p = _oauth_provider(can_refresh=False)
-        with pytest.raises(SourceAuthError):
+        """force_refresh raises TokenRefreshNotSupportedError when refresh not possible."""
+        p = _oauth_provider("tok", oauth_type="access_only")
+        with pytest.raises(TokenRefreshNotSupportedError):
             await p.force_refresh()
 
     @pytest.mark.asyncio
     async def test_returns_fresh_token(self):
         """force_refresh calls service and returns new token."""
         mock_service = MagicMock()
-        mock_service.refresh_and_persist = AsyncMock(return_value="forced_token")
+        mock_service.refresh_and_persist = AsyncMock(
+            return_value=RefreshResult(access_token="forced_token", expires_in=3600)
+        )
 
-        p = _oauth_provider("old", can_refresh=True, oauth2_service=mock_service)
+        creds = {"access_token": "old", "refresh_token": "rt"}
+        p = _oauth_provider(creds, oauth_type="with_refresh", oauth2_service=mock_service)
         token = await p.force_refresh()
         assert token == "forced_token"
 
     @pytest.mark.asyncio
     async def test_raises_on_failure(self):
-        """force_refresh raises SourceTokenRefreshError when service fails."""
+        """force_refresh raises TokenProviderError when service fails."""
         from airweave.core.exceptions import TokenRefreshError
 
         mock_service = MagicMock()
@@ -115,56 +132,52 @@ class TestOAuthForceRefresh:
             side_effect=TokenRefreshError("fail")
         )
 
-        p = _oauth_provider("old", can_refresh=True, oauth2_service=mock_service)
-        with pytest.raises(SourceTokenRefreshError):
+        creds = {"access_token": "old", "refresh_token": "rt"}
+        p = _oauth_provider(creds, oauth_type="with_refresh", oauth2_service=mock_service)
+        with pytest.raises(TokenProviderError):
             await p.force_refresh()
 
 
-class TestOAuthHelpers:
-    """Tests for OAuthTokenProvider static helpers."""
+class TestOAuthConstructor:
+    """Tests for OAuthTokenProvider credential handling."""
 
-    def test_check_has_refresh_token_dict_present(self):
-        assert OAuthTokenProvider.check_has_refresh_token(
-            {"access_token": "at", "refresh_token": "rt"}
-        ) is True
+    def test_extracts_token_from_string(self):
+        p = _oauth_provider("raw_token")
+        assert p._token == "raw_token"
 
-    def test_check_has_refresh_token_dict_missing(self):
-        assert OAuthTokenProvider.check_has_refresh_token({"access_token": "at"}) is False
+    def test_extracts_token_from_dict(self):
+        p = _oauth_provider({"access_token": "dict_tok"})
+        assert p._token == "dict_tok"
 
-    def test_check_has_refresh_token_dict_empty(self):
-        assert OAuthTokenProvider.check_has_refresh_token(
-            {"access_token": "at", "refresh_token": ""}
-        ) is False
-
-    def test_check_has_refresh_token_dict_whitespace(self):
-        assert OAuthTokenProvider.check_has_refresh_token(
-            {"access_token": "at", "refresh_token": "   "}
-        ) is False
-
-    def test_check_has_refresh_token_object_present(self):
+    def test_extracts_token_from_object(self):
         class C:
-            access_token = "at"
-            refresh_token = "rt"
-        assert OAuthTokenProvider.check_has_refresh_token(C()) is True
+            access_token = "obj_tok"
+        p = _oauth_provider(C())
+        assert p._token == "obj_tok"
 
-    def test_check_has_refresh_token_object_missing(self):
-        class C:
-            access_token = "at"
-        assert OAuthTokenProvider.check_has_refresh_token(C()) is False
+    def test_raises_on_missing_token(self):
+        with pytest.raises(ValueError, match="No access token"):
+            _oauth_provider({"not_a_token": "x"})
 
-    def test_extract_token_string(self):
-        assert OAuthTokenProvider.extract_token("raw_token") == "raw_token"
+    def test_can_refresh_when_type_and_token_present(self):
+        creds = {"access_token": "at", "refresh_token": "rt"}
+        p = _oauth_provider(creds, oauth_type="with_refresh")
+        assert p._can_refresh is True
 
-    def test_extract_token_dict(self):
-        assert OAuthTokenProvider.extract_token({"access_token": "at"}) == "at"
+    def test_no_refresh_when_type_is_access_only(self):
+        creds = {"access_token": "at", "refresh_token": "rt"}
+        p = _oauth_provider(creds, oauth_type="access_only")
+        assert p._can_refresh is False
 
-    def test_extract_token_object(self):
-        class C:
-            access_token = "obj_at"
-        assert OAuthTokenProvider.extract_token(C()) == "obj_at"
+    def test_no_refresh_when_no_refresh_token(self):
+        creds = {"access_token": "at"}
+        p = _oauth_provider(creds, oauth_type="with_refresh")
+        assert p._can_refresh is False
 
-    def test_extract_token_none(self):
-        assert OAuthTokenProvider.extract_token(42) is None
+    def test_no_refresh_when_refresh_token_empty(self):
+        creds = {"access_token": "at", "refresh_token": "  "}
+        p = _oauth_provider(creds, oauth_type="with_refresh")
+        assert p._can_refresh is False
 
 
 # ---------------------------------------------------------------------------
@@ -183,7 +196,7 @@ class TestStaticTokenProvider:
     @pytest.mark.asyncio
     async def test_force_refresh_raises(self):
         p = StaticTokenProvider("api_key_123", source_short_name="attio")
-        with pytest.raises(SourceAuthError):
+        with pytest.raises(TokenRefreshNotSupportedError):
             await p.force_refresh()
 
     def test_empty_token_raises(self):

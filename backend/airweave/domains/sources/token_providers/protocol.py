@@ -15,6 +15,16 @@ class TokenProviderProtocol(Protocol):
         - ``OAuthTokenProvider``  — proactive refresh, DB-backed credential store
         - ``StaticTokenProvider`` — raw string (API keys, PATs, validation)
         - ``AuthProviderTokenProvider`` — delegates to Pipedream / Composio
+
+    All implementations raise exceptions from
+    ``domains.sources.token_providers.exceptions``:
+        - ``TokenCredentialsInvalidError`` — expired / revoked credentials
+        - ``TokenProviderAccountGoneError`` — external account deleted
+        - ``TokenProviderConfigError`` — fundamental misconfiguration
+        - ``TokenProviderMissingCredsError`` — response missing required fields
+        - ``TokenProviderRateLimitError`` — upstream rate-limiting
+        - ``TokenProviderServerError`` — server error (5xx / timeout)
+        - ``TokenRefreshNotSupportedError`` — static / no refresh_token
     """
 
     async def get_token(self) -> str:
@@ -25,6 +35,7 @@ class TokenProviderProtocol(Protocol):
         """Force an immediate token refresh (e.g. after a 401).
 
         Raises:
-            SourceAuthError: If refresh is not supported or fails.
+            TokenRefreshNotSupportedError: If refresh is not supported.
+            TokenProviderError: If refresh fails.
         """
         ...

@@ -4,8 +4,10 @@ Used for API keys, personal access tokens, direct token injection,
 and OAuth callback validation where no refresh is possible.
 """
 
-from airweave.domains.sources.exceptions import SourceAuthError
+from airweave.domains.sources.token_providers.exceptions import TokenRefreshNotSupportedError
 from airweave.domains.sources.token_providers.protocol import TokenProviderProtocol
+
+_PROVIDER_KIND = "static"
 
 
 class StaticTokenProvider(TokenProviderProtocol):
@@ -31,9 +33,10 @@ class StaticTokenProvider(TokenProviderProtocol):
         """Always raises — static tokens cannot be refreshed.
 
         Raises:
-            SourceAuthError: Refresh is not supported for static tokens.
+            TokenRefreshNotSupportedError: Refresh is not supported for static tokens.
         """
-        raise SourceAuthError(
+        raise TokenRefreshNotSupportedError(
             "Token refresh not supported (static token)",
             source_short_name=self._source_short_name,
+            provider_kind=_PROVIDER_KIND,
         )

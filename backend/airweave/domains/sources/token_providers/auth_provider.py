@@ -8,13 +8,32 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
+
 from airweave.core.logging import ContextualLogger
-from airweave.domains.sources.exceptions import SourceTokenRefreshError
+from airweave.domains.sources.token_providers.exceptions import (
+    TokenCredentialsInvalidError,
+    TokenProviderAccountGoneError,
+    TokenProviderConfigError,
+    TokenProviderMissingCredsError,
+    TokenProviderRateLimitError,
+    TokenProviderServerError,
+)
 from airweave.domains.sources.token_providers.protocol import TokenProviderProtocol
 from airweave.platform.auth_providers._base import BaseAuthProvider
+from airweave.platform.auth_providers.exceptions import (
+    AuthProviderAccountNotFoundError,
+    AuthProviderAuthError,
+    AuthProviderConfigError,
+    AuthProviderMissingFieldsError,
+    AuthProviderRateLimitError,
+    AuthProviderServerError,
+)
 
 if TYPE_CHECKING:
     from airweave.domains.sources.protocols import SourceRegistryProtocol
+
+_PROVIDER_KIND = "auth_provider"
 
 
 class AuthProviderTokenProvider(TokenProviderProtocol):
@@ -48,36 +67,96 @@ class AuthProviderTokenProvider(TokenProviderProtocol):
     async def _fetch_token(self) -> str:
         """Call the auth provider and extract the access token.
 
+        Retries up to 3 times on transient failures (5xx, rate limits)
+        before translating the final exception.
+
         Raises:
-            SourceTokenRefreshError: If the provider call fails or returns no token.
+            TokenCredentialsInvalidError: If the provider rejected our credentials.
+            TokenProviderAccountGoneError: If the connected account was deleted.
+            TokenProviderMissingCredsError: If the response lacks required fields.
+            TokenProviderConfigError: If the provider configuration is invalid.
+            TokenProviderRateLimitError: If the provider is throttling us.
+            TokenProviderServerError: If the provider is temporarily unavailable.
         """
         entry = self._source_registry.get(self._source_short_name)
 
         try:
-            creds = await self._provider.get_creds_for_source(
+            creds = await self._call_provider_with_retry(entry)
+        except AuthProviderAccountNotFoundError as e:
+            raise TokenProviderAccountGoneError(
+                f"Account deleted in auth provider for {self._source_short_name}: {e}",
                 source_short_name=self._source_short_name,
-                source_auth_config_fields=entry.runtime_auth_all_fields,
-                optional_fields=entry.runtime_auth_optional_fields,
-            )
+                provider_kind=_PROVIDER_KIND,
+                account_id=e.account_id,
+            ) from e
+        except AuthProviderAuthError as e:
+            raise TokenCredentialsInvalidError(
+                f"Auth provider credentials rejected for {self._source_short_name}: {e}",
+                source_short_name=self._source_short_name,
+                provider_kind=_PROVIDER_KIND,
+            ) from e
+        except AuthProviderMissingFieldsError as e:
+            raise TokenProviderMissingCredsError(
+                f"Auth provider response missing fields for {self._source_short_name}: {e}",
+                source_short_name=self._source_short_name,
+                provider_kind=_PROVIDER_KIND,
+                missing_fields=e.missing_fields,
+            ) from e
+        except AuthProviderConfigError as e:
+            raise TokenProviderConfigError(
+                f"Auth provider misconfigured for {self._source_short_name}: {e}",
+                source_short_name=self._source_short_name,
+                provider_kind=_PROVIDER_KIND,
+            ) from e
+        except AuthProviderRateLimitError as e:
+            raise TokenProviderRateLimitError(
+                f"Auth provider rate-limited for {self._source_short_name}: {e}",
+                source_short_name=self._source_short_name,
+                provider_kind=_PROVIDER_KIND,
+                retry_after=e.retry_after,
+            ) from e
+        except AuthProviderServerError as e:
+            raise TokenProviderServerError(
+                f"Auth provider server error for {self._source_short_name}: {e}",
+                source_short_name=self._source_short_name,
+                provider_kind=_PROVIDER_KIND,
+                status_code=e.status_code,
+            ) from e
         except Exception as e:
-            raise SourceTokenRefreshError(
-                f"Auth provider failed for {self._source_short_name}: {e}",
+            raise TokenProviderServerError(
+                f"Unexpected auth provider error for {self._source_short_name}: {e}",
                 source_short_name=self._source_short_name,
+                provider_kind=_PROVIDER_KIND,
             ) from e
 
         if not isinstance(creds, dict) or "access_token" not in creds:
-            raise SourceTokenRefreshError(
+            raise TokenProviderMissingCredsError(
                 f"No access_token in auth provider response for {self._source_short_name}",
                 source_short_name=self._source_short_name,
+                provider_kind=_PROVIDER_KIND,
+                missing_fields=["access_token"],
             )
 
         return creds["access_token"]
+
+    @retry(
+        retry=retry_if_exception_type((AuthProviderRateLimitError, AuthProviderServerError)),
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=30),
+        reraise=True,
+    )
+    async def _call_provider_with_retry(self, entry) -> dict:
+        return await self._provider.get_creds_for_source(
+            source_short_name=self._source_short_name,
+            source_auth_config_fields=entry.runtime_auth_all_fields,
+            optional_fields=entry.runtime_auth_optional_fields,
+        )
 
     async def get_token(self) -> str:
         """Return a fresh token from the auth provider.
 
         Raises:
-            SourceTokenRefreshError: If the provider call fails.
+            TokenProviderError: If the provider call fails (see _fetch_token).
         """
         return await self._fetch_token()
 
@@ -88,6 +167,6 @@ class AuthProviderTokenProvider(TokenProviderProtocol):
         identical to ``get_token()``.
 
         Raises:
-            SourceTokenRefreshError: If the provider call fails.
+            TokenProviderError: If the provider call fails (see _fetch_token).
         """
         return await self._fetch_token()

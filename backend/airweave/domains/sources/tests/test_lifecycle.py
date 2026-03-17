@@ -701,7 +701,8 @@ class TokenManagerCase:
 
 
 TOKEN_MANAGER_TABLE = [
-    TokenManagerCase(id="skip-direct-injection", access_token="injected"),
+    TokenManagerCase(id="direct-injection", access_token="injected",
+                     expect_tm_set=True),
     TokenManagerCase(id="skip-proxy-mode", auth_mode=AuthProviderMode.PROXY),
     TokenManagerCase(id="skip-no-oauth-type", oauth_type=None),
     TokenManagerCase(id="access-only-no-refresh", oauth_type="access_only",
@@ -730,17 +731,15 @@ async def test_configure_token_provider(case: TokenManagerCase):
     if case.expect_tm_set:
         with patch("airweave.domains.sources.lifecycle.OAuthTokenProvider") as mock_tp:
             mock_tp.return_value = MagicMock()
-            mock_tp.extract_token = MagicMock(return_value="tok")
-            mock_tp.check_has_refresh_token = MagicMock(return_value=True)
             await service._configure_token_provider(
-                db=MagicMock(), source=source, source_connection_data=data,
+                source=source, source_connection_data=data,
                 source_credentials="tok", ctx=ctx, logger=ctx.logger,
                 access_token=case.access_token, auth_config=auth_config,
             )
         source.set_token_provider.assert_called_once()
     else:
         await service._configure_token_provider(
-            db=MagicMock(), source=source, source_connection_data=data,
+            source=source, source_connection_data=data,
             source_credentials="tok", ctx=ctx, logger=ctx.logger,
             access_token=case.access_token, auth_config=auth_config,
         )

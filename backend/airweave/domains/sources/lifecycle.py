@@ -45,7 +45,6 @@ from airweave.platform.auth_providers.pipedream import PipedreamAuthProvider
 from airweave.platform.http_client import PipedreamProxyClient
 from airweave.platform.http_client.airweave_client import AirweaveHttpClient
 from airweave.platform.sources._base import BaseSource
-from airweave.schemas.source_connection import OAuthType
 
 SourceCredentials = Union[str, dict, BaseModel]
 
@@ -166,8 +165,8 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
         """Validate credentials by creating a lightweight source and calling .validate().
 
         No HTTP wrapping, no rate limiting — just create + validate.
-        A StaticTokenProvider is attached so sources that call
-        ``get_access_token()`` in their validate() method get the token.
+        The source's own access_token (set during create()) is used for
+        any API calls made during validation.
 
         Raises:
             SourceNotFoundError: If source short_name is not in the registry.
@@ -185,10 +184,6 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
             source = await source_class.create(credentials, config=config)
         except Exception as exc:
             raise SourceCreationError(short_name, str(exc)) from exc
-
-        token = OAuthTokenProvider.extract_token(credentials)
-        if token and entry.oauth_type:
-            source.set_token_provider(StaticTokenProvider(token, source_short_name=short_name))
 
         try:
             is_valid = await source.validate()
@@ -643,11 +638,12 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
         short_name = source_connection_data.short_name
 
         if access_token is not None:
-            logger.debug(f"Skipping token provider for {short_name} — direct token injection")
+            source.set_token_provider(
+                StaticTokenProvider(access_token, source_short_name=short_name)
+            )
             return
 
         if auth_mode == AuthProviderMode.PROXY:
-            logger.info(f"Skipping token provider for {short_name} — proxy mode")
             return
 
         oauth_type = source_connection_data.oauth_type
@@ -662,37 +658,22 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
                     source_registry=self._source_registry,
                     logger=logger,
                 )
-                logger.info(f"AuthProviderTokenProvider initialized for {short_name}")
             else:
-                initial_token = OAuthTokenProvider.extract_token(source_credentials)
-                if not initial_token:
-                    logger.warning(
-                        f"No access token found in credentials for {short_name}, "
-                        f"skipping token provider"
-                    )
-                    return
-
-                can_refresh = oauth_type in (
-                    OAuthType.WITH_REFRESH,
-                    OAuthType.WITH_ROTATING_REFRESH,
-                ) and OAuthTokenProvider.check_has_refresh_token(source_credentials)
-
                 token_provider = OAuthTokenProvider(
-                    initial_token=initial_token,
+                    credentials=source_credentials,
+                    oauth_type=oauth_type,
                     oauth2_service=self._oauth2_service,
                     source_short_name=short_name,
                     connection_id=source_connection_data.connection_id,
                     ctx=ctx,
                     logger=logger,
                     config_fields=source_connection_data.config_fields,
-                    can_refresh=can_refresh,
                 )
-                logger.info(f"OAuthTokenProvider initialized for {short_name}")
 
             source.set_token_provider(token_provider)
 
         except Exception as e:
-            logger.error(f"Failed to setup token provider for '{short_name}': {e}")
+            raise SourceCreationError(short_name, f"token provider setup failed: {e}") from e
 
     # ------------------------------------------------------------------
     # Private: rate limiting wrapper

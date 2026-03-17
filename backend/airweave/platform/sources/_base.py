@@ -210,15 +210,29 @@ class BaseSource:
         """Check if source requires user to bring their own OAuth client credentials."""
         return cls.requires_byoc
 
-    async def get_access_token(self) -> Optional[str]:
-        """Get a valid access token via the token provider.
+    async def get_access_token(self) -> str:
+        """Get a valid access token, preferring the token provider when available.
+
+        Falls back to self.access_token (set by create()) when no provider
+        is configured — e.g. during lightweight validation flows.
 
         Returns:
-            A valid access token, or None if no token provider is set.
+            A valid access token string.
+
+        Raises:
+            RuntimeError: If neither a token provider nor self.access_token is available.
         """
         if self._token_provider:
             return await self._token_provider.get_token()
-        return None
+
+        token = getattr(self, "access_token", None)
+        if token:
+            return token
+
+        raise RuntimeError(
+            f"{self.__class__.__name__}.get_access_token() called but no "
+            f"token provider or access_token is available."
+        )
 
     async def refresh_on_unauthorized(self) -> Optional[str]:
         """Force-refresh the token after a 401 error.
@@ -226,9 +240,14 @@ class BaseSource:
         Returns:
             A fresh access token, or None if no token provider is set.
         """
+        if not self._token_provider:
+            raise RuntimeError(
+                f"{self.__class__.__name__}.refresh_on_unauthorized() called but no "
+                f"token provider is configured. Ensure the lifecycle service "
+                f"sets a TokenProvider before calling this method."
+            )
         if self._token_provider:
             return await self._token_provider.force_refresh()
-        return None
 
     async def get_token_for_resource(self, resource_scope: str) -> Optional[str]:
         """Get a token for a different resource scope.

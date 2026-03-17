@@ -61,7 +61,7 @@ const INITIAL_CONFIG: PlaygroundConfig = {
   modal: {
     shadow: "lg",
     borderRadius: 16,
-    borderWidth: 1,
+    borderWidth: 0,
     borderColor: "#1f1f1f",
   },
 };

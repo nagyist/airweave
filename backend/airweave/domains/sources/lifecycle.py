@@ -17,7 +17,10 @@ from airweave.core import credentials
 from airweave.core.exceptions import NotFoundException
 from airweave.core.logging import ContextualLogger
 from airweave.core.shared_models import FeatureFlag
+from airweave.domains.auth_provider._base import BaseAuthProvider
+from airweave.domains.auth_provider.auth_result import AuthProviderMode
 from airweave.domains.auth_provider.protocols import AuthProviderRegistryProtocol
+from airweave.domains.auth_provider.providers.pipedream import PipedreamAuthProvider
 from airweave.domains.connections.protocols import ConnectionRepositoryProtocol
 from airweave.domains.credentials.protocols import (
     IntegrationCredentialRepositoryProtocol,
@@ -39,9 +42,6 @@ from airweave.domains.sources.token_providers.auth_provider import AuthProviderT
 from airweave.domains.sources.token_providers.oauth import OAuthTokenProvider
 from airweave.domains.sources.token_providers.static import StaticTokenProvider
 from airweave.domains.sources.types import AuthConfig, SourceConnectionData, SourceRegistryEntry
-from airweave.domains.auth_provider._base import BaseAuthProvider
-from airweave.domains.auth_provider.auth_result import AuthProviderMode
-from airweave.domains.auth_provider.providers.pipedream import PipedreamAuthProvider
 from airweave.platform.http_client import PipedreamProxyClient
 from airweave.platform.http_client.airweave_client import AirweaveHttpClient
 from airweave.platform.sources._base import BaseSource
@@ -577,25 +577,44 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
 
         Used by both the full create() path and the lightweight validate() path.
         """
-        auth_config_ref = entry.auth_config_ref
-        oauth_type = entry.oauth_type
-        short_name = entry.short_name
-
         if isinstance(raw_credentials, str):
             return raw_credentials
 
-        if isinstance(raw_credentials, BaseModel):
-            creds_dict = raw_credentials.model_dump()
-        elif isinstance(raw_credentials, dict):
-            creds_dict = raw_credentials
-        else:
-            if logger:
-                logger.warning(
-                    f"Source {short_name} credentials in unexpected format: {type(raw_credentials)}"
-                )
+        creds_dict = self._to_creds_dict(raw_credentials, entry.short_name, logger)
+        if creds_dict is None:
             return raw_credentials
 
-        if not auth_config_ref and oauth_type:
+        return self._process_creds_dict(creds_dict, raw_credentials, entry, logger)
+
+    @staticmethod
+    def _to_creds_dict(
+        raw_credentials: Union[dict, BaseModel, str],
+        short_name: str,
+        logger: Optional[ContextualLogger],
+    ) -> Optional[dict]:
+        """Convert raw credentials to a dict, or None if the type is unexpected."""
+        if isinstance(raw_credentials, BaseModel):
+            return raw_credentials.model_dump()
+        if isinstance(raw_credentials, dict):
+            return raw_credentials
+        if logger:
+            logger.warning(
+                f"Source {short_name} credentials in unexpected format: {type(raw_credentials)}"
+            )
+        return None
+
+    @staticmethod
+    def _process_creds_dict(
+        creds_dict: dict,
+        raw_credentials: Union[dict, BaseModel, str],
+        entry: SourceRegistryEntry,
+        logger: Optional[ContextualLogger],
+    ) -> SourceCredentials:
+        """Process a credentials dict according to the source registry entry."""
+        auth_config_ref = entry.auth_config_ref
+        short_name = entry.short_name
+
+        if not auth_config_ref and entry.oauth_type:
             if "access_token" in creds_dict:
                 if logger:
                     logger.debug(f"Extracting access_token for OAuth source {short_name}")

@@ -11,15 +11,6 @@ from typing import TYPE_CHECKING
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from airweave.core.logging import ContextualLogger
-from airweave.domains.sources.token_providers.exceptions import (
-    TokenCredentialsInvalidError,
-    TokenProviderAccountGoneError,
-    TokenProviderConfigError,
-    TokenProviderMissingCredsError,
-    TokenProviderRateLimitError,
-    TokenProviderServerError,
-)
-from airweave.domains.sources.token_providers.protocol import TokenProviderProtocol
 from airweave.domains.auth_provider._base import BaseAuthProvider
 from airweave.domains.auth_provider.exceptions import (
     AuthProviderAccountNotFoundError,
@@ -29,6 +20,15 @@ from airweave.domains.auth_provider.exceptions import (
     AuthProviderRateLimitError,
     AuthProviderServerError,
 )
+from airweave.domains.sources.token_providers.exceptions import (
+    TokenCredentialsInvalidError,
+    TokenProviderAccountGoneError,
+    TokenProviderConfigError,
+    TokenProviderMissingCredsError,
+    TokenProviderRateLimitError,
+    TokenProviderServerError,
+)
+from airweave.domains.sources.token_providers.protocol import TokenProviderProtocol
 
 if TYPE_CHECKING:
     from airweave.domains.sources.protocols import SourceRegistryProtocol

@@ -384,12 +384,16 @@ const Collections = () => {
             if (newSourceId) {
                 const claimToken = sessionStorage.getItem(`oauth_claim_token:${newSourceId}`);
                 if (claimToken) {
-                    sessionStorage.removeItem(`oauth_claim_token:${newSourceId}`);
                     try {
-                        await apiClient.post(
+                        const resp = await apiClient.post(
                             `/source-connections/${newSourceId}/verify-oauth`,
                             { claim_token: claimToken }
                         );
+                        if (resp.ok) {
+                            sessionStorage.removeItem(`oauth_claim_token:${newSourceId}`);
+                        } else {
+                            console.error("verify-oauth failed:", resp.status);
+                        }
                     } catch (err) {
                         console.error("Failed to verify OAuth flow:", err);
                     }

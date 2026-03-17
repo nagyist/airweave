@@ -38,7 +38,7 @@ from airweave.domains.sources.protocols import (
 from airweave.domains.sources.token_providers.auth_provider import AuthProviderTokenProvider
 from airweave.domains.sources.token_providers.oauth import OAuthTokenProvider
 from airweave.domains.sources.token_providers.static import StaticTokenProvider
-from airweave.domains.sources.types import AuthConfig, SourceConnectionData
+from airweave.domains.sources.types import AuthConfig, SourceConnectionData, SourceRegistryEntry
 from airweave.platform.auth_providers._base import BaseAuthProvider
 from airweave.platform.auth_providers.auth_result import AuthProviderMode
 from airweave.platform.auth_providers.pipedream import PipedreamAuthProvider
@@ -180,8 +180,10 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
 
         source_class = entry.source_class_ref
 
+        normalized = self._normalize_credentials_for_validate(credentials, entry)
+
         try:
-            source = await source_class.create(credentials, config=config)
+            source = await source_class.create(normalized, config=config)
         except Exception as exc:
             raise SourceCreationError(short_name, str(exc)) from exc
 
@@ -607,6 +609,37 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
 
         # Case 3: Pass through as-is
         return raw_credentials
+
+    @staticmethod
+    def _normalize_credentials_for_validate(
+        credentials: Union[dict, BaseModel, str],
+        entry: SourceRegistryEntry,
+    ) -> Union[str, BaseModel, dict]:
+        """Normalize credentials for the lightweight validate() path.
+
+        Mirrors the extraction logic of ``_process_credentials_for_source``
+        so that OAuth dict credentials are reduced to the ``access_token``
+        string when the source does not declare an ``auth_config_class``.
+        """
+        if isinstance(credentials, str):
+            return credentials
+
+        creds_dict: dict
+        if isinstance(credentials, BaseModel):
+            creds_dict = credentials.model_dump()
+        else:
+            creds_dict = credentials
+
+        if not entry.auth_config_ref and "access_token" in creds_dict:
+            return creds_dict["access_token"]
+
+        if entry.auth_config_ref and isinstance(creds_dict, dict):
+            try:
+                return entry.auth_config_ref.model_validate(creds_dict)
+            except Exception:
+                pass
+
+        return credentials
 
     # ------------------------------------------------------------------
     # Private: source configuration helpers

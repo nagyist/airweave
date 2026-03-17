@@ -41,33 +41,62 @@ One factory (`SourceLifecycleService`) for ALL creation contexts: sync, search, 
 Full typed hierarchy under `SourceError(AirweaveException)`:
 - `SourceAuthError` > `SourceTokenRefreshError` — 401 / refresh failure
 - `SourceRateLimitError(retry_after)` — 429
-- `SourceTemporaryError(status_code)` — 5xx, timeout
-- `SourcePermanentError(status_code)` — non-retryable
+- `SourceServerError(status_code)` — 5xx, timeout, connection errors (canonical upstream-failure exception)
+  - `SourceTemporaryError` / `SourcePermanentError` are **aliases** for `SourceServerError` (backward compat)
 - `SourceEntityError(entity_id)` > `SourceEntityForbiddenError`, `SourceEntityNotFoundError`, `SourceEntitySkippedError`
 - `SourceFileDownloadError(file_url)`
 - `SourceCreationError`, `SourceValidationError`
 
-Sources should raise these. Pipeline routes by type (skip entity, retry, abort).
+Token provider exceptions (`domains/sources/token_providers/exceptions.py`):
+- `TokenProviderError(SourceError)` — base for all token-provider failures
+  - `TokenCredentialsInvalidError` — expired/revoked token or refresh_token
+  - `TokenProviderAccountGoneError` — external account deleted (Composio/Pipedream)
+  - `TokenProviderConfigError` — fundamental misconfiguration
+  - `TokenProviderMissingCredsError` — response lacks required fields
+  - `TokenProviderRateLimitError` — upstream rate-limiting
+  - `TokenProviderServerError` — server error (5xx / timeout)
+  - `TokenRefreshNotSupportedError` — static token / no refresh_token
+
+OAuth refresh exceptions (`domains/oauth/exceptions.py`):
+- `OAuthRefreshError` — base for all token-refresh failures
+  - `OAuthRefreshTokenRevokedError` — 401 (refresh_token dead)
+  - `OAuthRefreshBadRequestError` — 400 / invalid_grant
+  - `OAuthRefreshRateLimitError` — 429 / exhausted retries
+  - `OAuthRefreshServerError` — 5xx / timeout / connection error
+  - `OAuthRefreshCredentialMissingError` — no connection or credential in DB
+
+Auth provider exceptions (`platform/auth_providers/exceptions.py`):
+- `AuthProviderError` — base for all auth-provider failures
+  - `AuthProviderAuthError` → `TokenCredentialsInvalidError`
+  - `AuthProviderAccountNotFoundError` → `TokenProviderAccountGoneError`
+  - `AuthProviderMissingFieldsError` → `TokenProviderMissingCredsError`
+  - `AuthProviderConfigError` → `TokenProviderConfigError`
+  - `AuthProviderRateLimitError` → `TokenProviderRateLimitError`
+  - `AuthProviderServerError` → `TokenProviderServerError`
+
+Each token provider translates its upstream exceptions into `TokenProviderError` subtypes.
+Sources should raise `SourceError` subtypes. Pipeline routes by type (skip entity, retry, abort).
 
 ### TokenProvider protocol (`domains/sources/token_providers/`)
 Protocol with `get_token()` / `force_refresh()`. Three implementations:
-- `OAuthTokenProvider` — timer (25min) + asyncio.Lock + delegates to `oauth2_service.refresh_and_persist()`
-- `StaticTokenProvider` — raw string, raises `SourceAuthError` on refresh
-- `AuthProviderTokenProvider` — delegates to Pipedream/Composio `BaseAuthProvider.get_creds_for_source()`
+- `OAuthTokenProvider` — expiry-aware refresh (80% of `expires_in`, clamped [60s, 50min]) + asyncio.Lock + tenacity retries (3× on 5xx/429) + delegates to `oauth2_service.refresh_and_persist()`
+- `StaticTokenProvider` — raw string, raises `TokenRefreshNotSupportedError` (with `provider_kind` metadata) on `force_refresh()`
+- `AuthProviderTokenProvider` — delegates to Pipedream/Composio `BaseAuthProvider.get_creds_for_source()` with tenacity retries (3× on server/rate-limit errors)
+
+`OAuthTokenProvider` constructor: `(credentials, *, oauth_type, oauth2_service, source_short_name, connection_id, ctx, logger, config_fields)`. `can_refresh` is derived internally from `oauth_type ∈ {with_refresh, with_rotating_refresh}` AND `_has_refresh_token(credentials)` (module-level helper).
+
+All providers translate upstream errors into `TokenProviderError` subtypes (see exception hierarchy above).
 
 **Resolution matrix** (`_configure_token_provider` in lifecycle.py):
 | Situation | Provider | `can_refresh` |
 |-----------|----------|---------------|
+| Direct token injection (`access_token` param) | `StaticTokenProvider` | n/a |
 | `oauth_type=None` (GitHub, Slab, Stripe, SharePoint2019) | None — source manages its own auth | n/a |
 | `ACCESS_ONLY` (Linear, Slack, Notion, Monday, ClickUp, Todoist, Intercom) | `OAuthTokenProvider` | `False` |
 | `WITH_REFRESH` (Airtable, Asana, Google Drive, Salesforce, etc.) | `OAuthTokenProvider` | `True` |
 | `WITH_ROTATING_REFRESH` (Confluence, Jira) | `OAuthTokenProvider` | `True` |
 | Auth provider (Pipedream/Composio, any source) | `AuthProviderTokenProvider` | n/a |
-| Direct token injection | None (token passed directly) | n/a |
 | Proxy mode | None (HTTP client handles auth) | n/a |
-| Lightweight `validate()` path | `StaticTokenProvider` | n/a |
-
-`can_refresh` is derived from `oauth_type` AND `check_has_refresh_token(credentials)` — both must be true.
 
 ### BaseSource token cleanup
 - `_token_manager` removed. `_token_provider` is the single path.
@@ -87,13 +116,13 @@ Sources `except Exception` and swallow everything. A 401 on every API call resul
 - 401 after refresh attempt → `SourceAuthError` (abort sync)
 - 429 → `SourceRateLimitError` (retry)
 - 403 on single entity → `SourceEntityForbiddenError` (skip entity)
-- 5xx / timeout → `SourceTemporaryError` (retry)
+- 5xx / timeout → `SourceServerError` (retry)
 - File download failure → `SourceFileDownloadError` (skip entity)
 
 **1b. Pipeline routes exceptions:**
 - `SourceAuthError` → mark sync as auth_failed, abort
 - `SourceEntityError` subtypes → skip entity, increment skipped counter
-- `SourceRateLimitError` / `SourceTemporaryError` → retry or abort after N retries
+- `SourceRateLimitError` / `SourceServerError` → retry or abort after N retries
 - Orchestrator (`platform/sync/orchestrator.py`), stream (`platform/sync/stream.py`) need updates
 
 ### Phase 2: Kill setters, make construction explicit
@@ -131,7 +160,7 @@ Sources `except Exception` and swallow everything. A 401 on every API call resul
 
 **No `Any` types**: Use protocols, typed params, `ContextualLogger` not `Any`.
 
-**Exceptions propagate**: Token providers throw `SourceTokenRefreshError`, not swallow errors. Pipeline/orchestrator decides what to do.
+**Exceptions propagate**: Token providers throw `TokenProviderError` subtypes (which inherit from `SourceError`), not swallow errors. Pipeline/orchestrator decides what to do.
 
 **FileService concern**: When `generate_entities` receives `files: FileService` as param, FileService.download_from_url still needs the source's HTTP client and token provider. Either the pipeline pre-wires FileService with the source's auth, or the source passes them. This needs design thought.
 

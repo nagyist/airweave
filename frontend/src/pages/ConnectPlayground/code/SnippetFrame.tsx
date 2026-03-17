@@ -58,14 +58,14 @@ export function SnippetFrame({ label, tabs, stepNumber, description }: SnippetFr
     setTimeout(() => setCopied(false), 1500);
   };
 
-  const bg = isDark ? "bg-[#0d1117]" : "bg-[#f6f8fa]";
-  const tabBarBg = isDark ? "bg-[#161b22]" : "bg-[#ebedf0]";
-  const tabBarBorder = isDark ? "border-white/5" : "border-black/5";
-  const labelColor = isDark ? "text-white/20" : "text-black/30";
-  const tabActive = isDark ? "bg-white/15 text-white/80" : "bg-black/10 text-black/70";
-  const tabInactive = isDark ? "text-white/25 hover:text-white/45" : "text-black/20 hover:text-black/40";
-  const copyColor = isDark ? "text-white/40 hover:text-white/70 hover:bg-white/10" : "text-black/30 hover:text-black/60 hover:bg-black/5";
-  const descColor = isDark ? "text-white/30" : "text-black/40";
+  const bg = isDark ? "bg-[#0d1117]" : "bg-background";
+  const tabBarBg = isDark ? "bg-[#161b22]" : "bg-muted/60";
+  const tabBarBorder = isDark ? "border-white/5" : "border-border/40";
+  const labelColor = isDark ? "text-white/20" : "text-muted-foreground/40";
+  const tabActive = isDark ? "bg-white/15 text-white/80" : "bg-muted text-foreground/70";
+  const tabInactive = isDark ? "text-white/25 hover:text-white/45" : "text-muted-foreground/40 hover:text-muted-foreground/60";
+  const copyColor = isDark ? "text-white/40 hover:text-white/70 hover:bg-white/10" : "text-muted-foreground/40 hover:text-foreground/60 hover:bg-muted";
+  const descColor = isDark ? "text-white/30" : "text-muted-foreground/50";
 
   return (
     <div

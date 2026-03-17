@@ -4,11 +4,18 @@ import time
 from typing import Any, Dict, List, Optional, Set
 
 import httpx
-from fastapi import HTTPException
 
 from airweave.core.credential_sanitizer import safe_log_credentials
-from airweave.platform.auth_providers._base import BaseAuthProvider
-from airweave.platform.auth_providers.auth_result import AuthResult
+from airweave.domains.auth_provider._base import BaseAuthProvider
+from airweave.domains.auth_provider.auth_result import AuthResult
+from airweave.domains.auth_provider.exceptions import (
+    AuthProviderAccountNotFoundError,
+    AuthProviderAuthError,
+    AuthProviderConfigError,
+    AuthProviderMissingFieldsError,
+    AuthProviderRateLimitError,
+    AuthProviderTemporaryError,
+)
 from airweave.platform.configs.auth import PipedreamAuthConfig
 from airweave.platform.configs.config import PipedreamConfig
 from airweave.platform.decorators import auth_provider
@@ -173,7 +180,9 @@ class PipedreamAuthProvider(BaseAuthProvider):
             A valid access token
 
         Raises:
-            HTTPException: If token refresh fails
+            AuthProviderAuthError: If client credentials are rejected.
+            AuthProviderRateLimitError: If token endpoint is rate-limited.
+            AuthProviderTemporaryError: If token endpoint returns a server error.
         """
         current_time = time.time()
 
@@ -210,13 +219,26 @@ class PipedreamAuthProvider(BaseAuthProvider):
                 return self._access_token
 
             except httpx.HTTPStatusError as e:
+                status = e.response.status_code
                 self.logger.error(
-                    f"❌ [Pipedream] Failed to refresh token: {e.response.status_code} - "
-                    f"{e.response.text}"
+                    f"❌ [Pipedream] Failed to refresh token: {status} - {e.response.text}"
                 )
-                raise HTTPException(
-                    status_code=500,
-                    detail=f"Failed to refresh Pipedream access token: {e.response.text}",
+                if status == 401:
+                    raise AuthProviderAuthError(
+                        f"Pipedream rejected client credentials ({status})",
+                        provider_name="pipedream",
+                    ) from e
+                if status == 429:
+                    retry_after = float(e.response.headers.get("retry-after", 30))
+                    raise AuthProviderRateLimitError(
+                        "Pipedream token endpoint rate-limited",
+                        provider_name="pipedream",
+                        retry_after=retry_after,
+                    ) from e
+                raise AuthProviderTemporaryError(
+                    f"Pipedream token endpoint returned {status}",
+                    provider_name="pipedream",
+                    status_code=status,
                 ) from e
 
     async def _get_with_auth(
@@ -270,7 +292,8 @@ class PipedreamAuthProvider(BaseAuthProvider):
             Credentials dictionary for the source
 
         Raises:
-            HTTPException: If no credentials found for the source
+            AuthProviderAccountNotFoundError: If the account is not found.
+            AuthProviderMissingFieldsError: If required credential fields are absent.
         """
         # Map Airweave source name to Pipedream app slug if needed
         pipedream_app_slug = self._get_pipedream_app_slug(source_short_name)
@@ -309,7 +332,7 @@ class PipedreamAuthProvider(BaseAuthProvider):
             safe_log_credentials(
                 found_credentials,
                 self.logger.info,
-                f"\n🔑 [Pipedream] Retrieved credentials for '{source_short_name}':",
+                f"[Pipedream] Retrieved credentials for '{source_short_name}':",
             )
             return found_credentials
 
@@ -317,16 +340,17 @@ class PipedreamAuthProvider(BaseAuthProvider):
         """Validate that the Pipedream connection works by testing client credentials.
 
         Returns:
-            True if the connection is valid
+            True if the connection is valid.
 
         Raises:
-            HTTPException: If validation fails with detailed error message
+            AuthProviderAuthError: Invalid client credentials (401).
+            AuthProviderConfigError: Bad request or unexpected response.
+            AuthProviderTemporaryError: Transient failure from Pipedream.
         """
         try:
             self.logger.info("🔍 [Pipedream] Validating client credentials...")
 
             async with httpx.AsyncClient() as client:
-                # Test OAuth token generation with client credentials
                 token_data = {
                     "grant_type": "client_credentials",
                     "client_id": self.client_id,
@@ -338,37 +362,45 @@ class PipedreamAuthProvider(BaseAuthProvider):
 
                 token_response = response.json()
                 if "access_token" not in token_response:
-                    raise HTTPException(
-                        status_code=422, detail="Pipedream API returned invalid token response"
+                    raise AuthProviderConfigError(
+                        "Pipedream API returned token response without access_token",
+                        provider_name="pipedream",
                     )
 
                 self.logger.info("✅ [Pipedream] Client credentials validated successfully")
                 return True
 
+        except AuthProviderConfigError:
+            raise
         except httpx.HTTPStatusError as e:
-            error_msg = f"Pipedream client credentials validation failed: {e.response.status_code}"
-            if e.response.status_code == 401:
-                error_msg += " - Invalid client credentials"
-            elif e.response.status_code == 400:
-                try:
-                    error_detail = e.response.json().get("error_description", e.response.text)
-                    error_msg += f" - {error_detail}"
-                except Exception:
-                    error_msg += " - Bad request"
-            else:
-                try:
-                    error_detail = e.response.json().get("error", e.response.text)
-                    error_msg += f" - {error_detail}"
-                except Exception:
-                    error_msg += f" - {e.response.text}"
+            status = e.response.status_code
+            if status == 401:
+                error_msg = (
+                    "Pipedream client credentials validation failed: Invalid client credentials"
+                )
+                self.logger.error(f"❌ [Pipedream] {error_msg}")
+                raise AuthProviderAuthError(error_msg, provider_name="pipedream") from e
 
-            self.logger.error(f"❌ [Pipedream] {error_msg}")
-            raise HTTPException(status_code=422, detail=error_msg)
+            try:
+                detail = e.response.json().get(
+                    "error_description", e.response.json().get("error", e.response.text)
+                )
+            except Exception:
+                detail = e.response.text
 
-        except Exception as e:
-            error_msg = f"Pipedream client credentials validation failed: {str(e)}"
+            error_msg = f"Pipedream client credentials validation failed: {status} - {detail}"
             self.logger.error(f"❌ [Pipedream] {error_msg}")
-            raise HTTPException(status_code=422, detail=error_msg)
+
+            if status >= 500:
+                raise AuthProviderTemporaryError(
+                    error_msg, provider_name="pipedream", status_code=status
+                ) from e
+            raise AuthProviderConfigError(error_msg, provider_name="pipedream") from e
+
+        except (httpx.ConnectError, httpx.TimeoutException) as e:
+            error_msg = f"Pipedream unreachable during validation: {e}"
+            self.logger.error(f"❌ [Pipedream] {error_msg}")
+            raise AuthProviderTemporaryError(error_msg, provider_name="pipedream") from e
 
     async def _get_account_with_credentials(
         self, client: httpx.AsyncClient, pipedream_app_slug: str, source_short_name: str
@@ -384,34 +416,35 @@ class PipedreamAuthProvider(BaseAuthProvider):
             Account data with credentials
 
         Raises:
-            HTTPException: If account not found or credentials not available
+            AuthProviderAccountNotFoundError: Account does not exist.
+            AuthProviderConfigError: Account is for a different app.
+            PipedreamDefaultOAuthException: Default OAuth — caller should use proxy.
+            AuthProviderTemporaryError: Transient HTTP failure.
         """
-        # Build the API URL for the specific account
         url = f"https://api.pipedream.com/v1/connect/{self.project_id}/accounts/{self.account_id}"
 
         self.logger.info(f"🌐 [Pipedream] Fetching account from: {url}")
 
         try:
-            # Include credentials in the response
             params = {"include_credentials": "true"}
             account_data = await self._get_with_auth(client, url, params)
 
-            # Verify it's the right app
             if account_data.get("app", {}).get("name_slug") != pipedream_app_slug:
+                actual = account_data.get("app", {}).get("name_slug")
                 self.logger.error(
-                    f"❌ [Pipedream] Account app mismatch. Expected '{pipedream_app_slug}', "
-                    f"got '{account_data.get('app', {}).get('name_slug')}'"
+                    f"❌ [Pipedream] Account app mismatch. "
+                    f"Expected '{pipedream_app_slug}', got '{actual}'"
                 )
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Account {self.account_id} is not for app '{pipedream_app_slug}'",
+                raise AuthProviderConfigError(
+                    f"Account {self.account_id} is for app '{actual}', "
+                    f"expected '{pipedream_app_slug}'",
+                    provider_name="pipedream",
                 )
 
-            # Check if credentials are included
             if "credentials" not in account_data:
                 self.logger.error(
-                    "❌ [Pipedream] No credentials in response. This usually means the account "
-                    "was created with Pipedream's default OAuth client, not a custom one."
+                    "❌ [Pipedream] No credentials in response. This usually means "
+                    "the account was created with Pipedream's default OAuth client."
                 )
                 raise PipedreamDefaultOAuthException(source_short_name)
 
@@ -422,14 +455,33 @@ class PipedreamAuthProvider(BaseAuthProvider):
 
             return account_data
 
+        except (AuthProviderConfigError, PipedreamDefaultOAuthException):
+            raise
         except httpx.HTTPStatusError as e:
-            if e.response.status_code == 404:
-                raise HTTPException(
-                    status_code=404, detail=f"Pipedream account not found: {self.account_id}"
+            status = e.response.status_code
+            if status == 404:
+                raise AuthProviderAccountNotFoundError(
+                    f"Pipedream account not found: {self.account_id}",
+                    provider_name="pipedream",
+                    account_id=self.account_id,
                 ) from e
-            raise HTTPException(
-                status_code=e.response.status_code,
-                detail=f"Failed to fetch Pipedream account: {e.response.text}",
+            if status == 429:
+                retry_after = float(e.response.headers.get("retry-after", 30))
+                raise AuthProviderRateLimitError(
+                    "Pipedream API rate-limited while fetching account",
+                    provider_name="pipedream",
+                    retry_after=retry_after,
+                ) from e
+            if status >= 500:
+                raise AuthProviderTemporaryError(
+                    f"Pipedream API returned {status} while fetching account",
+                    provider_name="pipedream",
+                    status_code=status,
+                ) from e
+            raise AuthProviderTemporaryError(
+                f"Pipedream API error {status}: {e.response.text[:200]}",
+                provider_name="pipedream",
+                status_code=status,
             ) from e
 
     def _extract_and_map_credentials(
@@ -451,7 +503,7 @@ class PipedreamAuthProvider(BaseAuthProvider):
             Dictionary with mapped credentials
 
         Raises:
-            HTTPException: If required (non-optional) fields are missing
+            AuthProviderMissingFieldsError: If required fields are absent.
         """
         credentials = account_data.get("credentials", {})
         missing_required_fields = []
@@ -462,55 +514,54 @@ class PipedreamAuthProvider(BaseAuthProvider):
         self.logger.info(f"📦 [Pipedream] Available credential fields: {list(credentials.keys())}")
 
         for airweave_field in source_auth_config_fields:
-            # Map the field name if needed (per-source override, then global)
             pipedream_field = self._map_field_name(
                 airweave_field, source_short_name=source_short_name
             )
 
             if airweave_field != pipedream_field:
                 self.logger.info(
-                    f"\n  🔄 Mapped field '{airweave_field}' to Pipedream field "
-                    f"'{pipedream_field}'\n"
+                    f"[Pipedream] Mapped field '{airweave_field}' "
+                    f"to Pipedream field '{pipedream_field}'"
                 )
 
             if pipedream_field in credentials:
-                # Store with the original Airweave field name
                 found_credentials[airweave_field] = credentials[pipedream_field]
                 self.logger.info(
-                    f"\n  ✅ Found field: '{airweave_field}' (as '{pipedream_field}' "
-                    f"in Pipedream)\n"
+                    f"[Pipedream] Found field: '{airweave_field}' "
+                    f"(as '{pipedream_field}' in Pipedream)"
                 )
             else:
                 if airweave_field in _optional_fields:
                     self.logger.info(
-                        f"\n  ⏭️ Skipping optional field: '{airweave_field}' "
-                        f"(not available in Pipedream)\n"
+                        f"[Pipedream] Skipping optional field: '{airweave_field}' "
+                        f"(not available in Pipedream)"
                     )
                 else:
                     missing_required_fields.append(airweave_field)
                     self.logger.warning(
-                        f"\n  ❌ Missing required field: '{airweave_field}' (looked for "
-                        f"'{pipedream_field}' in Pipedream)\n"
+                        f"[Pipedream] Missing required field: '{airweave_field}' "
+                        f"(looked for '{pipedream_field}' in Pipedream)"
                     )
 
         if missing_required_fields:
             available_fields = list(credentials.keys())
             self.logger.error(
-                f"\n❌ [Pipedream] Missing required fields! "
+                f"[Pipedream] Missing required fields! "
                 f"Required: {[f for f in source_auth_config_fields if f not in _optional_fields]}, "
                 f"Missing: {missing_required_fields}, "
-                f"Available in Pipedream: {available_fields}\n"
+                f"Available in Pipedream: {available_fields}"
             )
-            raise HTTPException(
-                status_code=422,
-                detail=f"Missing required auth fields for source '{source_short_name}': "
-                f"{missing_required_fields}. "
-                f"Available fields in Pipedream credentials: {available_fields}",
+            raise AuthProviderMissingFieldsError(
+                f"Missing required auth fields for source '{source_short_name}': "
+                f"{missing_required_fields}",
+                provider_name="pipedream",
+                missing_fields=missing_required_fields,
+                available_fields=available_fields,
             )
 
         self.logger.info(
-            f"\n✅ [Pipedream] Successfully retrieved {len(found_credentials)} "
-            f"credential fields for source '{source_short_name}'\n"
+            f"[Pipedream] Successfully retrieved {len(found_credentials)} "
+            f"credential fields for source '{source_short_name}'"
         )
 
         return found_credentials

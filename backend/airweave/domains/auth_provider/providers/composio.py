@@ -3,13 +3,18 @@
 from typing import Any, Dict, List, Optional, Set
 
 import httpx
-from fastapi import HTTPException
 
 from airweave.core.credential_sanitizer import (
     safe_log_credentials,
     sanitize_credentials_dict,
 )
-from airweave.platform.auth_providers._base import BaseAuthProvider
+from airweave.domains.auth_provider._base import BaseAuthProvider
+from airweave.domains.auth_provider.exceptions import (
+    AuthProviderAccountNotFoundError,
+    AuthProviderMissingFieldsError,
+    AuthProviderRateLimitError,
+    AuthProviderTemporaryError,
+)
 from airweave.platform.configs.auth import ComposioAuthConfig
 from airweave.platform.configs.config import ComposioConfig
 from airweave.platform.decorators import auth_provider
@@ -120,8 +125,12 @@ class ComposioAuthProvider(BaseAuthProvider):
             JSON response
 
         Raises:
-            httpx.HTTPStatusError: If the request fails
+            AuthProviderAuthError: 401 from Composio.
+            AuthProviderRateLimitError: 429 from Composio.
+            AuthProviderTemporaryError: 5xx or network error.
         """
+        from airweave.domains.auth_provider.exceptions import AuthProviderAuthError
+
         headers = {"x-api-key": self.api_key}
 
         try:
@@ -129,11 +138,33 @@ class ComposioAuthProvider(BaseAuthProvider):
             response.raise_for_status()
             return response.json()
         except httpx.HTTPStatusError as e:
-            self.logger.error(f"HTTP error from Composio API: {e.response.status_code} for {url}")
+            status = e.response.status_code
+            self.logger.error(f"HTTP error from Composio API: {status} for {url}")
+            if status == 401:
+                raise AuthProviderAuthError(
+                    "Composio API key is invalid or revoked",
+                    provider_name="composio",
+                ) from e
+            if status == 429:
+                retry_after = float(e.response.headers.get("retry-after", 30))
+                raise AuthProviderRateLimitError(
+                    "Composio API rate-limited",
+                    provider_name="composio",
+                    retry_after=retry_after,
+                ) from e
+            if status >= 500:
+                raise AuthProviderTemporaryError(
+                    f"Composio API returned {status}",
+                    provider_name="composio",
+                    status_code=status,
+                ) from e
             raise
-        except Exception as e:
-            self.logger.error(f"Unexpected error accessing Composio API: {url}, {str(e)}")
-            raise
+        except (httpx.ConnectError, httpx.TimeoutException) as e:
+            self.logger.error(f"Network error accessing Composio API: {url}, {e}")
+            raise AuthProviderTemporaryError(
+                f"Composio API unreachable: {e}",
+                provider_name="composio",
+            ) from e
 
     async def _get_all_connected_accounts(self, client: httpx.AsyncClient) -> List[Dict[str, Any]]:
         """Fetch all connected accounts from Composio with pagination until exhaustion.
@@ -190,7 +221,8 @@ class ComposioAuthProvider(BaseAuthProvider):
             Credentials dictionary for the source
 
         Raises:
-            HTTPException: If no credentials found for the source
+            AuthProviderAccountNotFoundError: If the account is not found.
+            AuthProviderMissingFieldsError: If required credential fields are absent.
         """
         # Map Airweave source name to Composio slug if needed
         composio_slug = self._get_composio_slug(source_short_name)
@@ -234,7 +266,7 @@ class ComposioAuthProvider(BaseAuthProvider):
             safe_log_credentials(
                 found_credentials,
                 self.logger.info,
-                f"\n🔑 [Composio] Retrieved credentials for '{source_short_name}':",
+                f"[Composio] Retrieved credentials for '{source_short_name}':",
             )
             return found_credentials
 
@@ -252,7 +284,7 @@ class ComposioAuthProvider(BaseAuthProvider):
             List of connected accounts for the source
 
         Raises:
-            HTTPException: If no accounts found for the source
+            AuthProviderAccountNotFoundError: If no accounts match the source.
         """
         self.logger.info("🌐 [Composio] Fetching connected accounts from Composio API...")
 
@@ -262,7 +294,7 @@ class ComposioAuthProvider(BaseAuthProvider):
         all_toolkits = {
             acc.get("toolkit", {}).get("slug", "unknown") for acc in all_connected_accounts
         }
-        self.logger.info(f"\n🔧 [Composio] Available toolkit slugs: {sorted(all_toolkits)}\n")
+        self.logger.info(f"[Composio] Available toolkit slugs: {sorted(all_toolkits)}")
 
         source_connected_accounts = [
             connected_account
@@ -271,19 +303,19 @@ class ComposioAuthProvider(BaseAuthProvider):
         ]
 
         self.logger.info(
-            f"\n🎯 [Composio] Found {len(source_connected_accounts)} accounts matching "
-            f"slug '{composio_slug}'\n"
+            f"[Composio] Found {len(source_connected_accounts)} accounts matching "
+            f"slug '{composio_slug}'"
         )
 
         if not source_connected_accounts:
             self.logger.error(
-                f"\n❌ [Composio] No connected accounts found for slug '{composio_slug}'. "
-                f"Available slugs: {sorted(all_toolkits)}\n"
+                f"[Composio] No connected accounts found for slug '{composio_slug}'. "
+                f"Available slugs: {sorted(all_toolkits)}"
             )
-            raise HTTPException(
-                status_code=404,
-                detail=f"No connected accounts found for source "
-                f"'{source_short_name}' (Composio slug: '{composio_slug}') in Composio.",
+            raise AuthProviderAccountNotFoundError(
+                f"No connected accounts found for source "
+                f"'{source_short_name}' (Composio slug: '{composio_slug}')",
+                provider_name="composio",
             )
 
         # Log details of each matching account
@@ -291,7 +323,7 @@ class ComposioAuthProvider(BaseAuthProvider):
             acc_id = account.get("id")
             int_id = account.get("auth_config", {}).get("id")
             self.logger.info(
-                f"\n  📌 Account {i + 1}: account_id='{acc_id}', auth_config_id='{int_id}'\n"
+                f"[Composio] Account {i + 1}: account_id='{acc_id}', auth_config_id='{int_id}'"
             )
 
         return source_connected_accounts
@@ -309,7 +341,7 @@ class ComposioAuthProvider(BaseAuthProvider):
             The credential dictionary for the matching connection
 
         Raises:
-            HTTPException: If no matching connection found
+            AuthProviderAccountNotFoundError: If no matching connection found.
         """
         source_creds_dict = None
 
@@ -325,8 +357,8 @@ class ComposioAuthProvider(BaseAuthProvider):
 
             if auth_config_id == self.auth_config_id and account_id == self.account_id:
                 self.logger.info(
-                    f"\n✅ [Composio] Found matching connection! "
-                    f"auth_config_id='{auth_config_id}', account_id='{account_id}'\n"
+                    f"[Composio] Found matching connection: "
+                    f"auth_config_id='{auth_config_id}', account_id='{account_id}'"
                 )
                 source_creds_dict = connected_account.get("state", {}).get("val")
 
@@ -336,28 +368,25 @@ class ComposioAuthProvider(BaseAuthProvider):
                 # Log available credential fields
                 if source_creds_dict:
                     available_fields = list(source_creds_dict.keys())
-                    self.logger.info(
-                        f"\n🔓 [Composio] Available credential fields: {available_fields}\n"
-                    )
+                    self.logger.info(f"[Composio] Available credential fields: {available_fields}")
                     # Log credential fields safely without exposing values
                     sanitized_preview = sanitize_credentials_dict(
                         source_creds_dict, show_lengths=False
                     )
-                    self.logger.debug(
-                        f"\n🔓 [Composio] Credential fields preview: {sanitized_preview}\n"
-                    )
+                    self.logger.debug(f"[Composio] Credential fields preview: {sanitized_preview}")
                 break
 
         if not source_creds_dict:
             self.logger.error(
-                f"\n❌ [Composio] No matching connection found with "
-                f"auth_config_id='{self.auth_config_id}' and account_id='{self.account_id}'\n"
+                f"[Composio] No matching connection found with "
+                f"auth_config_id='{self.auth_config_id}' and account_id='{self.account_id}'"
             )
-            raise HTTPException(
-                status_code=404,
-                detail=f"No matching connection in Composio with auth_config_id="
+            raise AuthProviderAccountNotFoundError(
+                f"No matching Composio connection with auth_config_id="
                 f"'{self.auth_config_id}' and account_id='{self.account_id}' "
-                f"for source '{source_short_name}'.",
+                f"for source '{source_short_name}'",
+                provider_name="composio",
+                account_id=self.account_id,
             )
 
         return source_creds_dict
@@ -381,7 +410,7 @@ class ComposioAuthProvider(BaseAuthProvider):
             Dictionary with mapped credentials
 
         Raises:
-            HTTPException: If required (non-optional) fields are missing
+            AuthProviderMissingFieldsError: If required fields are absent.
         """
         missing_required_fields = []
         found_credentials = {}
@@ -405,16 +434,15 @@ class ComposioAuthProvider(BaseAuthProvider):
             found = False
             for field_to_check in possible_fields:
                 if field_to_check in source_creds_dict:
-                    # Store with the original Airweave field name
                     found_credentials[airweave_field] = source_creds_dict[field_to_check]
                     if airweave_field != field_to_check:
                         self.logger.info(
-                            f"\n  🔄 Mapped field '{airweave_field}' to Composio field "
-                            f"'{field_to_check}'\n"
+                            f"[Composio] Mapped field '{airweave_field}' "
+                            f"to Composio field '{field_to_check}'"
                         )
                     self.logger.info(
-                        f"\n  ✅ Found field: '{airweave_field}' (as '{field_to_check}' "
-                        f"in Composio)\n"
+                        f"[Composio] Found field: '{airweave_field}' "
+                        f"(as '{field_to_check}' in Composio)"
                     )
                     found = True
                     break
@@ -422,34 +450,35 @@ class ComposioAuthProvider(BaseAuthProvider):
             if not found:
                 if airweave_field in _optional_fields:
                     self.logger.info(
-                        f"\n  ⏭️ Skipping optional field: '{airweave_field}' "
-                        f"(not available in Composio)\n"
+                        f"[Composio] Skipping optional field: '{airweave_field}' "
+                        f"(not available in Composio)"
                     )
                 else:
                     missing_required_fields.append(airweave_field)
                     self.logger.warning(
-                        f"\n  ❌ Missing required field: '{airweave_field}' (looked for "
-                        f"{possible_fields} in Composio)\n"
+                        f"[Composio] Missing required field: '{airweave_field}' "
+                        f"(looked for {possible_fields} in Composio)"
                     )
 
         if missing_required_fields:
             available_fields = list(source_creds_dict.keys())
             self.logger.error(
-                f"\n❌ [Composio] Missing required fields! "
+                f"[Composio] Missing required fields! "
                 f"Required: {[f for f in source_auth_config_fields if f not in _optional_fields]}, "
                 f"Missing: {missing_required_fields}, "
-                f"Available in Composio: {available_fields}\n"
+                f"Available in Composio: {available_fields}"
             )
-            raise HTTPException(
-                status_code=422,
-                detail=f"Missing required auth fields for source '{source_short_name}': "
-                f"{missing_required_fields}. "
-                f"Available fields in Composio credentials: {available_fields}",
+            raise AuthProviderMissingFieldsError(
+                f"Missing required auth fields for source '{source_short_name}': "
+                f"{missing_required_fields}",
+                provider_name="composio",
+                missing_fields=missing_required_fields,
+                available_fields=available_fields,
             )
 
         self.logger.info(
-            f"\n✅ [Composio] Successfully retrieved {len(found_credentials)} "
-            f"credential fields for source '{source_short_name}'\n"
+            f"[Composio] Successfully retrieved {len(found_credentials)} "
+            f"credential fields for source '{source_short_name}'"
         )
 
         return found_credentials
@@ -485,18 +514,23 @@ class ComposioAuthProvider(BaseAuthProvider):
         """Validate that the Composio connection works by testing API access.
 
         Returns:
-            True if the connection is valid
+            True if the connection is valid.
 
         Raises:
-            HTTPException: If validation fails with detailed error message
+            AuthProviderAuthError: Invalid or revoked API key (401/403).
+            AuthProviderTemporaryError: Transient failure from Composio.
+            AuthProviderConfigError: Other non-transient failure.
         """
+        from airweave.domains.auth_provider.exceptions import (
+            AuthProviderAuthError,
+            AuthProviderConfigError,
+        )
+
         try:
             self.logger.info("🔍 [Composio] Validating API key...")
 
             async with httpx.AsyncClient() as client:
                 headers = {"x-api-key": self.api_key}
-
-                # Test API access with the v3 connected accounts endpoint
                 url = "https://backend.composio.dev/api/v3/connected_accounts"
                 response = await client.get(url, headers=headers)
                 response.raise_for_status()
@@ -505,22 +539,30 @@ class ComposioAuthProvider(BaseAuthProvider):
                 return True
 
         except httpx.HTTPStatusError as e:
-            error_msg = f"Composio API key validation failed: {e.response.status_code}"
-            if e.response.status_code == 401:
-                error_msg += " - Invalid API key"
-            elif e.response.status_code == 403:
-                error_msg += " - Access denied"
-            else:
-                try:
-                    error_detail = e.response.json().get("message", e.response.text)
-                    error_msg += f" - {error_detail}"
-                except Exception:
-                    error_msg += f" - {e.response.text}"
+            status = e.response.status_code
+            if status in (401, 403):
+                error_msg = (
+                    f"Composio API key validation failed: {status} - "
+                    f"{'Invalid API key' if status == 401 else 'Access denied'}"
+                )
+                self.logger.error(f"❌ [Composio] {error_msg}")
+                raise AuthProviderAuthError(error_msg, provider_name="composio") from e
 
-            self.logger.error(f"❌ [Composio] {error_msg}")
-            raise HTTPException(status_code=422, detail=error_msg)
+            try:
+                detail = e.response.json().get("message", e.response.text)
+            except Exception:
+                detail = e.response.text
 
-        except Exception as e:
-            error_msg = f"Composio API key validation failed: {str(e)}"
+            error_msg = f"Composio API key validation failed: {status} - {detail}"
             self.logger.error(f"❌ [Composio] {error_msg}")
-            raise HTTPException(status_code=422, detail=error_msg)
+
+            if status >= 500:
+                raise AuthProviderTemporaryError(
+                    error_msg, provider_name="composio", status_code=status
+                ) from e
+            raise AuthProviderConfigError(error_msg, provider_name="composio") from e
+
+        except (httpx.ConnectError, httpx.TimeoutException) as e:
+            error_msg = f"Composio unreachable during validation: {e}"
+            self.logger.error(f"❌ [Composio] {error_msg}")
+            raise AuthProviderTemporaryError(error_msg, provider_name="composio") from e

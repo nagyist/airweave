@@ -1,4 +1,4 @@
-"""All auth provider connectors."""
+"""Auth provider implementations."""
 
 from .composio import ComposioAuthProvider
 from .pipedream import PipedreamAuthProvider

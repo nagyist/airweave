@@ -37,7 +37,15 @@ from airweave.domains.source_connections.protocols import (
     ResponseBuilderProtocol,
     SourceConnectionRepositoryProtocol,
 )
-from airweave.domains.sources.protocols import SourceRegistryProtocol
+from airweave.domains.sources.exceptions import (
+    SourceCreationError,
+    SourceNotFoundError,
+    SourceValidationError,
+)
+from airweave.domains.sources.protocols import (
+    SourceLifecycleServiceProtocol,
+    SourceRegistryProtocol,
+)
 from airweave.domains.sources.types import SourceRegistryEntry
 from airweave.domains.syncs.protocols import (
     SyncJobRepositoryProtocol,
@@ -79,6 +87,7 @@ class OAuthCallbackService:
         init_session_repo: OAuthInitSessionRepositoryProtocol,
         response_builder: ResponseBuilderProtocol,
         source_registry: SourceRegistryProtocol,
+        source_lifecycle: SourceLifecycleServiceProtocol,
         sync_lifecycle: SyncLifecycleServiceProtocol,
         sync_record_service: SyncRecordServiceProtocol,
         temporal_workflow_service: TemporalWorkflowServiceProtocol,
@@ -97,6 +106,7 @@ class OAuthCallbackService:
         self._init_session_repo = init_session_repo
         self._response_builder = response_builder
         self._source_registry = source_registry
+        self._source_lifecycle = source_lifecycle
         self._sync_lifecycle = sync_lifecycle
         self._sync_record_service = sync_record_service
         self._temporal_workflow_service = temporal_workflow_service
@@ -571,24 +581,19 @@ class OAuthCallbackService:
         access_token: str,
         ctx: ApiContext,
     ) -> None:
-        """Validate OAuth2 token using source implementation; fail callback if invalid."""
+        """Validate OAuth2 token using source lifecycle service; fail callback if invalid."""
         if not source_entry:
             return
 
         try:
-            source_cls = source_entry.source_class_ref
-
-            source_instance = await source_cls.create(access_token=access_token, config=None)
-            source_instance.set_logger(ctx.logger)
-
-            if hasattr(source_instance, "validate"):
-                is_valid = await source_instance.validate()
-                if not is_valid:
-                    raise HTTPException(status_code=400, detail="OAuth token is invalid")
-        except HTTPException:
-            raise
-        except Exception as e:
-            raise HTTPException(status_code=400, detail=f"Token validation failed: {e}") from e
+            await self._source_lifecycle.validate(
+                short_name=source_entry.short_name,
+                credentials=access_token,
+            )
+        except SourceNotFoundError as e:
+            raise HTTPException(status_code=404, detail=str(e)) from e
+        except (SourceCreationError, SourceValidationError) as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
 
     # ------------------------------------------------------------------
     # Private: finalization (response + sync trigger)

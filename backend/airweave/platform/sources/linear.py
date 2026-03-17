@@ -162,11 +162,12 @@ class LinearSource(BaseSource):
         self._stats["api_calls"] += 1
 
         try:
+            access_token = await self.get_access_token()
             response = await client.post(
                 "https://api.linear.app/graphql",
                 headers={
                     "Content-Type": "application/json",
-                    "Authorization": f"Bearer {self.access_token}",
+                    "Authorization": f"Bearer {access_token}",
                 },
                 json={"query": query},
             )

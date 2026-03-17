@@ -129,6 +129,15 @@ setTokenProvider({
 - Handles both standard and SemanticMcp flows
 - Error recovery with detailed user feedback
 
+#### Browser OAuth Claim-Token Contract
+All browser OAuth flows use a two-step handoff to trigger the initial sync:
+
+1. **Before redirect**: `POST /source-connections` returns `auth.claim_token`. Store it in `sessionStorage` keyed as `oauth_claim_token:{source_connection_id}` before navigating to `auth.auth_url`.
+2. **After redirect**: The backend callback 303-redirects to the frontend with `?status=success&source_connection_id=...`. On landing, retrieve the stored claim token and call `POST /source-connections/{id}/verify-oauth` with `{ claim_token }` to trigger the deferred sync workflow.
+3. **Cleanup**: Only remove the `oauth_claim_token:*` entry from `sessionStorage` after `verify-oauth` returns a successful (`response.ok`) response — this preserves the token for retry on failure.
+
+Skipping the `verify-oauth` call leaves the sync job stuck in `PENDING` indefinitely.
+
 ## Component Patterns
 
 ### 1. **Dialog Flow System** (`components/shared/DialogFlow.tsx`)

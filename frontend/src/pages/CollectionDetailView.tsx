@@ -381,6 +381,8 @@ const Collections = () => {
         const newSourceId = searchParams.get("source_connection_id");
 
         const handleOAuthReturn = async () => {
+            let verifyFailed = false;
+
             if (newSourceId) {
                 const claimToken = sessionStorage.getItem(`oauth_claim_token:${newSourceId}`);
                 if (claimToken) {
@@ -393,9 +395,11 @@ const Collections = () => {
                             sessionStorage.removeItem(`oauth_claim_token:${newSourceId}`);
                         } else {
                             console.error("verify-oauth failed:", resp.status);
+                            verifyFailed = true;
                         }
                     } catch (err) {
                         console.error("Failed to verify OAuth flow:", err);
+                        verifyFailed = true;
                     }
                 }
             }
@@ -404,7 +408,7 @@ const Collections = () => {
                 fetchSourceConnections(collection.readable_id);
             }
 
-            if (newSourceId && sourceConnections.length > 0) {
+            if (!verifyFailed && newSourceId && sourceConnections.length > 0) {
                 const newConnection = sourceConnections.find(c => c.id === newSourceId);
                 if (newConnection) {
                     toast({
@@ -414,12 +418,13 @@ const Collections = () => {
                 }
             }
 
-            // Clean up URL params
-            const newSearchParams = new URLSearchParams(searchParams);
-            newSearchParams.delete("status");
-            newSearchParams.delete("source_connection_id");
-            newSearchParams.delete("collection");
-            setSearchParams(newSearchParams, { replace: true });
+            if (!verifyFailed) {
+                const newSearchParams = new URLSearchParams(searchParams);
+                newSearchParams.delete("status");
+                newSearchParams.delete("source_connection_id");
+                newSearchParams.delete("collection");
+                setSearchParams(newSearchParams, { replace: true });
+            }
         };
 
         handleOAuthReturn();

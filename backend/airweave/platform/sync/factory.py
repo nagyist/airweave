@@ -183,6 +183,7 @@ class SyncFactory:
             sync_context=sync_context,
             runtime=runtime,
             access_control_pipeline=access_control_pipeline,
+            sync_cursor_service=container_mod.container.sync_cursor_service,
         )
 
         logger.info(f"Total orchestrator initialization took {time.time() - init_start:.2f}s")
@@ -210,7 +211,12 @@ class SyncFactory:
         )
         infra = InfraContext(ctx=ctx, logger=sync_logger)
 
-        source_ctx = await SourceContextBuilder.build(
+        builder = SourceContextBuilder(
+            source_lifecycle_service=container_mod.container.source_lifecycle_service,
+            sync_cursor_service=container_mod.container.sync_cursor_service,
+            storage_backend=container_mod.container.storage_backend,
+        )
+        source_ctx = await builder.build(
             db=db,
             sync=sync,
             sync_job=sync_job,

@@ -16,7 +16,7 @@ from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Any, Optional
 
 if TYPE_CHECKING:
-    from airweave.core.sync_cursor_service import SyncCursorService
+    from airweave.domains.syncs.cursors.service import SyncCursorService
 
 from airweave.core.protocols import (
     CircuitBreaker,

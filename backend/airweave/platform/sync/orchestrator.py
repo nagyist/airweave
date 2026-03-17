@@ -9,7 +9,6 @@ from airweave.analytics import business_events
 from airweave.core.datetime_utils import utc_now_naive
 from airweave.core.events.sync import AccessControlMembershipBatchProcessedEvent
 from airweave.core.shared_models import SyncJobStatus
-from airweave.core.sync_cursor_service import sync_cursor_service
 from airweave.core.sync_job_service import sync_job_service
 from airweave.db.session import get_db_context
 from airweave.domains.usage.exceptions import (
@@ -46,6 +45,7 @@ class SyncOrchestrator:
         sync_context: SyncContext,
         runtime: SyncRuntime,
         access_control_pipeline: AccessControlPipeline,
+        sync_cursor_service=None,
     ):
         """Initialize the sync orchestrator with ALL required components."""
         self.entity_pipeline = entity_pipeline
@@ -54,6 +54,7 @@ class SyncOrchestrator:
         self.sync_context = sync_context
         self.runtime = runtime
         self.access_control_pipeline = access_control_pipeline
+        self._sync_cursor_service = sync_cursor_service
 
         # Batch config from context
         self.should_batch = sync_context.should_batch
@@ -655,7 +656,7 @@ class SyncOrchestrator:
 
         try:
             async with get_db_context() as db:
-                await sync_cursor_service.create_or_update_cursor(
+                await self._sync_cursor_service.create_or_update_cursor(
                     db=db,
                     sync_id=self.sync_context.sync.id,
                     cursor_data=self.runtime.cursor.cursor_data,

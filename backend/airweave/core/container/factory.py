@@ -91,7 +91,7 @@ from airweave.domains.sources.registry import SourceRegistry
 from airweave.domains.sources.service import SourceService
 from airweave.domains.sources.validation import SourceValidationService
 from airweave.domains.storage.sync_file_manager import SyncFileManager
-from airweave.domains.syncs.sync_cursor_repository import SyncCursorRepository
+from airweave.domains.syncs.cursors.repository import SyncCursorRepository
 from airweave.domains.syncs.sync_job_repository import SyncJobRepository
 from airweave.domains.syncs.sync_job_service import SyncJobService
 from airweave.domains.syncs.sync_lifecycle_service import SyncLifecycleService
@@ -741,7 +741,7 @@ def _create_source_services(settings: Settings) -> dict:
     sync_cursor_repo = SyncCursorRepository()
     sync_job_repo = SyncJobRepository()
 
-    from airweave.core.sync_cursor_service import SyncCursorService
+    from airweave.domains.syncs.cursors.service import SyncCursorService
 
     sync_cursor_service = SyncCursorService()
     redirect_session_repo = OAuthRedirectSessionRepository()

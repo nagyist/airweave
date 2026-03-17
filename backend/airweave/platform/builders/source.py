@@ -15,27 +15,44 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import crud, schemas
 from airweave.api.context import ApiContext
-from airweave.core.container import (
-    container as app_container,
-)  # [code blue] todo: remove container import
 from airweave.core.exceptions import NotFoundException
 from airweave.core.logging import ContextualLogger
-from airweave.core.sync_cursor_service import sync_cursor_service
 from airweave.domains.browse_tree.repository import NodeSelectionRepository
 from airweave.domains.browse_tree.types import NodeSelectionData
+from airweave.domains.sources.protocols import SourceLifecycleServiceProtocol
+from airweave.domains.syncs.cursors.cursor import SyncCursor
+from airweave.domains.syncs.cursors.service import SyncCursorService
 from airweave.platform.contexts.infra import InfraContext
 from airweave.platform.contexts.source import SourceContext
 from airweave.platform.sources._base import BaseSource
 from airweave.platform.sync.config import SyncConfig
-from airweave.platform.sync.cursor import SyncCursor
 
 
 class SourceContextBuilder:
-    """Builds source context with all required configuration."""
+    """Builds source context with all required configuration.
 
-    @classmethod
+    All dependencies injected via constructor — no container imports.
+    """
+
+    def __init__(
+        self,
+        source_lifecycle_service: SourceLifecycleServiceProtocol,
+        sync_cursor_service: SyncCursorService,
+        storage_backend=None,
+    ) -> None:
+        """Initialize with injected dependencies.
+
+        Args:
+            source_lifecycle_service: Creates configured source instances.
+            sync_cursor_service: Cursor CRUD operations.
+            storage_backend: Storage backend for file downloads and ARF replay.
+        """
+        self._source_lifecycle = source_lifecycle_service
+        self._sync_cursor_service = sync_cursor_service
+        self._storage_backend = storage_backend
+
     async def build(
-        cls,
+        self,
         db: AsyncSession,
         sync: schemas.Sync,
         sync_job: schemas.SyncJob,
@@ -61,16 +78,14 @@ class SourceContextBuilder:
         ctx = infra.ctx
         logger = infra.logger
 
-        # Check for ARF replay mode - override source with ArfReplaySource
         if execution_config and execution_config.behavior.replay_from_arf:
-            return await cls._build_arf_replay_context(
+            return await self._build_arf_replay_context(
                 db=db,
                 sync=sync,
                 infra=infra,
                 execution_config=execution_config,
             )
 
-        # 1. Load source connection from sync
         source_connection_obj = await crud.source_connection.get_by_sync_id(
             db, sync_id=sync.id, ctx=ctx
         )
@@ -82,27 +97,18 @@ class SourceContextBuilder:
                 f"clean up orphaned schedules."
             )
 
-        # 2. Guard: snapshot sources that completed have their short_name updated
-        # to the original source (e.g., "github"). Detect this by checking if the
-        # stored config validates as a SnapshotConfig.
-        cls._validate_not_completed_snapshot(source_connection_obj)
+        self._validate_not_completed_snapshot(source_connection_obj)
 
-        # 3. Create source instance
-        if app_container is None:
-            raise RuntimeError("Container not initialized")
-
-        source = await app_container.source_lifecycle_service.create(
+        source = await self._source_lifecycle.create(
             db=db,
             source_connection_id=UUID(str(source_connection_obj.id)),
             ctx=ctx,
             access_token=access_token,
         )
 
-        # Setup file downloader for file-based sources
-        cls._setup_file_downloader(source, sync_job, logger)
+        self._setup_file_downloader(source, sync_job, logger)
 
-        # 4. Create cursor
-        cursor = await cls._create_cursor(
+        cursor = await self._create_cursor(
             db=db,
             sync=sync,
             source_class=type(source),
@@ -112,11 +118,9 @@ class SourceContextBuilder:
             execution_config=execution_config,
         )
 
-        # 5. Set cursor on source
         source.set_cursor(cursor)
 
-        # 5. Load node selections if they exist for this source connection
-        node_selections = await cls._load_node_selections(
+        node_selections = await self._load_node_selections(
             db, UUID(str(source_connection_obj.id)), ctx
         )
         if node_selections:
@@ -125,28 +129,14 @@ class SourceContextBuilder:
 
         return SourceContext(source=source, cursor=cursor)
 
-    @classmethod
     async def _build_arf_replay_context(
-        cls,
+        self,
         db: AsyncSession,
         sync: schemas.Sync,
         infra: InfraContext,
         execution_config: SyncConfig,
     ) -> SourceContext:
-        """Build source context for ARF replay mode.
-
-        Creates an ArfReplaySource instead of the normal source,
-        reading entities from ARF storage.
-
-        Args:
-            db: Database session
-            sync: Sync configuration
-            infra: Infrastructure context
-            execution_config: Execution config (must have replay_from_arf=True)
-
-        Returns:
-            SourceContext with ArfReplaySource
-        """
+        """Build source context for ARF replay mode."""
         from airweave.domains.arf.replay_source import ArfReplaySource
 
         ctx = infra.ctx
@@ -164,26 +154,21 @@ class SourceContextBuilder:
 
         source = await ArfReplaySource.create(
             sync_id=sync.id,
-            storage=app_container.storage_backend,
+            storage=self._storage_backend,
             logger=logger,
             restore_files=True,
             original_short_name=original_short_name,
         )
 
-        # Set logger on source
         if hasattr(source, "set_logger"):
             source.set_logger(logger)
 
-        # Validate ARF data exists
         if not await source.validate():
-            from airweave.core.exceptions import NotFoundException
-
             raise NotFoundException(
                 f"ARF data not found for sync {sync.id}. "
                 f"Cannot replay - ensure ARF capture was enabled for previous syncs."
             )
 
-        # No cursor for ARF replay (we're replaying all entities)
         cursor = SyncCursor(
             sync_id=sync.id,
             cursor_schema=None,
@@ -192,23 +177,13 @@ class SourceContextBuilder:
 
         return SourceContext(source=source, cursor=cursor)
 
-    @classmethod
+    @staticmethod
     async def get_source_connection_id(
-        cls,
         db: AsyncSession,
         sync: schemas.Sync,
         ctx: ApiContext,
     ) -> UUID:
-        """Get user-facing source connection ID for logging and scoping.
-
-        Args:
-            db: Database session
-            sync: Sync configuration
-            ctx: API context
-
-        Returns:
-            User-facing SourceConnection UUID (not internal Connection ID).
-        """
+        """Get user-facing source connection ID for logging and scoping."""
         source_connection_obj = await crud.source_connection.get_by_sync_id(
             db, sync_id=sync.id, ctx=ctx
         )
@@ -230,8 +205,6 @@ class SourceContextBuilder:
 
             try:
                 SnapshotConfig(**(source_connection_obj.config_fields or {}))
-                # Config is a valid SnapshotConfig but short_name is not "snapshot"
-                # → this is a completed snapshot, can't re-sync
                 from airweave.platform.sync.exceptions import SyncFailureError
 
                 raise SyncFailureError(
@@ -240,16 +213,14 @@ class SourceContextBuilder:
                     f"create a new snapshot source connection instead."
                 )
             except ValidationError:
-                pass  # Not a snapshot config, proceed normally
+                pass
 
-    @classmethod
     def _setup_file_downloader(
-        cls, source: BaseSource, sync_job: Optional[Any], logger: ContextualLogger
+        self, source: BaseSource, sync_job: Optional[Any], logger: ContextualLogger
     ) -> None:
         """Setup file downloader for file-based sources."""
         from airweave.domains.storage.file_service import FileService
 
-        # Require sync_job - we're always in sync context when this is called
         if not sync_job or not hasattr(sync_job, "id"):
             raise ValueError(
                 "sync_job is required for file downloader initialization. "
@@ -259,7 +230,7 @@ class SourceContextBuilder:
 
         file_downloader = FileService(
             sync_job_id=sync_job.id,
-            storage_backend=app_container.storage_backend,
+            storage_backend=self._storage_backend,
         )
         source.set_file_downloader(file_downloader)
         logger.debug(
@@ -267,13 +238,8 @@ class SourceContextBuilder:
             f"(sync_job_id: {sync_job.id})"
         )
 
-    # -------------------------------------------------------------------------
-    # Private: Cursor Creation
-    # -------------------------------------------------------------------------
-
-    @classmethod
     async def _create_cursor(
-        cls,
+        self,
         db: AsyncSession,
         sync: schemas.Sync,
         source_class: type,
@@ -283,30 +249,29 @@ class SourceContextBuilder:
         execution_config: Optional[SyncConfig],
     ) -> SyncCursor:
         """Create sync cursor with optional data loading."""
-        # Get cursor schema from source class (direct reference, no string lookup!)
         cursor_schema = None
         if hasattr(source_class, "cursor_class") and source_class.cursor_class:
             cursor_schema = source_class.cursor_class
             logger.debug(f"Source has typed cursor: {cursor_schema.__name__}")
 
-        # Determine whether to load cursor data
         if force_full_sync:
             logger.info(
-                "🔄 FORCE FULL SYNC: Skipping cursor data to ensure all entities are fetched "
+                "FORCE FULL SYNC: Skipping cursor data to ensure all entities are fetched "
                 "for accurate orphaned entity cleanup. Will still track cursor for next sync."
             )
             cursor_data = None
         elif execution_config and execution_config.cursor.skip_load:
             logger.info(
-                "🔄 SKIP CURSOR LOAD: Fetching all entities "
+                "SKIP CURSOR LOAD: Fetching all entities "
                 "(execution_config.cursor.skip_load=True)"
             )
             cursor_data = None
         else:
-            # Normal incremental sync - load cursor data
-            cursor_data = await sync_cursor_service.get_cursor_data(db=db, sync_id=sync.id, ctx=ctx)
+            cursor_data = await self._sync_cursor_service.get_cursor_data(
+                db=db, sync_id=sync.id, ctx=ctx
+            )
             if cursor_data:
-                logger.info(f"📊 Incremental sync: Using cursor data with {len(cursor_data)} keys")
+                logger.info(f"Incremental sync: Using cursor data with {len(cursor_data)} keys")
 
         return SyncCursor(
             sync_id=sync.id,
@@ -314,13 +279,8 @@ class SourceContextBuilder:
             cursor_data=cursor_data,
         )
 
-    # -------------------------------------------------------------------------
-    # Private: Node Selection Loading
-    # -------------------------------------------------------------------------
-
-    @classmethod
+    @staticmethod
     async def _load_node_selections(
-        cls,
         db: AsyncSession,
         source_connection_id: UUID,
         ctx: ApiContext,

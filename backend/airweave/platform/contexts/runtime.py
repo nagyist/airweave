@@ -14,7 +14,7 @@ if TYPE_CHECKING:
     from airweave.domains.embedders.protocols import DenseEmbedderProtocol, SparseEmbedderProtocol
     from airweave.platform.destinations._base import BaseDestination
     from airweave.platform.sources._base import BaseSource
-    from airweave.platform.sync.cursor import SyncCursor
+    from airweave.domains.syncs.cursors.cursor import SyncCursor
     from airweave.platform.sync.pipeline.entity_tracker import EntityTracker
 
 

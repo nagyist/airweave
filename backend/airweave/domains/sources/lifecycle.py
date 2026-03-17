@@ -591,8 +591,7 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
         else:
             if logger:
                 logger.warning(
-                    f"Source {short_name} credentials in unexpected format: "
-                    f"{type(raw_credentials)}"
+                    f"Source {short_name} credentials in unexpected format: {type(raw_credentials)}"
                 )
             return raw_credentials
 
@@ -602,9 +601,7 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
                     logger.debug(f"Extracting access_token for OAuth source {short_name}")
                 return creds_dict["access_token"]
             if logger:
-                logger.warning(
-                    f"OAuth source {short_name} credentials missing access_token"
-                )
+                logger.warning(f"OAuth source {short_name} credentials missing access_token")
             return raw_credentials
 
         if auth_config_ref:
@@ -612,8 +609,7 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
                 validated = auth_config_ref.model_validate(creds_dict)
                 if logger:
                     logger.debug(
-                        f"Converted credentials dict to {auth_config_ref.__name__} "
-                        f"for {short_name}"
+                        f"Converted credentials dict to {auth_config_ref.__name__} for {short_name}"
                     )
                 return validated
             except Exception as e:

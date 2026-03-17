@@ -24,7 +24,7 @@ from airweave.domains.oauth.fakes.repository import FakeOAuthInitSessionReposito
 from airweave.domains.oauth.types import OAuth1TokenResponse
 from airweave.domains.organizations.fakes.repository import FakeOrganizationRepository
 from airweave.domains.source_connections.fakes.repository import FakeSourceConnectionRepository
-from airweave.domains.sources.exceptions import SourceValidationError
+from airweave.domains.sources.exceptions import SourceNotFoundError, SourceValidationError
 from airweave.domains.syncs.fakes.sync_job_repository import FakeSyncJobRepository
 from airweave.domains.syncs.fakes.sync_repository import FakeSyncRepository
 from airweave.models.connection_init_session import ConnectionInitSession, ConnectionInitStatus
@@ -319,6 +319,47 @@ class TestCompleteOAuth2Callback:
         assert exc.value.status_code == 400
         assert "validation failed" in exc.value.detail.lower()
         assert all(call[0] != "mark_completed" for call in init_repo._calls)
+
+    async def test_source_not_found_fails_with_404(self):
+        init_repo = FakeOAuthInitSessionRepository()
+        session = _init_session()
+        init_repo.seed_by_state("state-abc", session)
+
+        org_repo = FakeOrganizationRepository()
+        org_repo.seed(ORG_ID, _organization())
+
+        sc_repo = FakeSourceConnectionRepository()
+        shell = _source_conn_shell()
+        sc_repo.seed(shell.id, shell)
+        sc_repo.seed_init_session(SESSION_ID, session)
+
+        oauth_flow = FakeOAuthFlowService()
+        oauth_flow.seed_oauth2_response(
+            OAuth2TokenResponse(access_token="bad-token", token_type="bearer")
+        )
+
+        registry = MagicMock()
+        registry.get.return_value = SimpleNamespace(
+            source_class_ref=MagicMock(), short_name="github", auth_config_ref=None,
+        )
+
+        source_lifecycle = AsyncMock()
+        source_lifecycle.validate = AsyncMock(
+            side_effect=SourceNotFoundError("unknown_source")
+        )
+
+        svc = _service(
+            init_session_repo=init_repo,
+            organization_repo=org_repo,
+            sc_repo=sc_repo,
+            oauth_flow_service=oauth_flow,
+            source_registry=registry,
+            source_lifecycle=source_lifecycle,
+        )
+        with pytest.raises(HTTPException) as exc:
+            await svc.complete_oauth2_callback(DB, state="state-abc", code="c")
+
+        assert exc.value.status_code == 404
 
     async def test_happy_path_delegates_and_finalizes(self):
         init_repo = FakeOAuthInitSessionRepository()

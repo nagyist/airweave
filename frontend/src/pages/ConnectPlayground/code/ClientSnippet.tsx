@@ -10,8 +10,8 @@ interface ClientSnippetProps {
 export function ClientSnippet({ config }: ClientSnippetProps) {
   const tabs = useMemo(
     () => [
-      { id: "react", label: "React", code: generateReactClient(config) },
-      { id: "vanilla", label: "Vanilla JS", code: generateVanillaClient(config) },
+      { id: "react", label: "React", language: "jsx", code: generateReactClient(config) },
+      { id: "vanilla", label: "Vanilla JS", language: "javascript", code: generateVanillaClient(config) },
     ],
     [config]
   );

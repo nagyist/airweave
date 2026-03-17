@@ -11,8 +11,8 @@ interface ServerSnippetProps {
 export function ServerSnippet({ config, isNewCollection = false }: ServerSnippetProps) {
   const tabs = useMemo(
     () => [
-      { id: "python", label: "Python", code: generatePythonServer(config, isNewCollection) },
-      { id: "typescript", label: "TypeScript", code: generateTypeScriptServer(config, isNewCollection) },
+      { id: "python", label: "Python", language: "python", code: generatePythonServer(config, isNewCollection) },
+      { id: "typescript", label: "TypeScript", language: "typescript", code: generateTypeScriptServer(config, isNewCollection) },
     ],
     [config, isNewCollection]
   );

@@ -66,33 +66,31 @@ export default function ConnectPlayground() {
 
         {/* Main area */}
         <div className="flex-1 min-h-0 flex gap-5">
-          {/* Left: config panel */}
-          <div className="w-[260px] shrink-0 overflow-hidden">
-            <PlaygroundConfig
-              config={state.config}
-              activeColors={state.activeColors}
-              activeDefaults={state.activeDefaults}
-              activeColorKey={state.activeColorKey}
-              onModeChange={(m) => state.updateConfig({ themeMode: m })}
-              onColorChange={state.setActiveColor}
-              onSessionModeChange={(m) => state.updateConfig({ sessionMode: m })}
-              onModalUpdate={state.updateModal}
-              sources={state.sources}
-              selectedIntegrations={state.config.allowedIntegrations}
-              onToggleIntegration={state.toggleIntegration}
-            />
-          </div>
-
-          {/* Center: sandbox */}
-          <div className="flex-[4] min-w-0">
+          {/* Left: sandbox + config stacked */}
+          <div className="flex-1 min-w-0 flex flex-col gap-5 overflow-hidden">
             <SandboxShell
               onOpenConnect={state.openPreview}
               isLoading={state.isCreatingSession}
             />
+            <div className="flex-1 min-h-0 overflow-y-auto">
+              <PlaygroundConfig
+                config={state.config}
+                activeColors={state.activeColors}
+                activeDefaults={state.activeDefaults}
+                activeColorKey={state.activeColorKey}
+                onModeChange={(m) => state.updateConfig({ themeMode: m })}
+                onColorChange={state.setActiveColor}
+                onSessionModeChange={(m) => state.updateConfig({ sessionMode: m })}
+                onModalUpdate={state.updateModal}
+                sources={state.sources}
+                selectedIntegrations={state.config.allowedIntegrations}
+                onToggleIntegration={state.toggleIntegration}
+              />
+            </div>
           </div>
 
           {/* Right: code */}
-          <div className="flex-[5] min-w-0">
+          <div className="flex-1 min-w-0">
             <CodePreview config={state.config} isNewCollection={state.isNewCollection} />
           </div>
         </div>

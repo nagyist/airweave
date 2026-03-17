@@ -46,36 +46,42 @@ export function PlaygroundConfig({
   onToggleIntegration,
 }: PlaygroundConfigProps) {
   return (
-    <div className="h-full overflow-y-auto px-3 py-3 space-y-5">
-      <div>
-        <SectionLabel>Theme</SectionLabel>
-        <ThemePicker
-          mode={config.themeMode}
-          onModeChange={onModeChange}
-          colors={activeColors}
-          defaults={activeDefaults}
-          colorKeyLabel={activeColorKey === "darkColors" ? "dark" : "light"}
-          onColorChange={onColorChange}
-        />
+    <div className="grid grid-cols-2 gap-5 px-1 py-3">
+      {/* Left column: Theme */}
+      <div className="space-y-5">
+        <div>
+          <SectionLabel>Theme</SectionLabel>
+          <ThemePicker
+            mode={config.themeMode}
+            onModeChange={onModeChange}
+            colors={activeColors}
+            defaults={activeDefaults}
+            colorKeyLabel={activeColorKey === "darkColors" ? "dark" : "light"}
+            onColorChange={onColorChange}
+          />
+        </div>
+
+        <div>
+          <SectionLabel>Modal</SectionLabel>
+          <ConfigToolbar modal={config.modal} onUpdate={onModalUpdate} />
+        </div>
       </div>
 
-      <div>
-        <SectionLabel>Session mode</SectionLabel>
-        <ModePicker mode={config.sessionMode} onChange={onSessionModeChange} />
-      </div>
+      {/* Right column: Session mode + Sources */}
+      <div className="space-y-5">
+        <div>
+          <SectionLabel>Session mode</SectionLabel>
+          <ModePicker mode={config.sessionMode} onChange={onSessionModeChange} />
+        </div>
 
-      <div>
-        <SectionLabel>Modal</SectionLabel>
-        <ConfigToolbar modal={config.modal} onUpdate={onModalUpdate} />
-      </div>
-
-      <div>
-        <SectionLabel>Sources</SectionLabel>
-        <SourcePicker
-          sources={sources}
-          selected={selectedIntegrations}
-          onToggle={onToggleIntegration}
-        />
+        <div>
+          <SectionLabel>Sources</SectionLabel>
+          <SourcePicker
+            sources={sources}
+            selected={selectedIntegrations}
+            onToggle={onToggleIntegration}
+          />
+        </div>
       </div>
     </div>
   );

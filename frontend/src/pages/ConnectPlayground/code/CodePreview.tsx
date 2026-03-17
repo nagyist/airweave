@@ -9,11 +9,11 @@ interface CodePreviewProps {
 
 export function CodePreview({ config, isNewCollection = false }: CodePreviewProps) {
   return (
-    <div className="h-full flex flex-col gap-1.5">
-      <div className="flex-[4] min-h-0">
+    <div className="h-full flex flex-col gap-3">
+      <div className="flex-1 min-h-0">
         <ServerSnippet config={config} isNewCollection={isNewCollection} />
       </div>
-      <div className="flex-[5] min-h-0">
+      <div className="flex-1 min-h-0">
         <ClientSnippet config={config} />
       </div>
     </div>

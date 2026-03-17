@@ -2,17 +2,34 @@ import { useState } from "react";
 import { Check, Copy } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { posthog } from "@/lib/posthog-provider";
+import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
+import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism";
 
-interface Tab {
+export interface Tab {
   id: string;
   label: string;
   code: string;
+  language?: string;
 }
 
 interface SnippetFrameProps {
   label: string;
   tabs: Tab[];
 }
+
+const highlightStyle = {
+  ...oneDark,
+  'pre[class*="language-"]': {
+    ...oneDark['pre[class*="language-"]'],
+    background: "transparent",
+    margin: 0,
+    padding: 0,
+  },
+  'code[class*="language-"]': {
+    ...oneDark['code[class*="language-"]'],
+    background: "transparent",
+  },
+};
 
 export function SnippetFrame({ label, tabs }: SnippetFrameProps) {
   const [activeTab, setActiveTab] = useState(tabs[0]?.id ?? "");
@@ -48,7 +65,7 @@ export function SnippetFrame({ label, tabs }: SnippetFrameProps) {
                   "px-2.5 py-1 rounded-md text-xs font-medium transition-colors",
                   activeTab === tab.id
                     ? "bg-white/10 text-white/70"
-                    : "text-white/30 hover:text-white/50"
+                    : "text-white/30 hover:text-white/50",
                 )}
               >
                 {tab.label}
@@ -58,7 +75,7 @@ export function SnippetFrame({ label, tabs }: SnippetFrameProps) {
         </div>
         <button
           onClick={handleCopy}
-          className="text-white/20 hover:text-white/50 transition-colors p-1"
+          className="text-white/20 hover:text-white/50 transition-colors p-1 shrink-0"
         >
           {copied ? (
             <Check className="h-3.5 w-3.5 text-emerald-400" />
@@ -69,10 +86,29 @@ export function SnippetFrame({ label, tabs }: SnippetFrameProps) {
       </div>
 
       {/* Code */}
-      <div className="flex-1 overflow-auto p-3">
-        <pre className="text-xs leading-relaxed font-mono text-white/55 whitespace-pre">
-          <code>{active?.code ?? ""}</code>
-        </pre>
+      <div className="flex-1 overflow-auto px-3 py-2">
+        <SyntaxHighlighter
+          language={active?.language ?? "javascript"}
+          style={highlightStyle}
+          customStyle={{
+            fontSize: "0.75rem",
+            lineHeight: "1.6",
+            background: "transparent",
+            margin: 0,
+            padding: 0,
+          }}
+          codeTagProps={{
+            style: {
+              fontSize: "0.75rem",
+              fontFamily:
+                'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace',
+            },
+          }}
+          wrapLongLines={false}
+          showLineNumbers={false}
+        >
+          {active?.code ?? ""}
+        </SyntaxHighlighter>
       </div>
     </div>
   );

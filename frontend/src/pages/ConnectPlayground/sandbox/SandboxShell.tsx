@@ -8,9 +8,9 @@ interface SandboxShellProps {
 
 export function SandboxShell({ onOpenConnect, isLoading }: SandboxShellProps) {
   return (
-    <div className="h-full flex items-center justify-center">
+    <div className="shrink-0">
       {/* Browser frame */}
-      <div className="w-full max-w-[480px] rounded-xl border border-border/40 bg-background shadow-sm overflow-hidden">
+      <div className="w-full rounded-xl border border-border/40 bg-background shadow-sm overflow-hidden">
         {/* Safari-style top bar */}
         <div className="flex items-center px-3.5 py-2.5 bg-muted/30 border-b border-border/30">
           <div className="flex gap-1.5">
@@ -29,7 +29,7 @@ export function SandboxShell({ onOpenConnect, isLoading }: SandboxShellProps) {
         </div>
 
         {/* Content area with CTA */}
-        <div className="flex flex-col items-center justify-center py-16 px-6">
+        <div className="flex flex-col items-center justify-center py-10 px-6">
           <span className="text-[10px] uppercase tracking-[0.15em] text-muted-foreground/30 font-medium mb-4">
             Your application
           </span>
@@ -44,7 +44,7 @@ export function SandboxShell({ onOpenConnect, isLoading }: SandboxShellProps) {
               "shadow-lg shadow-primary/20 hover:shadow-xl hover:shadow-primary/25",
               "hover:scale-[1.02] active:scale-[0.98]",
               "transition-all duration-150",
-              "disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
+              "disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100",
             )}
           >
             {isLoading ? (

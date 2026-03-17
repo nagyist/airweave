@@ -740,6 +740,10 @@ def _create_source_services(settings: Settings) -> dict:
     sync_repo = SyncRepository()
     sync_cursor_repo = SyncCursorRepository()
     sync_job_repo = SyncJobRepository()
+
+    from airweave.core.sync_cursor_service import SyncCursorService
+
+    sync_cursor_service = SyncCursorService()
     redirect_session_repo = OAuthRedirectSessionRepository()
     oauth1_svc = OAuth1Service()
     oauth2_svc = OAuth2Service(
@@ -778,6 +782,7 @@ def _create_source_services(settings: Settings) -> dict:
         "source_lifecycle_service": source_lifecycle_service,
         "sync_repo": sync_repo,
         "sync_cursor_repo": sync_cursor_repo,
+        "sync_cursor_service": sync_cursor_service,
         "sync_job_repo": sync_job_repo,
     }
 

@@ -575,30 +575,25 @@ class PipedreamAuthProvider(BaseAuthProvider):
     ) -> AuthResult:
         """Get auth result with explicit mode for Pipedream.
 
-        Determines whether to use direct credentials or proxy based on OAuth client type.
+        Only direct mode is supported. Blocked sources and default OAuth clients
+        (which previously required proxy mode) now raise errors.
         """
-        # Check if source is in blocked list (must use proxy)
         if source_short_name in self.BLOCKED_SOURCES:
-            self.logger.info(f"Source {source_short_name} is in blocked list - using proxy mode")
-            return AuthResult.proxy(
-                {
-                    "reason": "blocked_source",
-                    "source": source_short_name,
-                }
+            raise AuthProviderConfigError(
+                f"Source '{source_short_name}' is not supported via Pipedream. "
+                f"Proxy mode has been removed.",
+                provider_name="pipedream",
             )
 
-        # Try to get credentials to determine OAuth client type
         try:
             credentials = await self.get_creds_for_source(
                 source_short_name, source_auth_config_fields, optional_fields
             )
-            # Custom OAuth client - can use direct access
             self.logger.info(
                 f"Custom OAuth client detected for {source_short_name} - using direct mode"
             )
             result = AuthResult.direct(credentials)
 
-            # Extract source config if mappings provided
             if source_config_field_mappings:
                 source_config = await self.get_config_for_source(
                     source_short_name, source_config_field_mappings
@@ -608,13 +603,9 @@ class PipedreamAuthProvider(BaseAuthProvider):
             return result
 
         except PipedreamDefaultOAuthException:
-            # Default OAuth client - must use proxy
-            self.logger.info(
-                f"Default OAuth client detected for {source_short_name} - using proxy mode"
-            )
-            return AuthResult.proxy(
-                {
-                    "reason": "default_oauth",
-                    "source": source_short_name,
-                }
+            raise AuthProviderConfigError(
+                f"Source '{source_short_name}' uses Pipedream's default OAuth client "
+                f"which does not expose credentials. Proxy mode has been removed. "
+                f"Please connect using a custom OAuth client.",
+                provider_name="pipedream",
             )

@@ -3,14 +3,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Callable, Optional
+from typing import Any, Optional
 from uuid import UUID
 
 from airweave.core.protocols.registry import BaseRegistryEntry
-from airweave.models.connection import Connection
-from airweave.models.source_connection import SourceConnection
 from airweave.domains.auth_provider._base import BaseAuthProvider
 from airweave.domains.auth_provider.auth_result import AuthProviderMode
+from airweave.models.connection import Connection
+from airweave.models.source_connection import SourceConnection
 from airweave.platform.configs._base import BaseConfig, Fields
 
 
@@ -83,11 +83,9 @@ class SourceConnectionData:
 class AuthConfig:
     """Resolved auth configuration returned by _get_auth_configuration().
 
-    Carries credentials, optional HTTP client factory (for proxy mode),
-    auth provider instance, and the resolved auth mode.
+    Carries credentials, auth provider instance, and the resolved auth mode.
     """
 
     credentials: Any
-    http_client_factory: Optional[Callable]
     auth_provider_instance: Optional[BaseAuthProvider]
     auth_mode: AuthProviderMode

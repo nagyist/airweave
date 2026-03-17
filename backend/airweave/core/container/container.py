@@ -10,8 +10,13 @@ Design principles:
 - Testing: construct directly with fakes
 """
 
+from __future__ import annotations
+
 from dataclasses import dataclass, replace
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Any, Optional
+
+if TYPE_CHECKING:
+    from airweave.core.sync_cursor_service import SyncCursorService
 
 from airweave.core.protocols import (
     CircuitBreaker,
@@ -183,6 +188,8 @@ class Container:
     # Sync domain
     sync_repo: SyncRepositoryProtocol
     sync_cursor_repo: SyncCursorRepositoryProtocol
+    # Sync cursor service — cursor CRUD operations
+    sync_cursor_service: "SyncCursorService"
     sync_job_repo: SyncJobRepositoryProtocol
     sync_record_service: SyncRecordServiceProtocol
     sync_job_service: SyncJobServiceProtocol

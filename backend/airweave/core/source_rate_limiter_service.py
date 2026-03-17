@@ -23,7 +23,20 @@ class SourceRateLimiter:
 
     Uses Lua scripts for atomic check-and-increment operations to prevent race conditions
     when concurrent requests check limits simultaneously.
+
+    Constructed with a ``source_registry`` for looking up ``rate_limit_level``
+    per source, avoiding global container access.
     """
+
+    def __init__(self, source_registry=None):
+        """Initialize with optional source registry for rate_limit_level lookups.
+
+        Args:
+            source_registry: SourceRegistryProtocol instance. When None,
+                ``_get_source_rate_limit_level`` falls back to container
+                import (legacy path during migration).
+        """
+        self._source_registry = source_registry
 
     # Redis key prefixes
     KEY_PREFIX = "source_rate_limit"
@@ -73,9 +86,8 @@ redis.call('EXPIRE', key, expire_seconds)
 return {current_count + 1, 0}  -- Success, return new count
 """
 
-    @staticmethod
-    async def _get_source_rate_limit_level(source_short_name: str) -> Optional[str]:
-        """Get rate_limit_level from Source table (cached).
+    async def _get_source_rate_limit_level(self, source_short_name: str) -> Optional[str]:
+        """Get rate_limit_level from source registry (cached in Redis).
 
         Args:
             source_short_name: Source identifier
@@ -85,7 +97,6 @@ return {current_count + 1, 0}  -- Success, return new count
         """
         cache_key = f"source_metadata:{source_short_name}:rate_limit_level"
 
-        # Try cache first
         try:
             cached = await redis_client.client.get(cache_key)
             if cached:
@@ -93,16 +104,13 @@ return {current_count + 1, 0}  -- Success, return new count
         except Exception:
             pass
 
-        # Cache miss - fetch from source registry
-        try:
-            # [code blue] todo: inject source_registry via Inject() instead of container access
-            from airweave.core import container as container_mod
+        if not self._source_registry:
+            return None
 
-            source_registry = container_mod.container.source_registry
-            entry = source_registry.get(source_short_name)
+        try:
+            entry = self._source_registry.get(source_short_name)
             rate_limit_level = entry.rate_limit_level
 
-            # Cache for 10 minutes (source metadata rarely changes)
             try:
                 await redis_client.client.setex(cache_key, 600, rate_limit_level or "None")
             except Exception:
@@ -239,8 +247,8 @@ return {current_count + 1, 0}  -- Success, return new count
             logger.error(f"Failed to fetch rate limit config from database: {e}")
             return None
 
-    @staticmethod
     async def check_and_increment(
+        self,
         org_id: UUID,
         source_short_name: str,
         source_connection_id: Optional[UUID] = None,
@@ -267,7 +275,7 @@ return {current_count + 1, 0}  -- Success, return new count
             None if request is allowed (increments counter)
         """
         # Step 1: Get rate_limit_level from Source table (cached)
-        rate_limit_level = await SourceRateLimiter._get_source_rate_limit_level(source_short_name)
+        rate_limit_level = await self._get_source_rate_limit_level(source_short_name)
 
         logger.debug(
             f"[SourceRateLimit] Checking source rate limit: org={org_id}, "
@@ -350,95 +358,3 @@ return {current_count + 1, 0}  -- Success, return new count
             f"connection={source_connection_id}, rate_limit_level={rate_limit_level}, "
             f"window={window_seconds}s"
         )
-
-    # Pipedream proxy limits (from Pipedream docs)
-    PIPEDREAM_PROXY_LIMIT = 1000
-    PIPEDREAM_PROXY_WINDOW = 300  # 5 minutes
-
-    @staticmethod
-    async def check_pipedream_proxy_limit(org_id: UUID) -> None:
-        """Check Pipedream proxy rate limit (configurable, defaults to 1000 req/5min).
-
-        When using Pipedream's default OAuth (proxy mode), all requests across
-        ALL sources/users share this org-wide infrastructure limit.
-
-        Reads limit from source_rate_limits table using special source_short_name='pipedream_proxy'.
-        Falls back to hardcoded default (1000 req/5min) if not configured.
-
-        Args:
-            org_id: Organization ID
-
-        Raises:
-            SourceRateLimitExceededException: If Pipedream proxy limit exceeded
-        """
-        logger.debug(f"[PipedreamProxy] Checking proxy rate limit for org={org_id}")
-
-        # Get limit from DB using special "pipedream_proxy" source name
-        limit_config = await SourceRateLimiter._get_limit_config(org_id, "pipedream_proxy")
-
-        if not limit_config:
-            # No custom limit - use hardcoded defaults
-            limit = SourceRateLimiter.PIPEDREAM_PROXY_LIMIT  # 1000
-            window_seconds = SourceRateLimiter.PIPEDREAM_PROXY_WINDOW  # 300
-            logger.debug(
-                f"[PipedreamProxy] No custom limit configured, using defaults: "
-                f"{limit} req/{window_seconds}s"
-            )
-        else:
-            # Use custom limit from DB
-            limit = limit_config["limit"]
-            window_seconds = limit_config["window_seconds"]
-            logger.debug(
-                f"[PipedreamProxy] Using custom limit from DB: {limit} req/{window_seconds}s"
-            )
-
-        redis_key = f"pipedream_proxy_rate_limit:{org_id}"
-
-        current_time = time.time()
-        window_start = current_time - window_seconds
-        expire_seconds = window_seconds * 2
-
-        # Generate unique ID for this request
-        from uuid import uuid4
-
-        unique_id = str(uuid4())
-
-        # Execute atomic Lua script for check-and-increment
-        result = await redis_client.client.eval(
-            SourceRateLimiter.LUA_CHECK_AND_INCREMENT,
-            1,  # Number of keys
-            redis_key,  # KEYS[1]
-            limit,  # ARGV[1]
-            window_start,  # ARGV[2]
-            current_time,  # ARGV[3]
-            window_seconds,  # ARGV[4]
-            expire_seconds,  # ARGV[5]
-            unique_id,  # ARGV[6]
-        )
-
-        # result = [count, retry_after]
-        count_or_error = int(result[0])
-        retry_after = float(result[1])
-
-        if count_or_error == -1:
-            # Over limit
-            logger.warning(
-                f"Pipedream proxy rate limit exceeded for org {org_id}. "
-                f"{limit}/{limit} requests in {window_seconds}s window, "
-                f"retry after {retry_after:.2f}s"
-            )
-
-            raise SourceRateLimitExceededException(
-                retry_after=retry_after, source_short_name="pipedream_proxy"
-            )
-
-        # Under limit - request was atomically incremented
-        new_count = count_or_error
-        logger.debug(
-            f"[PipedreamProxy] ✅ Request allowed - {new_count}/{limit} "
-            f"requests in window. org={org_id}, window={window_seconds}s"
-        )
-
-
-# Create a global instance
-source_rate_limiter = SourceRateLimiter()

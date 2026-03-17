@@ -28,17 +28,15 @@ from airweave.domains.sources.token_providers.exceptions import (
     TokenProviderRateLimitError,
     TokenProviderServerError,
 )
-from airweave.domains.sources.token_providers.protocol import TokenProviderProtocol
 
 if TYPE_CHECKING:
     from airweave.domains.sources.protocols import SourceRegistryProtocol
 
-_PROVIDER_KIND = "auth_provider"
 
-
-class AuthProviderTokenProvider(TokenProviderProtocol):
+class AuthProviderTokenProvider:
     """TokenProvider backed by an external auth provider (Pipedream / Composio).
 
+    Satisfies both ``SourceAuthProvider`` and ``TokenProviderProtocol``.
     In *direct* mode the auth provider holds the user's OAuth connection
     and can vend fresh access tokens on demand.
     """
@@ -51,18 +49,21 @@ class AuthProviderTokenProvider(TokenProviderProtocol):
         *,
         logger: ContextualLogger,
     ):
-        """Initialize with an auth provider instance.
-
-        Args:
-            auth_provider_instance: A ``BaseAuthProvider`` subclass instance.
-            source_short_name: Source identifier.
-            source_registry: Registry to look up runtime auth field names.
-            logger: Contextual logger with sync metadata.
-        """
+        """Initialize with an auth provider instance and source registry."""
         self._provider = auth_provider_instance
         self._source_short_name = source_short_name
         self._source_registry = source_registry
         self._logger = logger
+
+    @property
+    def provider_kind(self) -> str:
+        """Discriminator for this auth provider type."""
+        return "auth_provider"
+
+    @property
+    def supports_refresh(self) -> bool:
+        """Auth providers always support refresh (re-fetch from upstream)."""
+        return True
 
     async def _fetch_token(self) -> str:
         """Call the auth provider and extract the access token.
@@ -86,54 +87,54 @@ class AuthProviderTokenProvider(TokenProviderProtocol):
             raise TokenProviderAccountGoneError(
                 f"Account deleted in auth provider for {self._source_short_name}: {e}",
                 source_short_name=self._source_short_name,
-                provider_kind=_PROVIDER_KIND,
+                provider_kind=self.provider_kind,
                 account_id=e.account_id,
             ) from e
         except AuthProviderAuthError as e:
             raise TokenCredentialsInvalidError(
                 f"Auth provider credentials rejected for {self._source_short_name}: {e}",
                 source_short_name=self._source_short_name,
-                provider_kind=_PROVIDER_KIND,
+                provider_kind=self.provider_kind,
             ) from e
         except AuthProviderMissingFieldsError as e:
             raise TokenProviderMissingCredsError(
                 f"Auth provider response missing fields for {self._source_short_name}: {e}",
                 source_short_name=self._source_short_name,
-                provider_kind=_PROVIDER_KIND,
+                provider_kind=self.provider_kind,
                 missing_fields=e.missing_fields,
             ) from e
         except AuthProviderConfigError as e:
             raise TokenProviderConfigError(
                 f"Auth provider misconfigured for {self._source_short_name}: {e}",
                 source_short_name=self._source_short_name,
-                provider_kind=_PROVIDER_KIND,
+                provider_kind=self.provider_kind,
             ) from e
         except AuthProviderRateLimitError as e:
             raise TokenProviderRateLimitError(
                 f"Auth provider rate-limited for {self._source_short_name}: {e}",
                 source_short_name=self._source_short_name,
-                provider_kind=_PROVIDER_KIND,
+                provider_kind=self.provider_kind,
                 retry_after=e.retry_after,
             ) from e
         except AuthProviderServerError as e:
             raise TokenProviderServerError(
                 f"Auth provider server error for {self._source_short_name}: {e}",
                 source_short_name=self._source_short_name,
-                provider_kind=_PROVIDER_KIND,
+                provider_kind=self.provider_kind,
                 status_code=e.status_code,
             ) from e
         except Exception as e:
             raise TokenProviderServerError(
                 f"Unexpected auth provider error for {self._source_short_name}: {e}",
                 source_short_name=self._source_short_name,
-                provider_kind=_PROVIDER_KIND,
+                provider_kind=self.provider_kind,
             ) from e
 
         if not isinstance(creds, dict) or "access_token" not in creds:
             raise TokenProviderMissingCredsError(
                 f"No access_token in auth provider response for {self._source_short_name}",
                 source_short_name=self._source_short_name,
-                provider_kind=_PROVIDER_KIND,
+                provider_kind=self.provider_kind,
                 missing_fields=["access_token"],
             )
 

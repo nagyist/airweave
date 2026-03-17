@@ -32,7 +32,6 @@ from airweave.domains.sources.token_providers.exceptions import (
     TokenProviderServerError,
     TokenRefreshNotSupportedError,
 )
-from airweave.domains.sources.token_providers.protocol import TokenProviderProtocol
 
 if TYPE_CHECKING:
     from airweave.api.context import ApiContext
@@ -43,17 +42,17 @@ _DEFAULT_REFRESH_INTERVAL_SECONDS = 25 * 60
 _REFRESH_LIFETIME_FRACTION = 0.80
 _MIN_REFRESH_INTERVAL_SECONDS = 60
 _MAX_REFRESH_INTERVAL_SECONDS = 50 * 60
-_PROVIDER_KIND = "oauth"
 
 
-class OAuthTokenProvider(TokenProviderProtocol):
+class OAuthTokenProvider:
     """TokenProvider backed by OAuth2 credentials.
+
+    Satisfies both ``SourceAuthProvider`` and ``TokenProviderProtocol``.
 
     Accepts raw credentials and determines refresh capability internally:
     - If oauth_type supports refresh AND a refresh_token is present,
       proactively refreshes before expiry.
     - Otherwise serves the initial access_token as a static token.
-
     """
 
     def __init__(
@@ -68,21 +67,7 @@ class OAuthTokenProvider(TokenProviderProtocol):
         logger: ContextualLogger,
         config_fields: Optional[dict] = None,
     ):
-        """Initialize the OAuth token provider.
-
-        Args:
-            credentials: Raw credentials (str token, dict, or Pydantic model).
-            oauth_type: OAuth type from the source connection (e.g. "with_refresh").
-            oauth2_service: Service that handles the actual refresh + persistence.
-            source_short_name: Source identifier.
-            connection_id: Connection UUID (passed to oauth2_service for refresh).
-            ctx: API context (passed to oauth2_service for refresh).
-            logger: Contextual logger with sync metadata.
-            config_fields: Optional config fields for templated backend URLs.
-
-        Raises:
-            ValueError: If no access token can be extracted from credentials.
-        """
+        """Initialize with raw OAuth credentials and refresh configuration."""
         token = _extract_access_token(credentials)
         if not token:
             raise ValueError(f"No access token found in credentials for {source_short_name}")
@@ -102,7 +87,21 @@ class OAuthTokenProvider(TokenProviderProtocol):
         self._lock = asyncio.Lock()
 
     # ------------------------------------------------------------------
-    # TokenProvider protocol
+    # SourceAuthProvider properties
+    # ------------------------------------------------------------------
+
+    @property
+    def provider_kind(self) -> str:
+        """Discriminator for this auth provider type."""
+        return "oauth"
+
+    @property
+    def supports_refresh(self) -> bool:
+        """True when oauth_type supports refresh AND a refresh_token exists."""
+        return self._can_refresh
+
+    # ------------------------------------------------------------------
+    # TokenProviderProtocol methods
     # ------------------------------------------------------------------
 
     async def get_token(self) -> str:
@@ -136,7 +135,7 @@ class OAuthTokenProvider(TokenProviderProtocol):
             raise TokenRefreshNotSupportedError(
                 f"Token refresh not supported for {self._source_short_name}",
                 source_short_name=self._source_short_name,
-                provider_kind=_PROVIDER_KIND,
+                provider_kind=self.provider_kind,
             )
 
         async with self._lock:
@@ -210,21 +209,21 @@ class OAuthTokenProvider(TokenProviderProtocol):
             return TokenCredentialsInvalidError(
                 f"OAuth credentials invalid for {sn}: {exc}",
                 source_short_name=sn,
-                provider_kind=_PROVIDER_KIND,
+                provider_kind=self.provider_kind,
             )
 
         if isinstance(exc, OAuthRefreshCredentialMissingError):
             return TokenProviderConfigError(
                 f"Credential missing for {sn}: {exc}",
                 source_short_name=sn,
-                provider_kind=_PROVIDER_KIND,
+                provider_kind=self.provider_kind,
             )
 
         if isinstance(exc, OAuthRefreshRateLimitError):
             return TokenProviderRateLimitError(
                 f"OAuth rate-limited for {sn}: {exc}",
                 source_short_name=sn,
-                provider_kind=_PROVIDER_KIND,
+                provider_kind=self.provider_kind,
                 retry_after=exc.retry_after,
             )
 
@@ -232,14 +231,14 @@ class OAuthTokenProvider(TokenProviderProtocol):
             return TokenProviderServerError(
                 f"OAuth server error for {sn}: {exc}",
                 source_short_name=sn,
-                provider_kind=_PROVIDER_KIND,
+                provider_kind=self.provider_kind,
                 status_code=exc.status_code,
             )
 
         return TokenProviderServerError(
             f"Unexpected OAuth error for {sn}: {exc}",
             source_short_name=sn,
-            provider_kind=_PROVIDER_KIND,
+            provider_kind=self.provider_kind,
         )
 
 

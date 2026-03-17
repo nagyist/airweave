@@ -5,7 +5,7 @@ set_*() calls that were duplicated across sync builders, search factories, and
 credential services.
 """
 
-from typing import Any, Callable, Dict, Optional, Union
+from typing import Any, Dict, Optional, Union
 from uuid import UUID
 
 import httpx
@@ -20,7 +20,6 @@ from airweave.core.shared_models import FeatureFlag
 from airweave.domains.auth_provider._base import BaseAuthProvider
 from airweave.domains.auth_provider.auth_result import AuthProviderMode
 from airweave.domains.auth_provider.protocols import AuthProviderRegistryProtocol
-from airweave.domains.auth_provider.providers.pipedream import PipedreamAuthProvider
 from airweave.domains.connections.protocols import ConnectionRepositoryProtocol
 from airweave.domains.credentials.protocols import (
     IntegrationCredentialRepositoryProtocol,
@@ -42,7 +41,6 @@ from airweave.domains.sources.token_providers.auth_provider import AuthProviderT
 from airweave.domains.sources.token_providers.oauth import OAuthTokenProvider
 from airweave.domains.sources.token_providers.static import StaticTokenProvider
 from airweave.domains.sources.types import AuthConfig, SourceConnectionData, SourceRegistryEntry
-from airweave.platform.http_client import PipedreamProxyClient
 from airweave.platform.http_client.airweave_client import AirweaveHttpClient
 from airweave.platform.sources._base import BaseSource
 
@@ -65,22 +63,17 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
         cred_repo: IntegrationCredentialRepositoryProtocol,
         oauth2_service: OAuth2ServiceProtocol,
     ) -> None:
-        """Initialize with all required dependencies.
-
-        Args:
-            source_registry: In-memory registry of source metadata (built at startup).
-            auth_provider_registry: In-memory registry of auth provider metadata.
-            sc_repo: Source connection repository (wraps crud.source_connection).
-            conn_repo: Connection repository (wraps crud.connection).
-            cred_repo: Integration credential repository (wraps crud.integration_credential).
-            oauth2_service: OAuth2 token refresh service.
-        """
+        """Initialize with all required dependencies."""
         self._source_registry = source_registry
         self._auth_provider_registry = auth_provider_registry
         self._sc_repo = sc_repo
         self._conn_repo = conn_repo
         self._cred_repo = cred_repo
         self._oauth2_service = oauth2_service
+
+        from airweave.core.source_rate_limiter_service import SourceRateLimiter
+
+        self._rate_limiter = SourceRateLimiter(source_registry=source_registry)
 
     # ------------------------------------------------------------------
     # Public API
@@ -136,7 +129,6 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
 
         # 5. Configure source
         self._configure_logger(source, logger)
-        self._configure_http_client_factory(source, auth_config)
         await self._configure_token_provider(
             source=source,
             source_connection_data=source_connection_data,
@@ -276,7 +268,6 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
             logger.debug("Using directly injected access token")
             return AuthConfig(
                 credentials=access_token,
-                http_client_factory=None,
                 auth_provider_instance=None,
                 auth_mode=AuthProviderMode.DIRECT,
             )
@@ -343,28 +334,8 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
         if auth_result.source_config:
             self._merge_source_config(source_connection_data, auth_result.source_config)
 
-        if auth_result.requires_proxy:
-            logger.info(f"Auth provider requires proxy mode: {auth_result.proxy_config}")
-
-            http_client_factory = None
-            if isinstance(auth_provider_instance, PipedreamAuthProvider):
-                http_client_factory = await self._create_pipedream_proxy_factory(
-                    auth_provider_instance=auth_provider_instance,
-                    source_connection_data=source_connection_data,
-                    ctx=ctx,
-                    logger=logger,
-                )
-
-            return AuthConfig(
-                credentials="PROXY_MODE",
-                http_client_factory=http_client_factory,
-                auth_provider_instance=auth_provider_instance,
-                auth_mode=AuthProviderMode.PROXY,
-            )
-
         return AuthConfig(
             credentials=auth_result.credentials,
-            http_client_factory=None,
             auth_provider_instance=auth_provider_instance,
             auth_mode=AuthProviderMode.DIRECT,
         )
@@ -398,14 +369,12 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
             )
             return AuthConfig(
                 credentials=processed,
-                http_client_factory=None,
                 auth_provider_instance=None,
                 auth_mode=AuthProviderMode.DIRECT,
             )
 
         return AuthConfig(
             credentials=decrypted_credential,
-            http_client_factory=None,
             auth_provider_instance=None,
             auth_mode=AuthProviderMode.DIRECT,
         )
@@ -469,57 +438,6 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
             )
 
         return auth_provider_instance
-
-    @staticmethod
-    async def _create_pipedream_proxy_factory(
-        auth_provider_instance: PipedreamAuthProvider,
-        source_connection_data: SourceConnectionData,
-        ctx: ApiContext,
-        logger: ContextualLogger,
-    ) -> Optional[Callable]:
-        """Create a factory function for Pipedream proxy clients."""
-        try:
-            async with httpx.AsyncClient() as client:
-                access_token = await auth_provider_instance._ensure_valid_token()
-                headers = {
-                    "Authorization": f"Bearer {access_token}",
-                    "x-pd-environment": auth_provider_instance.environment,
-                }
-
-                pipedream_app_slug = auth_provider_instance._get_pipedream_app_slug(
-                    source_connection_data.short_name
-                )
-
-                response = await client.get(
-                    f"https://api.pipedream.com/v1/apps/{pipedream_app_slug}",
-                    headers=headers,
-                )
-
-                if response.status_code == 404:
-                    logger.warning(f"App {pipedream_app_slug} not found in Pipedream")
-                    return None
-
-                response.raise_for_status()
-                app_info = response.json()
-
-        except Exception as e:
-            logger.error(f"Failed to get app info from Pipedream: {e}")
-            return None
-
-        def create_proxy_client(**httpx_kwargs) -> PipedreamProxyClient:
-            return PipedreamProxyClient(
-                project_id=auth_provider_instance.project_id,
-                account_id=auth_provider_instance.account_id,
-                external_user_id=auth_provider_instance.external_user_id,
-                environment=auth_provider_instance.environment,
-                pipedream_token=None,
-                token_provider=auth_provider_instance._ensure_valid_token,
-                app_info=app_info,
-                **httpx_kwargs,
-            )
-
-        logger.info(f"Configured Pipedream proxy for {source_connection_data.short_name}")
-        return create_proxy_client
 
     async def _handle_auth_config_credentials(
         self,
@@ -647,11 +565,6 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
         if hasattr(source, "set_logger"):
             source.set_logger(logger)
 
-    @staticmethod
-    def _configure_http_client_factory(source: BaseSource, auth_config: AuthConfig) -> None:
-        if auth_config.http_client_factory:
-            source.set_http_client_factory(auth_config.http_client_factory)
-
     async def _configure_token_provider(
         self,
         source: BaseSource,
@@ -663,7 +576,6 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
         auth_config: AuthConfig,
     ) -> None:
         """Set up the appropriate TokenProvider for this source."""
-        auth_mode = auth_config.auth_mode
         auth_provider_instance: Optional[BaseAuthProvider] = auth_config.auth_provider_instance
         short_name = source_connection_data.short_name
 
@@ -671,9 +583,6 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
             source.set_token_provider(
                 StaticTokenProvider(access_token, source_short_name=short_name)
             )
-            return
-
-        if auth_mode == AuthProviderMode.PROXY:
             return
 
         oauth_type = source_connection_data.oauth_type

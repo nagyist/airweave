@@ -40,15 +40,15 @@ export default function ConnectPlayground() {
               Configure and preview the embeddable widget.
             </p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5">
             <a
               href="https://docs.airweave.ai/connect"
               target="_blank"
               rel="noopener noreferrer"
-              className="flex items-center gap-1.5 h-8 px-3 rounded-lg text-xs font-medium border border-border/40 text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
+              className="flex items-center gap-1.5 h-8 px-3.5 rounded-full text-xs font-medium bg-muted/60 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
             >
-              <ExternalLink className="h-3.5 w-3.5" />
-              Docs
+              <ExternalLink className="h-3 w-3" />
+              Documentation
             </a>
             <ExportDropdown config={state.config} />
             <CollectionPicker
@@ -90,7 +90,7 @@ export default function ConnectPlayground() {
           </div>
 
           {/* Right: code */}
-          <div className="flex-1 min-w-0">
+          <div className="w-[420px] shrink-0 min-w-0">
             <CodePreview config={state.config} isNewCollection={state.isNewCollection} />
           </div>
         </div>

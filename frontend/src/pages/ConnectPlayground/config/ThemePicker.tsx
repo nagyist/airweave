@@ -56,6 +56,9 @@ export function ThemePicker({
       </div>
 
       {/* Colors */}
+      <div className="text-[10px] font-medium text-muted-foreground/60 uppercase tracking-wider">
+        Colors <span className="normal-case tracking-normal font-normal">({colorKeyLabel})</span>
+      </div>
       <div className="grid grid-cols-3 gap-x-3 gap-y-2.5">
         {COLOR_KEYS.map(({ key, label }) => {
           const isCustom = colors[key] !== defaults[key];

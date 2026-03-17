@@ -83,7 +83,7 @@ export function SnippetFrame({ label, tabs }: SnippetFrameProps) {
         </div>
         <button
           onClick={handleCopy}
-          className="text-white/20 hover:text-white/50 transition-colors p-1 shrink-0"
+          className="text-white/40 hover:text-white/70 hover:bg-white/10 transition-colors p-1.5 rounded-md shrink-0"
         >
           {copied ? (
             <Check className="h-3.5 w-3.5 text-emerald-400" />
@@ -99,15 +99,15 @@ export function SnippetFrame({ label, tabs }: SnippetFrameProps) {
           language={active?.language ?? "javascript"}
           style={highlightStyle}
           customStyle={{
-            fontSize: "0.75rem",
-            lineHeight: "1.6",
+            fontSize: "0.625rem",
+            lineHeight: "1.5",
             background: "transparent",
             margin: 0,
             padding: 0,
           }}
           codeTagProps={{
             style: {
-              fontSize: "0.75rem",
+              fontSize: "0.625rem",
               fontFamily:
                 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace',
             },

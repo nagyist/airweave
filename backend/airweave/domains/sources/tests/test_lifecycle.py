@@ -622,7 +622,7 @@ async def test_handle_auth_config_oauth2_error_propagates():
 
 
 # ===========================================================================
-# _process_credentials_for_source() — table-driven
+# _normalize_credentials() — table-driven
 # ===========================================================================
 
 
@@ -654,7 +654,7 @@ PROCESS_CREDS_TABLE = [
 
 
 @pytest.mark.parametrize("case", PROCESS_CREDS_TABLE, ids=lambda c: c.id)
-def test_process_credentials_for_source(case: ProcessCredsCase):
+def test_normalize_credentials(case: ProcessCredsCase):
     mock_config_class = MagicMock()
     mock_config_class.__name__ = "TestAuthConfig"
 
@@ -664,24 +664,24 @@ def test_process_credentials_for_source(case: ProcessCredsCase):
         mock_config_class.model_validate.return_value = "VALIDATED"
 
     entry = _entry_with_class("src", _StubSourceValid)
+    if case.oauth_type:
+        object.__setattr__(entry, "oauth_type", case.oauth_type)
     if case.has_auth_config_ref:
         object.__setattr__(entry, "auth_config_ref", mock_config_class)
 
     service = _make_service(source_entries=[entry])
     ctx = _make_ctx()
-    data = _sc_data(short_name="src", oauth_type=case.oauth_type,
-                    auth_config_class="TestAuthConfig" if case.has_auth_config_ref else None)
 
     if case.expect_error:
         with pytest.raises(case.expect_error):
-            service._process_credentials_for_source(
+            service._normalize_credentials(
                 raw_credentials=case.raw_credentials,
-                source_connection_data=data, logger=ctx.logger,
+                entry=entry, logger=ctx.logger,
             )
     else:
-        result = service._process_credentials_for_source(
+        result = service._normalize_credentials(
             raw_credentials=case.raw_credentials,
-            source_connection_data=data, logger=ctx.logger,
+            entry=entry, logger=ctx.logger,
         )
         assert result == case.expected
 

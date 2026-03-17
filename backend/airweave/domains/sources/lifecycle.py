@@ -122,9 +122,10 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
         )
 
         # 3. Process credentials for source consumption
-        source_credentials = self._process_credentials_for_source(
+        entry = self._source_registry.get(source_connection_data.short_name)
+        source_credentials = self._normalize_credentials(
             raw_credentials=auth_config.credentials,
-            source_connection_data=source_connection_data,
+            entry=entry,
             logger=logger,
         )
 
@@ -180,7 +181,7 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
 
         source_class = entry.source_class_ref
 
-        normalized = self._normalize_credentials_for_validate(credentials, entry)
+        normalized = self._normalize_credentials(credentials, entry)
 
         try:
             source = await source_class.create(normalized, config=config)
@@ -561,85 +562,66 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
     # Private: credential processing
     # ------------------------------------------------------------------
 
-    def _process_credentials_for_source(
+    def _normalize_credentials(
         self,
-        raw_credentials: Union[dict, BaseModel],
-        source_connection_data: SourceConnectionData,
-        logger: ContextualLogger,
+        raw_credentials: Union[dict, BaseModel, str],
+        entry: SourceRegistryEntry,
+        logger: Optional[ContextualLogger] = None,
     ) -> SourceCredentials:
-        """Process raw credentials into the format expected by the source.
+        """Normalize raw credentials into the format expected by source.create().
 
         Handles three cases:
         1. OAuth sources without auth_config_class: Extract just the access_token string
         2. Sources with auth_config_class and dict credentials: Convert to auth config object
         3. Other sources: Pass through as-is
+
+        Used by both the full create() path and the lightweight validate() path.
         """
-        short_name = source_connection_data.short_name
-        oauth_type = source_connection_data.oauth_type
-
-        # Case 1: OAuth sources without auth_config_class need just the access_token string
-        entry = self._source_registry.get(short_name)
         auth_config_ref = entry.auth_config_ref
+        oauth_type = entry.oauth_type
+        short_name = entry.short_name
 
-        if not auth_config_ref and oauth_type:
-            if isinstance(raw_credentials, dict) and "access_token" in raw_credentials:
-                logger.debug(f"Extracting access_token for OAuth source {short_name}")
-                return raw_credentials["access_token"]
-            elif isinstance(raw_credentials, str):
-                logger.debug(f"OAuth source {short_name} credentials already a string token")
-                return raw_credentials
-            else:
+        if isinstance(raw_credentials, str):
+            return raw_credentials
+
+        if isinstance(raw_credentials, BaseModel):
+            creds_dict = raw_credentials.model_dump()
+        elif isinstance(raw_credentials, dict):
+            creds_dict = raw_credentials
+        else:
+            if logger:
                 logger.warning(
-                    f"OAuth source {short_name} credentials not in expected format: "
+                    f"Source {short_name} credentials in unexpected format: "
                     f"{type(raw_credentials)}"
                 )
-                return raw_credentials
+            return raw_credentials
 
-        # Case 2: Sources with auth_config_class and dict credentials
-        if auth_config_ref and isinstance(raw_credentials, dict):
-            try:
-                processed_credentials = auth_config_ref.model_validate(raw_credentials)
-                logger.debug(
-                    f"Converted credentials dict to {auth_config_ref.__name__} for {short_name}"
+        if not auth_config_ref and oauth_type:
+            if "access_token" in creds_dict:
+                if logger:
+                    logger.debug(f"Extracting access_token for OAuth source {short_name}")
+                return creds_dict["access_token"]
+            if logger:
+                logger.warning(
+                    f"OAuth source {short_name} credentials missing access_token"
                 )
-                return processed_credentials
+            return raw_credentials
+
+        if auth_config_ref:
+            try:
+                validated = auth_config_ref.model_validate(creds_dict)
+                if logger:
+                    logger.debug(
+                        f"Converted credentials dict to {auth_config_ref.__name__} "
+                        f"for {short_name}"
+                    )
+                return validated
             except Exception as e:
-                logger.error(f"Failed to convert credentials to auth config object: {e}")
+                if logger:
+                    logger.error(f"Failed to convert credentials to auth config: {e}")
                 raise
 
-        # Case 3: Pass through as-is
         return raw_credentials
-
-    @staticmethod
-    def _normalize_credentials_for_validate(
-        credentials: Union[dict, BaseModel, str],
-        entry: SourceRegistryEntry,
-    ) -> Union[str, BaseModel, dict]:
-        """Normalize credentials for the lightweight validate() path.
-
-        Mirrors the extraction logic of ``_process_credentials_for_source``
-        so that OAuth dict credentials are reduced to the ``access_token``
-        string when the source does not declare an ``auth_config_class``.
-        """
-        if isinstance(credentials, str):
-            return credentials
-
-        creds_dict: dict
-        if isinstance(credentials, BaseModel):
-            creds_dict = credentials.model_dump()
-        else:
-            creds_dict = credentials
-
-        if not entry.auth_config_ref and "access_token" in creds_dict:
-            return creds_dict["access_token"]
-
-        if entry.auth_config_ref and isinstance(creds_dict, dict):
-            try:
-                return entry.auth_config_ref.model_validate(creds_dict)
-            except Exception:
-                pass
-
-        return credentials
 
     # ------------------------------------------------------------------
     # Private: source configuration helpers

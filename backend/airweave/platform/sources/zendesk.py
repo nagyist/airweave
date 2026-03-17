@@ -140,18 +140,8 @@ class ZendeskSource(BaseSource):
 
     async def _get_auth_headers(self) -> Dict[str, str]:
         """Get OAuth authentication headers."""
-        # Use get_access_token method to avoid sending 'Bearer None'
         token = await self.get_access_token()
-        if not token:
-            raise ValueError("No access token available for authentication")
         return {"Authorization": f"Bearer {token}"}
-
-    async def get_access_token(self) -> Optional[str]:
-        """Get the current access token."""
-        if self.token_provider:
-            # Token manager handles token retrieval
-            return getattr(self, "access_token", None)
-        return getattr(self, "access_token", None)
 
     @staticmethod
     def _parse_datetime(value: Optional[str]) -> Optional[datetime]:

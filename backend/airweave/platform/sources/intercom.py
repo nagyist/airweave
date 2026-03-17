@@ -130,20 +130,9 @@ class IntercomSource(BaseSource):
         )
         return instance
 
-    def _headers(self) -> Dict[str, str]:
-        """Return auth and version headers for Intercom API."""
-        return {
-            "Authorization": f"Bearer {getattr(self, 'access_token', '')}",
-            "Accept": "application/json",
-            "Content-Type": "application/json",
-            "Intercom-Version": INTERCOM_VERSION,
-        }
-
     async def _get_auth_headers(self) -> Dict[str, str]:
-        """Get OAuth headers (with token from token_provider if set)."""
+        """Get OAuth headers via the token provider."""
         token = await self.get_access_token()
-        if not token:
-            raise ValueError("No access token available for authentication")
         return {
             "Authorization": f"Bearer {token}",
             "Accept": "application/json",

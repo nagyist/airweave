@@ -1,10 +1,10 @@
-import { useState, useMemo } from "react";
+import { useState } from "react";
 import { Check, Copy } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { posthog } from "@/lib/posthog-provider";
 import { useTheme } from "@/lib/theme-provider";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
-import { oneDark, oneLight } from "react-syntax-highlighter/dist/esm/styles/prism";
+import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism";
 
 export interface Tab {
   id: string;
@@ -18,24 +18,19 @@ interface SnippetFrameProps {
   tabs: Tab[];
 }
 
-function makeTransparent(base: Record<string, unknown>) {
-  return {
-    ...base,
-    'pre[class*="language-"]': {
-      ...(base['pre[class*="language-"]'] as Record<string, unknown>),
-      background: "transparent",
-      margin: 0,
-      padding: 0,
-    },
-    'code[class*="language-"]': {
-      ...(base['code[class*="language-"]'] as Record<string, unknown>),
-      background: "transparent",
-    },
-  };
-}
-
-const darkStyle = makeTransparent(oneDark);
-const lightStyle = makeTransparent(oneLight);
+const highlightStyle = {
+  ...oneDark,
+  'pre[class*="language-"]': {
+    ...(oneDark['pre[class*="language-"]'] as Record<string, unknown>),
+    background: "transparent",
+    margin: 0,
+    padding: 0,
+  },
+  'code[class*="language-"]': {
+    ...(oneDark['code[class*="language-"]'] as Record<string, unknown>),
+    background: "transparent",
+  },
+};
 
 export function SnippetFrame({ label, tabs }: SnippetFrameProps) {
   const [activeTab, setActiveTab] = useState(tabs[0]?.id ?? "");
@@ -44,7 +39,6 @@ export function SnippetFrame({ label, tabs }: SnippetFrameProps) {
   const isDark = resolvedTheme === "dark";
 
   const active = tabs.find((t) => t.id === activeTab) ?? tabs[0];
-  const syntaxStyle = useMemo(() => (isDark ? darkStyle : lightStyle), [isDark]);
 
   const handleCopy = () => {
     if (!active) return;
@@ -60,28 +54,14 @@ export function SnippetFrame({ label, tabs }: SnippetFrameProps) {
   return (
     <div
       className={cn(
-        "flex flex-col h-full rounded-xl overflow-hidden border",
-        isDark
-          ? "bg-muted/50 border-border/50"
-          : "bg-[#0d1117] border-transparent",
+        "flex flex-col h-full rounded-xl overflow-hidden bg-[#0d1117]",
+        isDark ? "ring-1 ring-border/40" : "",
       )}
     >
       {/* Tab bar */}
-      <div
-        className={cn(
-          "flex items-center justify-between px-3 py-2 border-b shrink-0",
-          isDark
-            ? "bg-muted/80 border-border/40"
-            : "bg-[#161b22] border-white/5",
-        )}
-      >
+      <div className="flex items-center justify-between px-3 py-2 bg-[#161b22] border-b border-white/5 shrink-0">
         <div className="flex items-center gap-3">
-          <span
-            className={cn(
-              "text-[10px] font-medium uppercase tracking-wider",
-              isDark ? "text-foreground/25" : "text-white/20",
-            )}
-          >
+          <span className="text-[10px] font-medium uppercase tracking-wider text-white/20">
             {label}
           </span>
           <div className="flex gap-0.5">
@@ -91,13 +71,9 @@ export function SnippetFrame({ label, tabs }: SnippetFrameProps) {
                 onClick={() => setActiveTab(tab.id)}
                 className={cn(
                   "px-2.5 py-1 rounded-md text-xs font-medium transition-colors",
-                  isDark
-                    ? activeTab === tab.id
-                      ? "bg-foreground/10 text-foreground/70"
-                      : "text-foreground/30 hover:text-foreground/50"
-                    : activeTab === tab.id
-                      ? "bg-white/10 text-white/70"
-                      : "text-white/30 hover:text-white/50",
+                  activeTab === tab.id
+                    ? "bg-white/10 text-white/70"
+                    : "text-white/30 hover:text-white/50",
                 )}
               >
                 {tab.label}
@@ -107,12 +83,7 @@ export function SnippetFrame({ label, tabs }: SnippetFrameProps) {
         </div>
         <button
           onClick={handleCopy}
-          className={cn(
-            "transition-colors p-1 shrink-0",
-            isDark
-              ? "text-foreground/20 hover:text-foreground/50"
-              : "text-white/20 hover:text-white/50",
-          )}
+          className="text-white/20 hover:text-white/50 transition-colors p-1 shrink-0"
         >
           {copied ? (
             <Check className="h-3.5 w-3.5 text-emerald-400" />
@@ -126,7 +97,7 @@ export function SnippetFrame({ label, tabs }: SnippetFrameProps) {
       <div className="flex-1 overflow-auto px-3 py-2">
         <SyntaxHighlighter
           language={active?.language ?? "javascript"}
-          style={syntaxStyle}
+          style={highlightStyle}
           customStyle={{
             fontSize: "0.75rem",
             lineHeight: "1.6",

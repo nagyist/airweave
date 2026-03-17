@@ -622,6 +622,12 @@ class OAuthCallbackService:
             and await self._has_claim_token(db, source_conn, ctx)
         )
 
+        ctx.logger.info(
+            f"_finalize_callback: sync_id={source_conn.sync_id}, "
+            f"should_defer_sync={should_defer_sync}, "
+            f"init_session_id={source_conn.connection_init_session_id}"
+        )
+
         if source_conn.sync_id and not should_defer_sync:
             await self._run_sync_workflow(db, source_conn, ctx)
 
@@ -740,20 +746,36 @@ class OAuthCallbackService:
         """
         sync = await self._sync_repo.get(db, id=source_conn.sync_id, ctx=ctx)
         if not sync:
+            ctx.logger.warning(
+                f"_run_sync_workflow: sync {source_conn.sync_id} not found, "
+                "skipping immediate workflow trigger"
+            )
             return
 
         jobs = await self._sync_job_repo.get_all_by_sync_id(db, sync_id=sync.id, ctx=ctx)
         if not jobs:
+            ctx.logger.warning(
+                f"_run_sync_workflow: no jobs found for sync {sync.id}, "
+                "skipping immediate workflow trigger"
+            )
             return
 
         sync_job = jobs[0]
         if sync_job.status != SyncJobStatus.PENDING:
+            ctx.logger.warning(
+                f"_run_sync_workflow: job {sync_job.id} status is '{sync_job.status}' "
+                f"(expected '{SyncJobStatus.PENDING}'), skipping immediate workflow trigger"
+            )
             return
 
         collection = await self._collection_repo.get_by_readable_id(
             db, readable_id=source_conn.readable_collection_id, ctx=ctx
         )
         if not collection:
+            ctx.logger.warning(
+                f"_run_sync_workflow: collection '{source_conn.readable_collection_id}' "
+                "not found, skipping immediate workflow trigger"
+            )
             return
 
         collection_schema = schemas.CollectionRecord.model_validate(

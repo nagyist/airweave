@@ -374,12 +374,28 @@ const Collections = () => {
         }
     };
 
-    // ** NEW: Handle OAuth callback and toast notification **
+    // ** Handle OAuth callback: verify claim token and trigger deferred sync **
     useEffect(() => {
-        if (isFromOAuthSuccess) {
-            const newSourceId = searchParams.get("source_connection_id");
+        if (!isFromOAuthSuccess) return;
 
-            // Always refresh source connections when returning from OAuth
+        const newSourceId = searchParams.get("source_connection_id");
+
+        const handleOAuthReturn = async () => {
+            if (newSourceId) {
+                const claimToken = sessionStorage.getItem(`oauth_claim_token:${newSourceId}`);
+                if (claimToken) {
+                    sessionStorage.removeItem(`oauth_claim_token:${newSourceId}`);
+                    try {
+                        await apiClient.post(
+                            `/source-connections/${newSourceId}/verify-oauth`,
+                            { claim_token: claimToken }
+                        );
+                    } catch (err) {
+                        console.error("Failed to verify OAuth flow:", err);
+                    }
+                }
+            }
+
             if (collection?.readable_id) {
                 fetchSourceConnections(collection.readable_id);
             }
@@ -400,7 +416,9 @@ const Collections = () => {
             newSearchParams.delete("source_connection_id");
             newSearchParams.delete("collection");
             setSearchParams(newSearchParams, { replace: true });
-        }
+        };
+
+        handleOAuthReturn();
     }, [isFromOAuthSuccess, collection?.readable_id, searchParams, setSearchParams]);
 
     // ** NEW: Refresh connections when panel or creation modal closes, in case a new one was added **

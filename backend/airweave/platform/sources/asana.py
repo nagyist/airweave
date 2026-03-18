@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any, AsyncGenerator, Dict, List, Optional
 
+import httpx
 from tenacity import retry, stop_after_attempt
 
 from airweave.core.logging import ContextualLogger
@@ -345,9 +346,9 @@ class AsanaSource(BaseSource):
     ) -> AsanaFileEntity | None:
         """Download an attachment via FileService. Returns None on expected skips.
 
-        SourceAuthError propagates (token is dead → abort sync).
+        401 after refresh propagates (token is dead → abort sync).
         Infrastructure failures (IOError, OSError) propagate.
-        Transient HTTP errors (rate limit exhausted, server error) skip the file.
+        Other HTTP errors (429 exhausted, 5xx, 403, 404) skip the file.
         """
         try:
             await files.download_from_url(
@@ -361,12 +362,12 @@ class AsanaSource(BaseSource):
                 return None
             return entity
         except FileSkippedException as e:
-            self.logger.warning(f"Skipping attachment {entity.gid}: {e.reason}")
+            self.logger.debug(f"Skipping attachment {entity.gid}: {e.reason}")
             return None
-        except SourceAuthError:
-            raise
-        except SourceError as e:
-            self.logger.warning(f"Failed to download attachment {entity.gid}: {e}")
+        except httpx.HTTPStatusError as e:
+            self.logger.warning(
+                f"HTTP {e.response.status_code} downloading attachment {entity.gid}: {e}"
+            )
             return None
 
     async def _fetch_and_download_attachment(

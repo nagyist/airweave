@@ -134,6 +134,7 @@ class BaseSource:
                 f"{self.__class__.__name__}: auth provider does not support refresh",
                 source_short_name=self.short_name,
                 status_code=401,
+                token_provider_kind=self.auth.provider_kind,
             )
         return await self._auth.force_refresh()
 

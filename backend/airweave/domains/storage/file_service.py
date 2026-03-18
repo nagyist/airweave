@@ -112,12 +112,17 @@ class FileService:
         client: AirweaveHttpClient,
         url: str,
         headers: dict,
+        auth: SourceAuthProvider,
         logger: ContextualLogger,
     ) -> Optional[str]:
         """HEAD request to check file size. Returns skip reason or None."""
         try:
             response = await client.head(url, headers=headers, follow_redirects=True, timeout=10.0)
-            raise_for_status(response, source_short_name="file_service")
+            raise_for_status(
+                response,
+                source_short_name="file_service",
+                token_provider_kind=auth.provider_kind,
+            )
 
             content_length = response.headers.get("Content-Length")
             if content_length:
@@ -150,6 +155,7 @@ class FileService:
         url: str,
         headers: dict,
         temp_path: str,
+        auth: SourceAuthProvider,
         logger: ContextualLogger,
     ) -> None:
         """Stream-download a file to disk with retry on 429/5xx/timeout."""
@@ -160,7 +166,11 @@ class FileService:
             follow_redirects=True,
             timeout=httpx.Timeout(180.0, read=540.0),
         ) as response:
-            raise_for_status(response, source_short_name="file_service")
+            raise_for_status(
+                response,
+                source_short_name="file_service",
+                token_provider_kind=auth.provider_kind,
+            )
 
             content_length = response.headers.get("Content-Length")
             if content_length and int(content_length) > self.MAX_FILE_SIZE_BYTES:
@@ -216,7 +226,7 @@ class FileService:
 
         headers = await self._resolve_headers(auth, entity.url)
 
-        size_skip = await self._check_file_size_via_head(client, entity.url, headers, logger)
+        size_skip = await self._check_file_size_via_head(client, entity.url, headers, auth, logger)
         if size_skip:
             raise FileSkippedException(reason=size_skip, filename=entity.name)
 
@@ -229,7 +239,7 @@ class FileService:
         )
 
         try:
-            await self._stream_download(client, entity.url, headers, temp_path, logger)
+            await self._stream_download(client, entity.url, headers, temp_path, auth, logger)
         except FileSkippedException:
             self._cleanup_temp(temp_path)
             raise
@@ -242,7 +252,9 @@ class FileService:
                     auth, client, entity.url, headers, logger
                 )
                 try:
-                    await self._stream_download(client, entity.url, headers, temp_path, logger)
+                    await self._stream_download(
+                        client, entity.url, headers, temp_path, auth, logger
+                    )
                 except Exception:
                     self._cleanup_temp(temp_path)
                     raise

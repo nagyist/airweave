@@ -136,7 +136,7 @@ class SourceAuthError(SourceError):
         *,
         source_short_name: str,
         status_code: int,
-        token_provider_kind: Optional[AuthProviderKind] = None,
+        token_provider_kind: AuthProviderKind,
     ):
         """Create a new SourceAuthError.
 
@@ -144,7 +144,7 @@ class SourceAuthError(SourceError):
             message: Human-readable error description.
             source_short_name: Source identifier.
             status_code: HTTP status code that triggered this (401 or 403).
-            token_provider_kind: Auth provider kind, if known.
+            token_provider_kind: Auth provider kind.
         """
         self.status_code = status_code
         self.token_provider_kind = token_provider_kind
@@ -164,7 +164,7 @@ class SourceTokenRefreshError(SourceAuthError):
         message: str = "Token refresh failed",
         *,
         source_short_name: str,
-        token_provider_kind: Optional[AuthProviderKind] = None,
+        token_provider_kind: AuthProviderKind,
     ):
         """Create a new SourceTokenRefreshError.
 

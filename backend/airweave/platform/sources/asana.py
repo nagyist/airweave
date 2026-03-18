@@ -141,7 +141,11 @@ class AsanaSource(BaseSource):
             raise _ResultTooLarge()
 
         try:
-            raise_for_status(response, source_short_name=self.short_name)
+            raise_for_status(
+                response,
+                source_short_name=self.short_name,
+                token_provider_kind=self.auth.provider_kind,
+            )
         except SourceAuthError:
             raise SourceAuthError(
                 message="Authentication failed after token refresh",

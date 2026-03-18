@@ -1,24 +1,21 @@
 """HTTP response → domain exception translation for source connectors.
 
-Provides ``raise_for_status()`` and ``handle_response()`` that convert
-raw ``httpx`` responses into the typed exception hierarchy from
-``airweave.domains.sources.exceptions``, so individual sources don't
-duplicate status-code triage logic.
+Translates raw ``httpx`` responses into the typed exception hierarchy
+from ``domains.sources.exceptions``:
 
-Usage in a source::
+- **401** → ``SourceAuthError`` (credentials dead, abort sync)
+- **403** → ``SourceEntityForbiddenError`` (skip — source decides severity)
+- **404** → ``SourceEntityNotFoundError`` (skip — source decides severity)
+- **429** → ``SourceRateLimitError`` (retry with backoff)
+- **5xx** → ``SourceServerError`` (retry with backoff)
+- **3xx** → ``SourceError`` (unexpected redirect)
+- **400 disguised rate limit** → ``SourceRateLimitError`` (Zoho quirk)
 
-    from airweave.platform.sources.http_helpers import raise_for_status
+Usage::
 
-    resp = await self._http_client.get(url, headers=headers)
+    resp = await self.http_client.get(url, headers=headers)
     raise_for_status(resp, source_short_name=self.short_name)
     data = resp.json()
-
-Or for per-entity calls where 403/404 should skip, not abort::
-
-    from airweave.platform.sources.http_helpers import raise_for_status
-
-    resp = await self._http_client.get(entity_url, headers=headers)
-    raise_for_status(resp, source_short_name=self.short_name, entity_id=item_id)
 """
 
 from __future__ import annotations
@@ -29,17 +26,18 @@ from airweave.domains.sources.exceptions import (
     SourceAuthError,
     SourceEntityForbiddenError,
     SourceEntityNotFoundError,
-    SourceEntitySkippedError,
     SourceError,
     SourceRateLimitError,
     SourceServerError,
 )
+from airweave.domains.sources.token_providers.protocol import AuthProviderKind
 
 
 def raise_for_status(
     response: httpx.Response,
     *,
-    source_short_name: str = "",
+    source_short_name: str,
+    token_provider_kind: AuthProviderKind,
     entity_id: str = "",
     context: str = "",
 ) -> None:
@@ -48,8 +46,9 @@ def raise_for_status(
     Args:
         response: The httpx response to check.
         source_short_name: Source identifier for the exception.
-        entity_id: If set, 403/404 raise per-entity exceptions (skip, don't abort).
-        context: Optional string appended to the error message (e.g. "fetching page list").
+        token_provider_kind: Auth provider kind for SourceAuthError.
+        entity_id: Optional entity ID for richer error messages.
+        context: Optional string appended to the error message.
     """
     if response.is_success:
         return
@@ -57,41 +56,39 @@ def raise_for_status(
     status = response.status_code
     detail = _extract_detail(response)
     ctx = f" while {context}" if context else ""
+    eid_ctx = f" (entity {entity_id})" if entity_id else ""
 
     _STATUS_HANDLERS.get(status, _handle_fallback)(
-        response, status, detail, ctx, source_short_name, entity_id
+        response, status, detail, ctx + eid_ctx, source_short_name, token_provider_kind
     )
 
 
-def _handle_401(_resp: httpx.Response, _s: int, detail: str, ctx: str, sn: str, _eid: str) -> None:
+def _handle_401(
+    _r: httpx.Response, _s: int, detail: str, ctx: str, sn: str, tpk: AuthProviderKind
+) -> None:
     raise SourceAuthError(
         f"Unauthorized (401){ctx} — credentials invalid or revoked. {detail}",
         source_short_name=sn,
         status_code=401,
+        token_provider_kind=tpk,
     )
 
 
-def _handle_403(_resp: httpx.Response, _s: int, detail: str, ctx: str, sn: str, eid: str) -> None:
-    if eid:
-        raise SourceEntityForbiddenError(
-            f"Forbidden (403){ctx}: {detail}", source_short_name=sn, entity_id=eid
-        )
-    raise SourceAuthError(
-        f"Forbidden (403){ctx} — insufficient permissions. {detail}",
-        source_short_name=sn,
-        status_code=403,
-    )
+def _handle_403(
+    _r: httpx.Response, _s: int, detail: str, ctx: str, sn: str, _tpk: AuthProviderKind
+) -> None:
+    raise SourceEntityForbiddenError(f"Forbidden (403){ctx}: {detail}", source_short_name=sn)
 
 
-def _handle_404(_resp: httpx.Response, _s: int, detail: str, ctx: str, sn: str, eid: str) -> None:
-    if eid:
-        raise SourceEntityNotFoundError(
-            f"Not found (404){ctx}: {detail}", source_short_name=sn, entity_id=eid
-        )
-    raise SourceError(f"Not found (404){ctx}: {detail}", source_short_name=sn)
+def _handle_404(
+    _r: httpx.Response, _s: int, detail: str, ctx: str, sn: str, _tpk: AuthProviderKind
+) -> None:
+    raise SourceEntityNotFoundError(f"Not found (404){ctx}: {detail}", source_short_name=sn)
 
 
-def _handle_429(resp: httpx.Response, _s: int, _detail: str, ctx: str, sn: str, _eid: str) -> None:
+def _handle_429(
+    resp: httpx.Response, _s: int, _detail: str, ctx: str, sn: str, _tpk: AuthProviderKind
+) -> None:
     retry_after = _parse_retry_after(resp)
     raise SourceRateLimitError(
         retry_after=retry_after,
@@ -101,21 +98,14 @@ def _handle_429(resp: httpx.Response, _s: int, _detail: str, ctx: str, sn: str, 
 
 
 def _handle_redirect(
-    resp: httpx.Response, status: int, _detail: str, ctx: str, sn: str, eid: str
+    resp: httpx.Response, status: int, _detail: str, ctx: str, sn: str, _tpk: AuthProviderKind
 ) -> None:
     location = resp.headers.get("Location", "<unknown>")
-    if eid:
-        raise SourceEntitySkippedError(
-            f"Redirect ({status}){ctx} → {location}",
-            source_short_name=sn,
-            entity_id=eid,
-            reason=f"redirect_{status}",
-        )
     raise SourceError(f"Unexpected redirect ({status}){ctx} → {location}", source_short_name=sn)
 
 
 def _handle_fallback(
-    resp: httpx.Response, status: int, detail: str, ctx: str, sn: str, _eid: str
+    resp: httpx.Response, status: int, detail: str, ctx: str, sn: str, _tpk: AuthProviderKind
 ) -> None:
     if status >= 500:
         raise SourceServerError(
@@ -149,23 +139,12 @@ def translate_httpx_error(
     exc: httpx.HTTPStatusError,
     *,
     source_short_name: str = "",
-    entity_id: str = "",
     context: str = "",
 ) -> None:
-    """Re-raise an ``httpx.HTTPStatusError`` as the correct domain exception.
-
-    Convenience for sources that still use ``response.raise_for_status()``
-    and catch the httpx error::
-
-        try:
-            resp.raise_for_status()
-        except httpx.HTTPStatusError as exc:
-            translate_httpx_error(exc, source_short_name=self.short_name)
-    """
+    """Re-raise an ``httpx.HTTPStatusError`` as the correct domain exception."""
     raise_for_status(
         exc.response,
         source_short_name=source_short_name,
-        entity_id=entity_id,
         context=context,
     )
 

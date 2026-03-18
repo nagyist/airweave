@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock
 import httpx
 import pytest
 
-from airweave.domains.sources.exceptions import SourceAuthError
+from airweave.domains.sources.exceptions import SourceAuthError, SourceEntityForbiddenError
 from airweave.platform.configs.config import ApolloConfig
 from airweave.platform.entities.apollo import (
     ApolloAccountEntity,
@@ -182,8 +182,9 @@ class TestPost:
             http_client=client,
             config=ApolloConfig(),
         )
-        with pytest.raises(SourceAuthError):
+        with pytest.raises(SourceAuthError) as exc_info:
             await source._post("https://api.apollo.io/api/v1/test")
+        assert exc_info.value.status_code == 401
 
 
 class TestGet:
@@ -323,6 +324,7 @@ class TestGenerateSequences:
 
     @pytest.mark.asyncio
     async def test_403_skips_without_raise(self):
+        """On 403, sequences are silently skipped (master key required)."""
         client = _mock_http_client()
         client.post.return_value = _error_response(403, {"error": "Forbidden"})
 

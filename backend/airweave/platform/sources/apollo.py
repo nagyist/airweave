@@ -12,7 +12,7 @@ from tenacity import retry, stop_after_attempt
 
 from airweave.core.logging import ContextualLogger
 from airweave.domains.browse_tree.types import NodeSelectionData
-from airweave.domains.sources.exceptions import SourceAuthError
+from airweave.domains.sources.exceptions import SourceEntityForbiddenError
 from airweave.domains.sources.token_providers.protocol import SourceAuthProvider
 from airweave.domains.storage.file_service import FileService
 from airweave.domains.syncs.cursors.cursor import SyncCursor
@@ -107,7 +107,11 @@ class ApolloSource(BaseSource):
         response = await self.http_client.post(
             url, headers=self._headers(), json=json_data or {}, params=params, timeout=30.0
         )
-        raise_for_status(response, source_short_name=self.short_name)
+        raise_for_status(
+            response,
+            source_short_name=self.short_name,
+            token_provider_kind=self.auth.provider_kind,
+        )
         return response.json()
 
     @retry(
@@ -125,7 +129,11 @@ class ApolloSource(BaseSource):
         response = await self.http_client.get(
             url, headers=self._headers(), params=params or {}, timeout=30.0
         )
-        raise_for_status(response, source_short_name=self.short_name)
+        raise_for_status(
+            response,
+            source_short_name=self.short_name,
+            token_provider_kind=self.auth.provider_kind,
+        )
         return response.json()
 
     # ------------------------------------------------------------------
@@ -243,15 +251,12 @@ class ApolloSource(BaseSource):
                     yield ApolloSequenceEntity.from_api(raw)
                 except Exception as e:
                     self.logger.warning(f"Failed to build sequence entity: {e}")
-        except SourceAuthError as e:
-            if e.status_code == 403:
-                self.logger.info(
-                    "Apollo Sequences skipped (403): this endpoint requires a master API key. "
-                    "In Apollo go to Settings → API, create a master key and use it for this "
-                    "connection to sync sequences."
-                )
-                return
-            raise
+        except SourceEntityForbiddenError:
+            self.logger.info(
+                "Apollo Sequences skipped (403): this endpoint requires a master API key. "
+                "In Apollo go to Settings → API, create a master key and use it for this "
+                "connection to sync sequences."
+            )
 
     async def _generate_email_activities(
         self,
@@ -270,15 +275,12 @@ class ApolloSource(BaseSource):
                     yield ApolloEmailActivityEntity.from_api(raw)
                 except Exception as e:
                     self.logger.warning(f"Failed to build email activity entity: {e}")
-        except SourceAuthError as e:
-            if e.status_code == 403:
-                self.logger.info(
-                    "Apollo Email Activities skipped (403): this endpoint requires a master "
-                    "API key. In Apollo go to Settings → API, create a master key and use it "
-                    "for this connection to sync outreach emails."
-                )
-                return
-            raise
+        except SourceEntityForbiddenError:
+            self.logger.info(
+                "Apollo Email Activities skipped (403): this endpoint requires a master "
+                "API key. In Apollo go to Settings → API, create a master key and use it "
+                "for this connection to sync outreach emails."
+            )
 
     # ------------------------------------------------------------------
     # Main entry point

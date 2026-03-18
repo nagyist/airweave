@@ -223,7 +223,7 @@ Choose the integration method that fits your stack:
       window.addEventListener("message", async (event) => {
         if (event.origin !== CONNECT_ORIGIN) return;
 
-        const { type } = event.data;
+        const { type, requestId } = event.data;
 
         if (type === "REQUEST_TOKEN") {
           // Fetch from your backend
@@ -231,7 +231,7 @@ Choose the integration method that fits your stack:
           const { session_token } = await res.json();
 
           iframe.contentWindow.postMessage(
-            { type: "TOKEN_RESPONSE", token: session_token },
+            { type: "TOKEN_RESPONSE", requestId, token: session_token },
             CONNECT_ORIGIN
           );
         }
@@ -260,7 +260,7 @@ The `mode` parameter controls what users can do inside the widget:
 | `all` | ✓ | ✓ | ✓ | ✓ |
 | `connect` | ✓ | | | |
 | `manage` | | ✓ | ✓ | |
-| `reauth` | | | | ✓ |
+| `reauth` | | ✓ | | ✓ |
 
 Use `connect` when onboarding new users, `manage` for a settings page, and `reauth` when a connection needs its credentials refreshed.
 

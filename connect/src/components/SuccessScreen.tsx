@@ -180,6 +180,7 @@ export function SuccessScreen({
         }
       } else {
         setIsReconnecting(false);
+        setReconnectingConnectionId(null);
       }
     } catch {
       setIsReconnecting(false);

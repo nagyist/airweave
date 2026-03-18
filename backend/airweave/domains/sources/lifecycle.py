@@ -120,8 +120,15 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
             logger=logger,
         )
 
-        # 4. Resolve auth provider
-        token_provider = await self._resolve_token_provider(
+        # 4. Create source instance
+        source = await source_connection_data.source_class.create(
+            source_credentials, config=source_connection_data.config_fields
+        )
+
+        # 5. Configure source
+        self._configure_logger(source, logger)
+        await self._configure_token_provider(
+            source=source,
             source_connection_data=source_connection_data,
             source_credentials=auth_config.credentials,
             ctx=ctx,
@@ -130,21 +137,12 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
             auth_config=auth_config,
         )
 
-        # 5. Build HTTP client with rate limiting
-        http_client = self._build_http_client(
+        self._wrap_source_with_airweave_client(
+            source=source,
             source_short_name=source_connection_data.short_name,
             source_connection_id=source_connection_data.source_connection_id,
             ctx=ctx,
             logger=logger,
-        )
-
-        # 6. Create source instance with all deps injected
-        source = await source_connection_data.source_class.create(
-            source_credentials,
-            config=source_connection_data.config_fields,
-            auth=token_provider,
-            logger=logger,
-            http_client=http_client,
         )
 
         return source
@@ -556,38 +554,45 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
     # Private: source configuration helpers
     # ------------------------------------------------------------------
 
-    async def _resolve_token_provider(
+    @staticmethod
+    def _configure_logger(source: BaseSource, logger: ContextualLogger) -> None:
+        if hasattr(source, "set_logger"):
+            source.set_logger(logger)
+
+    async def _configure_token_provider(
         self,
+        source: BaseSource,
         source_connection_data: SourceConnectionData,
         source_credentials: SourceCredentials,
         ctx: ApiContext,
         logger: ContextualLogger,
         access_token: Optional[str],
         auth_config: AuthConfig,
-    ) -> Optional["SourceAuthProvider"]:
-        """Resolve the appropriate auth provider for this source. Returns it (no setter)."""
-        from airweave.domains.sources.token_providers.protocol import SourceAuthProvider
-
+    ) -> None:
+        """Set up the appropriate TokenProvider for this source."""
         auth_provider_instance: Optional[BaseAuthProvider] = auth_config.auth_provider_instance
         short_name = source_connection_data.short_name
 
         if access_token is not None:
-            return StaticTokenProvider(access_token, source_short_name=short_name)
+            source.set_token_provider(
+                StaticTokenProvider(access_token, source_short_name=short_name)
+            )
+            return
 
         oauth_type = source_connection_data.oauth_type
         if not oauth_type:
-            return None
+            return
 
         try:
             if auth_provider_instance:
-                return AuthProviderTokenProvider(
+                token_provider = AuthProviderTokenProvider(
                     auth_provider_instance=auth_provider_instance,
                     source_short_name=short_name,
                     source_registry=self._source_registry,
                     logger=logger,
                 )
             else:
-                return OAuthTokenProvider(
+                token_provider = OAuthTokenProvider(
                     credentials=source_credentials,
                     oauth_type=oauth_type,
                     oauth2_service=self._oauth2_service,
@@ -598,6 +603,8 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
                     config_fields=source_connection_data.config_fields,
                 )
 
+            source.set_token_provider(token_provider)
+
         except Exception as e:
             raise SourceCreationError(short_name, f"token provider setup failed: {e}") from e
 
@@ -605,30 +612,40 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
     # Private: rate limiting wrapper
     # ------------------------------------------------------------------
 
-    def _build_http_client(
+    def _wrap_source_with_airweave_client(
         self,
+        source: BaseSource,
         source_short_name: str,
         source_connection_id: UUID,
         ctx: ApiContext,
         logger: ContextualLogger,
-    ) -> AirweaveHttpClient:
-        """Build an AirweaveHttpClient with rate limiting for this source."""
+    ) -> None:
+        """Wrap source HTTP client with AirweaveHttpClient for rate limiting."""
         feature_enabled = ctx.has_feature(FeatureFlag.SOURCE_RATE_LIMITING)
+        original_factory = source._http_client_factory
+        rate_limiter = self._rate_limiter
 
-        client = AirweaveHttpClient(
-            wrapped_client=httpx.AsyncClient(),
-            org_id=ctx.organization.id,
-            source_short_name=source_short_name,
-            rate_limiter=self._rate_limiter,
-            source_connection_id=source_connection_id,
-            feature_flag_enabled=feature_enabled,
-            logger=logger,
-        )
+        def airweave_client_factory(**kwargs):
+            if original_factory:
+                base_client = original_factory(**kwargs)
+            else:
+                base_client = httpx.AsyncClient(**kwargs)
+
+            return AirweaveHttpClient(
+                wrapped_client=base_client,
+                org_id=ctx.organization.id,
+                source_short_name=source_short_name,
+                rate_limiter=rate_limiter,
+                source_connection_id=source_connection_id,
+                feature_flag_enabled=feature_enabled,
+                logger=logger,
+            )
+
+        source.set_http_client_factory(airweave_client_factory)
         logger.debug(
-            f"AirweaveHttpClient built for {source_short_name} "
+            f"AirweaveHttpClient configured for {source.__class__.__name__} "
             f"(feature_flag_enabled={feature_enabled})"
         )
-        return client
 
     # ------------------------------------------------------------------
     # Private: config field helpers

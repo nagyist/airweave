@@ -176,11 +176,7 @@ class SyncFactory:
         worker_pool = AsyncWorkerPool(logger=sync_context.logger)
 
         stream = AsyncSourceStream(
-            source_generator=runtime.source.generate_entities(
-                cursor=runtime.cursor,
-                files=files,
-                node_selections=node_selections,
-            ),
+            source_generator=runtime.source.generate_entities(),
             queue_size=10000,
             logger=sync_context.logger,
         )
@@ -249,17 +245,20 @@ class SyncFactory:
             sync_job_id=sync_job.id,
             storage_backend=container_mod.container.storage_backend,
         )
+        source.set_file_downloader(files)
 
         cursor = await cls._create_cursor(
             db=db, sync=sync, source_class=type(source), ctx=ctx,
             logger=sync_logger, force_full_sync=force_full_sync,
             execution_config=execution_config,
         )
+        source.set_cursor(cursor)
 
         node_selections = await cls._load_node_selections(
             db, UUID(str(source_connection_obj.id)), ctx
         )
         if node_selections:
+            source.set_node_selections(node_selections)
             sync_logger.info(
                 f"Loaded {len(node_selections)} node selections for targeted sync"
             )

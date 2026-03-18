@@ -489,7 +489,6 @@ def create_container(settings: Settings) -> Container:
         response_builder=sync_deps["response_builder"],
         sync_repo=source_deps["sync_repo"],
         sync_cursor_repo=source_deps["sync_cursor_repo"],
-        sync_cursor_service=source_deps["sync_cursor_service"],
         sync_job_repo=source_deps["sync_job_repo"],
         payment_gateway=billing_services["payment_gateway"],
         sync_record_service=sync_deps["sync_record_service"],

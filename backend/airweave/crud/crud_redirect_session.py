@@ -2,13 +2,14 @@
 
 import secrets
 import string
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Optional
 
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave.core.context import BaseContext
+from airweave.core.datetime_utils import utc_now
 from airweave.db.unit_of_work import UnitOfWork
 from airweave.models.redirect_session import RedirectSession
 
@@ -84,19 +85,28 @@ class CRUDRedirectSession:
         res = await db.execute(q)
         return res.scalar_one_or_none()
 
-    async def consume(self, db: AsyncSession, code: str, uow: Optional[UnitOfWork] = None) -> None:
-        """Delete the mapping (one-time use).
+    async def consume(self, db: AsyncSession, code: str) -> Optional[RedirectSession]:
+        """Atomically delete and return a redirect session (one-time use).
+
+        Uses DELETE ... RETURNING so the first concurrent caller gets the row
+        and every subsequent caller sees None.
 
         Args:
             db: Database session
-            code: The unique code to delete
-            uow: Optional unit of work for transaction management
+            code: The unique code to consume
+
+        Returns:
+            The consumed RedirectSession (detached from the session), or None
+            if already consumed / missing.  The object is expunged before
+            commit, so only eagerly-loaded column attributes are safe to read.
         """
-        q = delete(RedirectSession).where(RedirectSession.code == code)
-        await db.execute(q)
-        # Only commit if not part of a larger transaction
-        if not uow:
-            await db.commit()
+        q = delete(RedirectSession).where(RedirectSession.code == code).returning(RedirectSession)
+        result = await db.execute(q)
+        row = result.scalar_one_or_none()
+        if row is not None:
+            db.expunge(row)
+        await db.commit()
+        return row
 
     @staticmethod
     def is_expired(rs: RedirectSession) -> bool:
@@ -108,7 +118,7 @@ class CRUDRedirectSession:
         Returns:
             True if the session has expired, False otherwise
         """
-        return rs.expires_at <= datetime.now(timezone.utc)
+        return rs.expires_at <= utc_now()
 
 
 redirect_session = CRUDRedirectSession()

@@ -220,6 +220,10 @@ class OAuthRedirectSessionRepositoryProtocol(Protocol):
         """Get a redirect session by its unique code."""
         ...
 
+    async def consume(self, db: AsyncSession, code: str) -> Optional[Any]:
+        """Atomically delete and return a redirect session (one-time use)."""
+        ...
+
 
 # ---------------------------------------------------------------------------
 # Higher-level OAuth service protocols

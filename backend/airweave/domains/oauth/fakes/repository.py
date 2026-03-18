@@ -27,6 +27,10 @@ class FakeOAuthRedirectSessionRepository:
         self._calls.append(("get_by_code", db, code))
         return self._store.get(code)
 
+    async def consume(self, db: AsyncSession, code: str) -> Optional[RedirectSession]:
+        self._calls.append(("consume", db, code))
+        return self._store.pop(code, None)
+
     async def generate_unique_code(self, db: AsyncSession, *, length: int) -> str:
         self._counter += 1
         return f"fakecode{self._counter:0{length}d}"[:length]

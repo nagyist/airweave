@@ -7,13 +7,14 @@ Uses table-driven tests wherever possible.
 """
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta
 from typing import Optional
 from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
 import pytest
 
+from airweave.core.datetime_utils import utc_now
 from airweave.core.exceptions import NotFoundException
 
 from airweave.api.context import ApiContext
@@ -37,7 +38,7 @@ from airweave.domains.syncs.fakes.sync_lifecycle_service import FakeSyncLifecycl
 from airweave.schemas.organization import Organization
 from airweave.schemas.source_connection import AuthenticationMethod, SourceConnectionListItem
 
-NOW = datetime.now(timezone.utc)
+NOW = utc_now()
 ORG_ID = uuid4()
 
 
@@ -347,11 +348,37 @@ async def test_get_redirect_url_returns_url():
     redirect_repo = FakeOAuthRedirectSessionRepository()
     session = MagicMock()
     session.final_url = "https://provider.example.com/auth?state=abc"
+    session.expires_at = utc_now() + timedelta(minutes=5)
     redirect_repo.seed("abc123", session)
     svc = _build_service(redirect_session_repo=redirect_repo)
 
     result = await svc.get_redirect_url(AsyncMock(), code="abc123")
     assert result == "https://provider.example.com/auth?state=abc"
+
+
+async def test_get_redirect_url_replay_raises():
+    redirect_repo = FakeOAuthRedirectSessionRepository()
+    session = MagicMock()
+    session.final_url = "https://provider.example.com/auth?state=abc"
+    session.expires_at = utc_now() + timedelta(minutes=5)
+    redirect_repo.seed("abc123", session)
+    svc = _build_service(redirect_session_repo=redirect_repo)
+
+    await svc.get_redirect_url(AsyncMock(), code="abc123")
+    with pytest.raises(NotFoundException, match="Authorization link expired or invalid"):
+        await svc.get_redirect_url(AsyncMock(), code="abc123")
+
+
+async def test_get_redirect_url_expired_raises():
+    redirect_repo = FakeOAuthRedirectSessionRepository()
+    session = MagicMock()
+    session.final_url = "https://provider.example.com/auth?state=abc"
+    session.expires_at = utc_now() - timedelta(minutes=1)
+    redirect_repo.seed("abc123", session)
+    svc = _build_service(redirect_session_repo=redirect_repo)
+
+    with pytest.raises(NotFoundException, match="Authorization link expired or invalid"):
+        await svc.get_redirect_url(AsyncMock(), code="abc123")
 
 
 async def test_get_redirect_url_missing_code_raises():

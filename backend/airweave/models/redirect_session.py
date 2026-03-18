@@ -1,10 +1,11 @@
 """Models for handling ephemeral redirect sessions for OAuth flows."""
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 
 from sqlalchemy import DateTime, Index, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
+from airweave.core.datetime_utils import utc_now
 from airweave.models._base import OrganizationBase
 
 
@@ -41,4 +42,4 @@ class RedirectSession(OrganizationBase):
         Returns:
             A datetime object representing the expiration time in UTC
         """
-        return datetime.now(timezone.utc) + timedelta(minutes=minutes)
+        return utc_now() + timedelta(minutes=minutes)

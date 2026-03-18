@@ -90,3 +90,7 @@ class OAuthRedirectSessionRepository:
     async def get_by_code(self, db: AsyncSession, code: str) -> Optional[RedirectSession]:
         """Look up a redirect session by its code."""
         return await crud.redirect_session.get_by_code(db, code)
+
+    async def consume(self, db: AsyncSession, code: str) -> Optional[RedirectSession]:
+        """Atomically consume a redirect session (one-time use)."""
+        return await redirect_session.consume(db, code)

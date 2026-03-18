@@ -6,6 +6,7 @@ DenseEmbedding back, handle errors themselves.
 """
 
 import asyncio
+import logging
 
 import tiktoken
 from openai import AsyncOpenAI
@@ -24,6 +25,7 @@ from airweave.domains.embedders.protocols import DenseEmbedderProtocol
 from airweave.domains.embedders.types import DenseEmbedding
 
 _PROVIDER = "openai"
+logger = logging.getLogger(__name__)
 
 
 class OpenAIDenseEmbedder(DenseEmbedderProtocol):
@@ -36,7 +38,7 @@ class OpenAIDenseEmbedder(DenseEmbedderProtocol):
 
     _MAX_TOKENS_PER_TEXT: int = 8192
     _MAX_TEXTS_PER_SUB_BATCH: int = 100
-    _MAX_TOKENS_PER_REQUEST: int = 300_000
+    _MAX_TOKENS_PER_REQUEST: int = 100_000
     _MAX_CONCURRENT_REQUESTS: int = 10
     _CLIENT_TIMEOUT: float = 1200.0
     _CLIENT_MAX_RETRIES: int = 2
@@ -147,6 +149,12 @@ class OpenAIDenseEmbedder(DenseEmbedderProtocol):
         total_tokens = sum(token_counts)
 
         if total_tokens > self._MAX_TOKENS_PER_REQUEST and len(batch) > 1:
+            logger.info(
+                "Splitting sub-batch: %d texts, %d total tokens (limit %d)",
+                len(batch),
+                total_tokens,
+                self._MAX_TOKENS_PER_REQUEST,
+            )
             mid = len(batch) // 2
             left, right = await asyncio.gather(
                 self._embed_sub_batch(batch[:mid], token_counts[:mid]),
@@ -154,6 +162,11 @@ class OpenAIDenseEmbedder(DenseEmbedderProtocol):
             )
             return left + right
 
+        logger.debug(
+            "Sending sub-batch to API: %d texts, %d total tokens",
+            len(batch),
+            total_tokens,
+        )
         async with self._semaphore:
             return await self._embed_batch(batch)
 

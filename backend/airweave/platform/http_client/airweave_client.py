@@ -12,8 +12,8 @@ from uuid import UUID
 
 import httpx
 
-from airweave.core.exceptions import SourceRateLimitExceededException
 from airweave.core.logging import ContextualLogger
+from airweave.domains.sources.rate_limiting.exceptions import InternalRateLimitExceeded
 from airweave.domains.sources.rate_limiting.service import SourceRateLimiter
 from airweave.platform.utils.ssrf import SSRFViolation, validate_url
 
@@ -101,7 +101,7 @@ class AirweaveHttpClient:
                 source_short_name=self._source_short_name,
                 source_connection_id=self._source_connection_id,
             )
-        except SourceRateLimitExceededException as e:
+        except InternalRateLimitExceeded as e:
             fake_response = httpx.Response(
                 status_code=429,
                 headers={"Retry-After": str(int(e.retry_after))},

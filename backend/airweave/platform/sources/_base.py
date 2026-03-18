@@ -21,20 +21,19 @@ from typing import (
 )
 
 if TYPE_CHECKING:
-    from airweave.domains.sources.token_providers.protocol import (
-        SourceAuthProvider,
-        TokenProviderProtocol,
-    )
-    from airweave.domains.syncs.cursors.cursor import SyncCursor
     from airweave.platform.access_control.schemas import MembershipTuple
-    from airweave.platform.http_client.airweave_client import AirweaveHttpClient
 
 import httpx
 from pydantic import BaseModel
 
-from airweave.core.logging import logger
+from airweave.core.logging import ContextualLogger
 from airweave.core.shared_models import RateLimitLevel
+from airweave.domains.browse_tree.types import NodeSelectionData
+from airweave.domains.sources.token_providers.protocol import SourceAuthProvider
+from airweave.domains.storage.file_service import FileService
+from airweave.domains.syncs.cursors.cursor import SyncCursor
 from airweave.platform.entities._base import BaseEntity
+from airweave.platform.http_client.airweave_client import AirweaveHttpClient
 from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
 
 
@@ -75,9 +74,9 @@ class BaseSource:
     def __init__(
         self,
         *,
-        auth: SourceAuthProvider | None = None,
-        logger: Any = None,
-        http_client: AirweaveHttpClient | None = None,
+        auth: SourceAuthProvider,
+        logger: ContextualLogger,
+        http_client: AirweaveHttpClient,
     ) -> None:
         """Initialize with injected dependencies.
 
@@ -95,19 +94,17 @@ class BaseSource:
     # ------------------------------------------------------------------
 
     @property
-    def auth(self) -> SourceAuthProvider | None:
+    def auth(self) -> SourceAuthProvider:
         """The auth provider for this source."""
         return self._auth
 
     @property
-    def logger(self):
-        """Contextual logger, falling back to default if not set."""
-        if self._logger is not None:
-            return self._logger
-        return logger
+    def logger(self) -> ContextualLogger:
+        """Contextual logger with sync/search metadata."""
+        return self._logger
 
     @property
-    def http_client(self) -> AirweaveHttpClient | None:
+    def http_client(self) -> AirweaveHttpClient:
         """Pre-built HTTP client with rate limiting."""
         return self._http_client
 
@@ -118,36 +115,31 @@ class BaseSource:
     async def get_access_token(self) -> str:
         """Get a valid access token via the auth provider.
 
-        Returns:
-            A valid access token string.
-
-        Raises:
-            RuntimeError: If no auth provider is configured.
+        Delegates to ``self._auth.get_token()`` for TokenProviderProtocol
+        implementations.
         """
-        if self._auth and hasattr(self._auth, "get_token"):
+        if hasattr(self._auth, "get_token"):
             return await self._auth.get_token()
-
-        token = getattr(self, "access_token", None)
-        if token:
-            return token
-
         raise RuntimeError(
-            f"{self.__class__.__name__}.get_access_token() called but no "
-            f"auth provider or access_token is available."
+            f"{self.__class__.__name__}: auth provider {type(self._auth).__name__} "
+            f"does not support get_token(). Use DirectCredentialProvider.credentials instead."
         )
 
-    async def refresh_on_unauthorized(self) -> Optional[str]:
+    async def refresh_on_unauthorized(self) -> str:
         """Force-refresh the token after a 401 error."""
-        if not self._auth or not hasattr(self._auth, "force_refresh"):
-            raise RuntimeError(
-                f"{self.__class__.__name__}.refresh_on_unauthorized() called but no "
-                f"token provider is configured."
+        if not hasattr(self._auth, "force_refresh"):
+            from airweave.domains.sources.exceptions import SourceAuthError
+
+            raise SourceAuthError(
+                f"{self.__class__.__name__}: auth provider does not support refresh",
+                source_short_name=self.short_name,
+                status_code=401,
             )
         return await self._auth.force_refresh()
 
     async def get_token_for_resource(self, resource_scope: str) -> Optional[str]:
         """Get a token for a different resource scope (SharePoint Online only)."""
-        if self._auth and hasattr(self._auth, "get_token_for_resource"):
+        if hasattr(self._auth, "get_token_for_resource"):
             return await self._auth.get_token_for_resource(resource_scope)
         return None
 
@@ -156,34 +148,21 @@ class BaseSource:
     # ------------------------------------------------------------------
 
     @property
-    def _http_client_factory(self) -> Optional[Callable]:
-        """Backward-compat: sources using async with self.http_client() pattern."""
-        if self._http_client:
+    def _http_client_factory(self) -> Callable:
+        """Deprecated shim — only exists for unmigrated callers.
 
-            def _factory(**kwargs):
-                return self._http_client
+        Will be removed once all sources and FileService callers are migrated.
+        """
 
-            return _factory
-        return None
+        def _factory(**kwargs):
+            return self._http_client
+
+        return _factory
 
     @_http_client_factory.setter
     def _http_client_factory(self, value):
         """No-op setter for backward compat during migration."""
         pass
-
-    from contextlib import asynccontextmanager
-
-    @asynccontextmanager
-    async def http_client_ctx(self, **kwargs):
-        """HTTP client as async context manager (backward compat).
-
-        Prefer accessing self.http_client directly for new code.
-        """
-        if self._http_client:
-            yield self._http_client
-        else:
-            async with httpx.AsyncClient(**kwargs) as client:
-                yield client
 
     # ------------------------------------------------------------------
     # Class metadata methods
@@ -239,27 +218,24 @@ class BaseSource:
     @abstractmethod
     async def create(
         cls,
-        credentials: Optional[Any] = None,
-        config: Optional[Dict[str, Any]] = None,
         *,
-        auth: SourceAuthProvider | None = None,
-        logger: Any = None,
-        http_client: AirweaveHttpClient | None = None,
+        auth: SourceAuthProvider,
+        logger: ContextualLogger,
+        http_client: AirweaveHttpClient,
+        config: BaseModel,
     ) -> BaseSource:
         """Create a new source instance.
 
-        Sources override this to extract what they need from credentials/config.
-        The lifecycle service passes auth, logger, and http_client as keyword args.
+        Auth is fully handled by the ``auth`` provider — sources never
+        touch raw credentials. Source-specific runtime configuration
+        (repo name, site URL, etc.) comes from ``config`` as a typed
+        Pydantic model (the source's ``config_class``).
 
         Args:
-            credentials: Credentials for the source (legacy positional).
-            config: Configuration parameters (legacy positional).
-            auth: Auth provider (injected by lifecycle).
-            logger: Contextual logger (injected by lifecycle).
-            http_client: Pre-built HTTP client (injected by lifecycle).
-
-        Returns:
-            A configured source instance.
+            auth: Auth provider — ``TokenProviderProtocol`` or ``DirectCredentialProvider``.
+            logger: Contextual logger with sync/search metadata.
+            http_client: Pre-built AirweaveHttpClient with rate limiting.
+            config: Typed config instance (source's config_class, parsed by lifecycle).
         """
         pass
 
@@ -268,8 +244,8 @@ class BaseSource:
         self,
         *,
         cursor: SyncCursor | None = None,
-        files: Any | None = None,
-        node_selections: list | None = None,
+        files: FileService | None = None,
+        node_selections: list[NodeSelectionData] | None = None,
     ) -> AsyncGenerator[BaseEntity, None]:
         """Generate entities for the source.
 
@@ -323,15 +299,15 @@ class BaseSource:
     # ------------------------------------------------------------------
 
     def set_logger(self, value) -> None:
-        """Deprecated: use create(logger=...) instead."""
+        """Deprecated: logger is now a required param on create()."""
         self._logger = value
 
     def set_token_provider(self, provider) -> None:
-        """Deprecated: use create(auth=...) instead."""
+        """Deprecated: auth is now a required param on create()."""
         self._auth = provider
 
     def set_http_client_factory(self, factory) -> None:
-        """Deprecated: use create(http_client=...) instead."""
+        """Deprecated no-op: http_client is now a required param on create()."""
         pass
 
     def set_file_downloader(self, downloader) -> None:
@@ -357,7 +333,7 @@ class BaseSource:
         return getattr(self, "_file_downloader", None)
 
     @property
-    def token_provider(self):
+    def token_provider(self) -> SourceAuthProvider:
         """Deprecated: use self.auth instead."""
         return self._auth
 
@@ -435,9 +411,7 @@ class BaseSource:
                             hdrs["Authorization"] = f"Bearer {new_token}"
                             resp = await client.get(ping_url, headers=hdrs)
                             return 200 <= resp.status_code < 300
-                    self.logger.warning(
-                        f"Ping failed: HTTP {resp.status_code} - {resp.text[:200]}"
-                    )
+                    self.logger.warning(f"Ping failed: HTTP {resp.status_code} - {resp.text[:200]}")
                     return False
             except httpx.RequestError as e:
                 self.logger.error(f"Ping request error: {e}")

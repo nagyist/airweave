@@ -5,8 +5,13 @@ set_*() calls that were duplicated across sync builders, search factories, and
 credential services.
 """
 
-from typing import Any, Dict, Optional, Union
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any, Dict, Optional, Union
 from uuid import UUID
+
+if TYPE_CHECKING:
+    from airweave.domains.sources.token_providers.protocol import SourceAuthProvider
 
 import httpx
 from pydantic import BaseModel
@@ -15,7 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from airweave.api.context import ApiContext
 from airweave.core import credentials
 from airweave.core.exceptions import NotFoundException
-from airweave.core.logging import ContextualLogger
+from airweave.core.logging import ContextualLogger, LoggerConfigurator
 from airweave.core.shared_models import FeatureFlag
 from airweave.domains.auth_provider._base import BaseAuthProvider
 from airweave.domains.auth_provider.protocols import AuthProviderRegistryProtocol
@@ -71,7 +76,17 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
         self._cred_repo = cred_repo
         self._oauth2_service = oauth2_service
 
-        self._rate_limiter = SourceRateLimiter(source_registry=source_registry)
+        from airweave.core.redis_client import redis_client
+        from airweave.domains.sources.rate_limiting.config_provider import (
+            DatabaseRateLimitConfigProvider,
+        )
+
+        redis = redis_client.client
+        self._rate_limiter = SourceRateLimiter(
+            redis=redis,
+            source_registry=source_registry,
+            config_provider=DatabaseRateLimitConfigProvider(redis=redis),
+        )
 
     # ------------------------------------------------------------------
     # Public API
@@ -112,15 +127,7 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
             access_token=access_token,
         )
 
-        # 3. Process credentials for source consumption
-        entry = self._source_registry.get(source_connection_data.short_name)
-        source_credentials = self._normalize_credentials(
-            raw_credentials=auth_config.credentials,
-            entry=entry,
-            logger=logger,
-        )
-
-        # 4. Resolve auth provider
+        # 3. Resolve auth provider
         token_provider = await self._resolve_token_provider(
             source_connection_data=source_connection_data,
             source_credentials=auth_config.credentials,
@@ -130,7 +137,7 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
             auth_config=auth_config,
         )
 
-        # 5. Build HTTP client with rate limiting
+        # 4. Build HTTP client with rate limiting
         http_client = self._build_http_client(
             source_short_name=source_connection_data.short_name,
             source_connection_id=source_connection_data.source_connection_id,
@@ -138,13 +145,16 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
             logger=logger,
         )
 
+        # 5. Parse config_fields into typed config
+        entry = self._source_registry.get(source_connection_data.short_name)
+        config = self._build_typed_config(entry, source_connection_data.config_fields)
+
         # 6. Create source instance with all deps injected
         source = await source_connection_data.source_class.create(
-            source_credentials,
-            config=source_connection_data.config_fields,
             auth=token_provider,
             logger=logger,
             http_client=http_client,
+            config=config,
         )
 
         return source
@@ -157,26 +167,54 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
     ) -> None:
         """Validate credentials by creating a lightweight source and calling .validate().
 
-        No HTTP wrapping, no rate limiting — just create + validate.
-        The source's own access_token (set during create()) is used for
-        any API calls made during validation.
+        Wraps credentials in a StaticTokenProvider / DirectCredentialProvider
+        and provides a plain httpx client (no rate limiting) so the source
+        contract is satisfied.
 
         Raises:
             SourceNotFoundError: If source short_name is not in the registry.
             SourceCreationError: If source_class.create() fails.
             SourceValidationError: If source.validate() returns False or raises.
         """
+        from uuid import UUID as _UUID
+
+        from airweave.domains.sources.token_providers.credential import DirectCredentialProvider
+
         try:
             entry = self._source_registry.get(short_name)
         except KeyError:
             raise SourceNotFoundError(short_name)
 
         source_class = entry.source_class_ref
-
         normalized = self._normalize_credentials(credentials, entry)
 
+        if isinstance(normalized, str):
+            auth = StaticTokenProvider(normalized, source_short_name=short_name)
+        else:
+            auth = DirectCredentialProvider(normalized, source_short_name=short_name)
+
+        validation_logger = LoggerConfigurator.configure_logger(
+            f"validate:{short_name}", prefix=f"[validate:{short_name}]"
+        )
+        validation_client = AirweaveHttpClient(
+            wrapped_client=httpx.AsyncClient(),
+            org_id=_UUID(int=0),
+            source_short_name=short_name,
+            rate_limiter=None,
+            source_connection_id=None,
+            feature_flag_enabled=False,
+            logger=validation_logger,
+        )
+
+        typed_config = self._build_typed_config(entry, config or {})
+
         try:
-            source = await source_class.create(normalized, config=config)
+            source = await source_class.create(
+                auth=auth,
+                logger=validation_logger,
+                http_client=validation_client,
+                config=typed_config,
+            )
         except Exception as exc:
             raise SourceCreationError(short_name, str(exc)) from exc
 
@@ -564,9 +602,14 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
         logger: ContextualLogger,
         access_token: Optional[str],
         auth_config: AuthConfig,
-    ) -> Optional["SourceAuthProvider"]:
-        """Resolve the appropriate auth provider for this source. Returns it (no setter)."""
-        from airweave.domains.sources.token_providers.protocol import SourceAuthProvider
+    ) -> "SourceAuthProvider":
+        """Resolve the appropriate auth provider for this source.
+
+        Always returns a concrete SourceAuthProvider — never None.
+        Non-OAuth sources get a StaticTokenProvider (string creds) or
+        DirectCredentialProvider (structured creds).
+        """
+        from airweave.domains.sources.token_providers.credential import DirectCredentialProvider
 
         auth_provider_instance: Optional[BaseAuthProvider] = auth_config.auth_provider_instance
         short_name = source_connection_data.short_name
@@ -575,8 +618,11 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
             return StaticTokenProvider(access_token, source_short_name=short_name)
 
         oauth_type = source_connection_data.oauth_type
+
         if not oauth_type:
-            return None
+            if isinstance(source_credentials, str):
+                return StaticTokenProvider(source_credentials, source_short_name=short_name)
+            return DirectCredentialProvider(source_credentials, source_short_name=short_name)
 
         try:
             if auth_provider_instance:
@@ -629,6 +675,17 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
             f"(feature_flag_enabled={feature_enabled})"
         )
         return client
+
+    def _build_typed_config(
+        self,
+        entry: SourceRegistryEntry,
+        config_fields: Dict[str, Any],
+    ) -> BaseModel:
+        """Parse raw config_fields dict into the source's typed config class."""
+        from airweave.platform.configs.config import SourceConfig
+
+        config_class = entry.config_ref or SourceConfig
+        return config_class.model_validate(config_fields or {})
 
     # ------------------------------------------------------------------
     # Private: config field helpers

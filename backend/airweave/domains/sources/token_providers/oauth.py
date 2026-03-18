@@ -24,7 +24,6 @@ from airweave.domains.oauth.exceptions import (
     OAuthRefreshTokenRevokedError,
 )
 from airweave.domains.oauth.types import RefreshResult
-from airweave.domains.sources.token_providers.protocol import AuthProviderKind, TokenProviderProtocol
 from airweave.domains.sources.token_providers.exceptions import (
     TokenCredentialsInvalidError,
     TokenProviderConfigError,
@@ -32,6 +31,10 @@ from airweave.domains.sources.token_providers.exceptions import (
     TokenProviderRateLimitError,
     TokenProviderServerError,
     TokenRefreshNotSupportedError,
+)
+from airweave.domains.sources.token_providers.protocol import (
+    AuthProviderKind,
+    TokenProviderProtocol,
 )
 
 if TYPE_CHECKING:

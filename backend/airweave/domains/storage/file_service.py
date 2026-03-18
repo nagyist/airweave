@@ -9,7 +9,7 @@ Handles:
 
 import os
 import shutil
-from typing import Callable, Optional, Tuple
+from typing import Optional
 from uuid import UUID, uuid4
 
 import aiofiles
@@ -17,10 +17,13 @@ import httpx
 from tenacity import retry, stop_after_attempt
 
 from airweave.core.logging import ContextualLogger
+from airweave.domains.sources.token_providers.protocol import SourceAuthProvider
 from airweave.domains.storage.exceptions import FileSkippedException
 from airweave.domains.storage.paths import paths
 from airweave.domains.storage.protocols import StorageBackend
 from airweave.platform.entities._base import FileEntity
+from airweave.platform.http_client.airweave_client import AirweaveHttpClient
+from airweave.platform.sources.http_helpers import raise_for_status
 from airweave.platform.sources.retry_helpers import (
     retry_if_rate_limit_or_timeout,
     wait_rate_limit_with_backoff,
@@ -63,91 +66,77 @@ class FileService:
         os.makedirs(self.base_temp_dir, exist_ok=True)
 
     # =========================================================================
-    # URL Download (for live sources)
+    # Auth helpers
     # =========================================================================
 
-    @retry(
-        stop=stop_after_attempt(5),
-        retry=retry_if_rate_limit_or_timeout,
-        wait=wait_rate_limit_with_backoff,
-        reraise=True,
-    )
-    async def _head_with_retry(
+    async def _resolve_headers(
         self,
-        client: httpx.AsyncClient,
+        auth: SourceAuthProvider,
+        url: str,
+    ) -> dict:
+        """Build auth headers for a download URL.
+
+        Pre-signed URLs (S3/Azure) skip the bearer token.
+        """
+        is_presigned = "X-Amz-Algorithm" in url
+        if is_presigned:
+            return {}
+
+        token = await auth.get_token() if hasattr(auth, "get_token") else None
+        if not token:
+            raise ValueError(f"No access token available for downloading {url}")
+        return {"Authorization": f"Bearer {token}"}
+
+    async def _resolve_headers_with_refresh(
+        self,
+        auth: SourceAuthProvider,
+        client: AirweaveHttpClient,
         url: str,
         headers: dict,
         logger: ContextualLogger,
-    ) -> httpx.Response:
-        """Make HEAD request with retry logic for rate limits and timeouts."""
+    ) -> dict:
+        """Re-resolve headers after a 401 if the auth provider supports refresh."""
+        if not auth.supports_refresh:
+            return headers
+
+        logger.info("Download got 401, attempting token refresh")
+        new_token = await auth.force_refresh()
+        return {"Authorization": f"Bearer {new_token}"}
+
+    # =========================================================================
+    # URL Download (for live sources)
+    # =========================================================================
+
+    async def _check_file_size_via_head(
+        self,
+        client: AirweaveHttpClient,
+        url: str,
+        headers: dict,
+        logger: ContextualLogger,
+    ) -> Optional[str]:
+        """HEAD request to check file size. Returns skip reason or None."""
         try:
             response = await client.head(url, headers=headers, follow_redirects=True, timeout=10.0)
-            response.raise_for_status()
-            return response
-        except httpx.HTTPStatusError as e:
-            if e.response.status_code == 429:
-                retry_after = e.response.headers.get("Retry-After", "unknown")
-                logger.warning(
-                    f"Rate limit hit (429) during HEAD request for file validation "
-                    f"(will retry after {retry_after}s)"
-                )
-            raise
+            raise_for_status(response, source_short_name="file_service")
 
-    async def _validate_file_before_download(
-        self,
-        entity: FileEntity,
-        http_client_factory: Callable,
-        access_token_provider: Callable,
-        logger: ContextualLogger,
-    ) -> Tuple[bool, Optional[str]]:
-        """Validate file before download (extension and size check).
+            content_length = response.headers.get("Content-Length")
+            if content_length:
+                size_bytes = int(content_length)
+                if size_bytes > self.MAX_FILE_SIZE_BYTES:
+                    size_mb = size_bytes / (1024 * 1024)
+                    return f"File too large: {size_mb:.1f}MB (max 200MB)"
 
-        Returns:
-            Tuple of (should_download, skip_reason)
+        except (httpx.HTTPError, ValueError) as e:
+            logger.debug(f"HEAD request failed for size check: {e}, will attempt download")
+        return None
 
-        Raises:
-            ValueError: If URL or access token is unavailable
-        """
-        if not entity.url:
-            raise ValueError(f"No download URL for file {entity.name}")
-
-        _, ext = os.path.splitext(entity.name)
+    def _validate_extension(self, filename: str) -> Optional[str]:
+        """Check if the file extension is supported. Returns skip reason or None."""
+        _, ext = os.path.splitext(filename)
         ext = ext.lower()
-
         if ext not in SUPPORTED_FILE_EXTENSIONS:
-            return False, f"Unsupported file extension: {ext}"
-
-        is_presigned_url = "X-Amz-Algorithm" in entity.url
-
-        try:
-            token = await access_token_provider()
-            if not token and not is_presigned_url:
-                raise ValueError(f"No access token available for downloading {entity.name}")
-
-            async with http_client_factory(timeout=httpx.Timeout(30.0)) as client:
-                headers = {}
-                if token and not is_presigned_url:
-                    headers["Authorization"] = f"Bearer {token}"
-
-                try:
-                    response = await self._head_with_retry(client, entity.url, headers, logger)
-
-                    content_length = response.headers.get("Content-Length")
-                    if content_length:
-                        size_bytes = int(content_length)
-                        if size_bytes > self.MAX_FILE_SIZE_BYTES:
-                            size_mb = size_bytes / (1024 * 1024)
-                            return False, f"File too large: {size_mb:.1f}MB (max 200MB)"
-
-                except (httpx.HTTPError, ValueError) as e:
-                    logger.debug(
-                        f"HEAD request failed for {entity.name}: {e}, will attempt download"
-                    )
-
-        except Exception as e:
-            logger.debug(f"File validation error for {entity.name}: {e}, will attempt download")
-
-        return True, None
+            return f"Unsupported file extension: {ext}"
+        return None
 
     @retry(
         stop=stop_after_attempt(5),
@@ -155,64 +144,59 @@ class FileService:
         wait=wait_rate_limit_with_backoff,
         reraise=True,
     )
-    async def _download_with_retry(
+    async def _stream_download(
         self,
-        client: httpx.AsyncClient,
+        client: AirweaveHttpClient,
         url: str,
         headers: dict,
         temp_path: str,
         logger: ContextualLogger,
     ) -> None:
-        """Download file with retry logic for rate limits and timeouts."""
-        try:
-            async with client.stream(
-                "GET", url, headers=headers, follow_redirects=True
-            ) as response:
-                response.raise_for_status()
+        """Stream-download a file to disk with retry on 429/5xx/timeout."""
+        async with client.stream(
+            "GET",
+            url,
+            headers=headers,
+            follow_redirects=True,
+            timeout=httpx.Timeout(180.0, read=540.0),
+        ) as response:
+            raise_for_status(response, source_short_name="file_service")
 
-                # Check Content-Length header before reading body
-                content_length = response.headers.get("Content-Length")
-                if content_length and int(content_length) > self.MAX_FILE_SIZE_BYTES:
-                    size_mb = int(content_length) / (1024 * 1024)
-                    max_mb = self.MAX_FILE_SIZE_BYTES // (1024 * 1024)
-                    raise FileSkippedException(
-                        reason=f"File too large: {size_mb:.1f}MB (max {max_mb}MB)",
-                        filename=temp_path,
-                    )
-
-                os.makedirs(os.path.dirname(temp_path), exist_ok=True)
-                bytes_written = 0
-                async with aiofiles.open(temp_path, "wb") as f:
-                    async for chunk in response.aiter_bytes():
-                        bytes_written += len(chunk)
-                        if bytes_written > self.MAX_FILE_SIZE_BYTES:
-                            max_mb = self.MAX_FILE_SIZE_BYTES // (1024 * 1024)
-                            raise FileSkippedException(
-                                reason=f"File exceeded {max_mb}MB during download",
-                                filename=temp_path,
-                            )
-                        await f.write(chunk)
-        except httpx.HTTPStatusError as e:
-            if e.response.status_code == 429:
-                retry_after = e.response.headers.get("Retry-After", "unknown")
-                logger.warning(
-                    f"Rate limit hit (429) during file download (will retry after {retry_after}s)"
+            content_length = response.headers.get("Content-Length")
+            if content_length and int(content_length) > self.MAX_FILE_SIZE_BYTES:
+                size_mb = int(content_length) / (1024 * 1024)
+                max_mb = self.MAX_FILE_SIZE_BYTES // (1024 * 1024)
+                raise FileSkippedException(
+                    reason=f"File too large: {size_mb:.1f}MB (max {max_mb}MB)",
+                    filename=temp_path,
                 )
-            raise
+
+            os.makedirs(os.path.dirname(temp_path), exist_ok=True)
+            bytes_written = 0
+            async with aiofiles.open(temp_path, "wb") as f:
+                async for chunk in response.aiter_bytes():
+                    bytes_written += len(chunk)
+                    if bytes_written > self.MAX_FILE_SIZE_BYTES:
+                        max_mb = self.MAX_FILE_SIZE_BYTES // (1024 * 1024)
+                        raise FileSkippedException(
+                            reason=f"File exceeded {max_mb}MB during download",
+                            filename=temp_path,
+                        )
+                    await f.write(chunk)
 
     async def download_from_url(
         self,
         entity: FileEntity,
-        http_client_factory: Callable,
-        access_token_provider: Callable,
+        client: AirweaveHttpClient,
+        auth: SourceAuthProvider,
         logger: ContextualLogger,
     ) -> FileEntity:
         """Download file from URL to temp directory.
 
         Args:
             entity: FileEntity with url to fetch
-            http_client_factory: Factory for HTTP client
-            access_token_provider: Async callable returning access token
+            client: Pre-built AirweaveHttpClient with rate limiting
+            auth: Auth provider for bearer token
             logger: Logger for diagnostics
 
         Returns:
@@ -222,51 +206,61 @@ class FileService:
             FileSkippedException: If file should be skipped
             ValueError: If url is missing
         """
-        # SSRF check on the download URL
-        if entity.url:
-            validate_url(entity.url)
+        if not entity.url:
+            raise ValueError(f"No download URL for file {entity.name}")
+        validate_url(entity.url)
 
-        should_download, skip_reason = await self._validate_file_before_download(
-            entity, http_client_factory, access_token_provider, logger
-        )
+        ext_skip = self._validate_extension(entity.name)
+        if ext_skip:
+            raise FileSkippedException(reason=ext_skip, filename=entity.name)
 
-        if not should_download:
-            logger.debug(f"Skipping download of {entity.name}: {skip_reason}")
-            raise FileSkippedException(reason=skip_reason, filename=entity.name)
+        headers = await self._resolve_headers(auth, entity.url)
+
+        size_skip = await self._check_file_size_via_head(client, entity.url, headers, logger)
+        if size_skip:
+            raise FileSkippedException(reason=size_skip, filename=entity.name)
 
         file_uuid = str(uuid4())
         safe_filename = self._safe_filename(entity.name)
         temp_path = f"{self.base_temp_dir}/{file_uuid}-{safe_filename}"
 
-        is_presigned_url = "X-Amz-Algorithm" in entity.url
-        token = await access_token_provider()
-        if not token and not is_presigned_url:
-            raise ValueError(f"No access token available for downloading {entity.name}")
-
         logger.debug(
-            f"Downloading file from URL: {entity.name} "
-            f"(pre-signed: {is_presigned_url}, has_token: {bool(token)})"
+            f"Downloading file: {entity.name} (pre-signed: {'X-Amz-Algorithm' in entity.url})"
         )
 
         try:
-            async with http_client_factory(timeout=httpx.Timeout(180.0, read=540.0)) as client:
-                headers = {}
-                if token and not is_presigned_url:
-                    headers["Authorization"] = f"Bearer {token}"
-
-                await self._download_with_retry(client, entity.url, headers, temp_path, logger)
-
-            logger.debug(f"Downloaded file to: {temp_path}")
-            entity.local_path = temp_path
-            return entity
-
-        except Exception:
-            if os.path.exists(temp_path):
-                try:
-                    os.remove(temp_path)
-                except Exception:
-                    pass
+            await self._stream_download(client, entity.url, headers, temp_path, logger)
+        except FileSkippedException:
+            self._cleanup_temp(temp_path)
             raise
+        except Exception as first_error:
+            from airweave.domains.sources.exceptions import SourceAuthError
+
+            if isinstance(first_error, SourceAuthError) and auth.supports_refresh:
+                logger.info("Download got 401, refreshing token and retrying")
+                headers = await self._resolve_headers_with_refresh(
+                    auth, client, entity.url, headers, logger
+                )
+                try:
+                    await self._stream_download(client, entity.url, headers, temp_path, logger)
+                except Exception:
+                    self._cleanup_temp(temp_path)
+                    raise
+            else:
+                self._cleanup_temp(temp_path)
+                raise
+
+        logger.debug(f"Downloaded file to: {temp_path}")
+        entity.local_path = temp_path
+        return entity
+
+    def _cleanup_temp(self, temp_path: str) -> None:
+        """Remove a partially-downloaded temp file."""
+        if os.path.exists(temp_path):
+            try:
+                os.remove(temp_path)
+            except Exception:
+                pass
 
     # =========================================================================
     # ARF Restoration (for replay sources)
@@ -369,11 +363,7 @@ class FileService:
             return entity
 
         except Exception as e:
-            if os.path.exists(temp_path):
-                try:
-                    os.remove(temp_path)
-                except Exception:
-                    pass
+            self._cleanup_temp(temp_path)
             raise IOError(f"Failed to save bytes for {entity.name}: {e}") from e
 
     # =========================================================================

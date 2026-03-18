@@ -1,347 +1,236 @@
 ---
-description: Phase D migration guide — migrating all 57 sources to the v2 BaseSource contract
+description: Source contract v2 — what changed, why, and the exact patterns for migrating all 57 sources
 alwaysApply: false
 ---
 
-# Source Contract v2 Migration Guide — Phase D
+# Source Contract v2 — Migration Reference
 
-## Prerequisites
+## What this refactoring is
 
-This migration depends on two PRs being merged first:
-- **PR #1643**: Phase A+B — auth protocol hierarchy, proxy removal, supporting class cleanup
-- **PR #1647**: Phase C — BaseSource contract rewrite (constructor DI, generate_entities params)
+A ground-up rewrite of how source connectors receive their dependencies and handle errors. Every source in Airweave (~57 files) is being migrated from an implicit, setter-based architecture to explicit constructor injection with typed domain exceptions.
 
-## What changed in the contract
+The refactoring spans 5 layers:
+1. **Auth protocol hierarchy** — unified `SourceAuthProvider` abstraction
+2. **HTTP helpers** — centralized response → domain exception translation
+3. **Rate limiting** — refactored into injectable domain service
+4. **BaseSource contract** — constructor DI, explicit method params
+5. **Individual sources** — migrated one by one with `from_api()` entity patterns
 
-### Old contract (v1)
+## The problem (v1)
+
+Sources had invisible, mutable state injected after construction via setters:
+
 ```python
-class MySource(BaseSource):
+# v1: dependencies appear magically after create()
+instance = await SourceClass.create(access_token="...", config={})
+instance.set_logger(logger)                    # set later
+instance.set_token_provider(token_provider)    # set later
+instance.set_http_client_factory(factory)      # set later
+instance.set_cursor(cursor)                    # set later
+instance.set_file_downloader(downloader)       # set later
+instance.set_node_selections(selections)       # set later
+```
+
+This caused:
+- **Silent `None` access** — if a setter was missed, `self.cursor` was `None` and crashed at runtime, not at construction
+- **No type safety** — `create()` accepted `access_token: str` for OAuth sources, `credentials: AuthConfig` for PAT sources, and `credentials=None` for others — all with different conventions
+- **Broad exception swallowing** — ~186 instances of `except Exception` across ~30 sources, silently eating 401s and producing "successful" syncs with 0 entities
+- **Implicit HTTP client lifecycle** — sources created and destroyed `httpx.AsyncClient` via `async with self.http_client() as client:` on every method call, passing `client` through 3-5 layers of methods
+- **Homebrew rate limiting** — e.g. Linear had a 180-line in-process sliding window tracker that assumed 1,200 req/hr (actual OAuth limit is 5,000)
+
+## The solution (v2)
+
+### Construction: all deps required at `__init__` time
+
+```python
+class AsanaSource(BaseSource):
     @classmethod
-    async def create(cls, credentials=None, config=None) -> "MySource":
-        instance = cls()
-        instance.access_token = credentials  # or extract from config
-        return instance
-
-    async def generate_entities(self) -> AsyncGenerator[BaseEntity, None]:
-        token = await self.get_access_token()  # reads self._token_provider
-        cursor_data = self.cursor.data if self.cursor else {}  # reads self._cursor
-        async with self.http_client() as client:  # uses self._http_client_factory
-            ...
+    async def create(
+        cls,
+        *,
+        auth: TokenProviderProtocol,       # REQUIRED, typed
+        logger: ContextualLogger,          # REQUIRED, typed
+        http_client: AirweaveHttpClient,   # REQUIRED, typed
+        config: AsanaConfig,               # REQUIRED, typed Pydantic model
+    ) -> AsanaSource:
+        return cls(auth=auth, logger=logger, http_client=http_client)
 ```
 
-### New contract (v2)
+- **`auth`**: Always a `TokenProviderProtocol` (for 90%+ of sources) or `DirectCredentialProvider[T]` (for NTLM/structured creds). The lifecycle normalizes OAuth tokens, API keys, PATs, and auth provider credentials into this single interface. Sources call `await self.auth.get_token()` and never care how the token was obtained.
+- **`logger`**: `ContextualLogger` with sync/search metadata already attached.
+- **`http_client`**: Pre-built `AirweaveHttpClient` with SSRF protection and `SourceRateLimiter` already wired. No factory, no context manager.
+- **`config`**: Typed Pydantic model (e.g. `AsanaConfig`, `LinearConfig`). The lifecycle parses raw `config_fields` from the DB into this.
+
+### Operation: deps as method params, not `self`
+
 ```python
-class MySource(BaseSource):
-    @classmethod
-    async def create(cls, credentials=None, config=None, *,
-                     auth=None, logger=None, http_client=None) -> "MySource":
-        instance = cls(auth=auth, logger=logger, http_client=http_client)
-        # Extract source-specific config from credentials/config
-        return instance
-
-    async def generate_entities(self, *, cursor=None, files=None,
-                                node_selections=None) -> AsyncGenerator[BaseEntity, None]:
-        token = await self._auth.get_token()  # direct auth access
-        cursor_data = cursor.data if cursor else {}  # param, not self
-        response = await self._http_client.get(url)  # direct client access
-        ...
+async def generate_entities(
+    self,
+    *,
+    cursor: SyncCursor | None = None,
+    files: FileService | None = None,
+    node_selections: list[NodeSelectionData] | None = None,
+) -> AsyncGenerator[BaseEntity, None]:
 ```
 
-### Key differences
-| Aspect | v1 | v2 |
-|--------|----|----|
-| Auth | `self.access_token` or `await self.get_access_token()` | `await self._auth.get_token()` |
-| Logger | `self.logger` (set via setter) | `self.logger` (set via constructor) |
-| HTTP client | `async with self.http_client() as client:` | `self._http_client` (pre-built instance) |
-| Cursor | `self.cursor` (set via setter) | `cursor` param on `generate_entities()` |
-| File downloader | `self.file_downloader` (set via setter) | `files` param on `generate_entities()` |
-| Node selections | `self._node_selections` (set via setter) | `node_selections` param on `generate_entities()` |
+Cursor, file service, and node selections are **parameters**, not instance state. This makes sources stateless between sync runs and testable without full lifecycle setup.
 
-## Migration patterns by auth type
+### HTTP: single method, no client passing
 
-### Pattern A: OAuth token sources (33 sources)
-Sources that receive `access_token: str` and use `self.get_access_token()`.
-
-**Before:**
+**Before** — every source passed `client: httpx.AsyncClient` through 3-5 layers:
 ```python
-@classmethod
-async def create(cls, access_token: str, config=None) -> "SlackSource":
-    instance = cls()
-    instance.access_token = access_token
-    return instance
+async def _get_with_auth(self, client: httpx.AsyncClient, url, params):
+    access_token = await self.get_access_token()
+    response = await client.get(url, headers={"Authorization": f"Bearer {access_token}"}, ...)
+    response.raise_for_status()  # raw httpx error, no domain context
+    return response.json()
 ```
 
-**After:**
+**After** — `self.http_client` is the pre-built client, `raise_for_status` translates to domain exceptions:
 ```python
-@classmethod
-async def create(cls, credentials=None, config=None, *,
-                 auth=None, logger=None, http_client=None) -> "SlackSource":
-    instance = cls(auth=auth, logger=logger, http_client=http_client)
-    return instance
+async def _get(self, url: str, params=None) -> Dict:
+    token = await self.auth.get_token()
+    headers = {"Authorization": f"Bearer {token}"}
+    response = await self.http_client.get(url, headers=headers, params=params)
+
+    if response.status_code == 401 and self.auth.supports_refresh:
+        new_token = await self.auth.force_refresh()
+        headers = {"Authorization": f"Bearer {new_token}"}
+        response = await self.http_client.get(url, headers=headers, params=params)
+
+    raise_for_status(
+        response,
+        source_short_name=self.short_name,
+        token_provider_kind=self.auth.provider_kind,
+    )
+    return response.json()
 ```
 
-No `self.access_token` needed — the lifecycle normalizes OAuth tokens into `StaticTokenProvider` or `OAuthTokenProvider` which is passed as `auth`. Sources call `await self._auth.get_token()` or use `self._http_client` directly.
+### Exceptions: typed hierarchy, not `except Exception`
 
-**Sources:** airtable, asana, bitbucket, box, clickup, coda, confluence, dropbox, gitlab, gmail, google_calendar, google_docs, google_drive, google_slides, hubspot, jira, linear, monday, notion, onedrive, onenote, outlook_calendar, outlook_mail, powerpoint, salesforce, sharepoint, sharepoint_online, slack, teams, todoist, word, zendesk, zoom
+`raise_for_status()` (in `platform/sources/http_helpers.py`) translates HTTP responses to domain exceptions:
 
-### Pattern B: API key / PAT sources (14 sources)
-Sources that receive a typed AuthConfig with an API key or PAT.
+| HTTP status | Domain exception | Source behavior |
+|---|---|---|
+| 401 | `SourceAuthError` | **Abort sync** — credentials dead |
+| 403 | `SourceEntityForbiddenError` | Skip entity, log warning |
+| 404 | `SourceEntityNotFoundError` | Skip entity, log warning |
+| 429 | `SourceRateLimitError` | Retry with backoff (tenacity) |
+| 5xx | `SourceServerError` | Retry with backoff (tenacity) |
+| 3xx | `SourceError` | Unexpected redirect |
 
-**Before:**
+Critical rule: **`SourceAuthError` always propagates.** No `except SourceError` or `except Exception` may silently catch it. Every catch block in migrated sources has `except SourceAuthError: raise` before any broader catch.
+
+### API quirks handled per-source
+
+Some APIs don't follow HTTP conventions. These are handled in the source's `_get`/`_post` method **before** `raise_for_status`:
+
+- **Linear**: Returns rate limits as HTTP 400 with GraphQL `RATELIMITED` error code (not 429). The source checks for this and raises `SourceRateLimitError` with `retry_after` computed from `X-RateLimit-Requests-Reset` header.
+- **Asana**: Returns 400 "result too large" when a paginated response exceeds internal limits. The source catches this via a private `_ResultTooLarge` exception and retries with smaller page sizes recursively.
+- **Zoho**: Returns 400 with `"too many requests"` in the body for rate limits. Handled generically by `raise_for_status`'s `_is_rate_limit_disguised_as_400()`.
+
+### File downloads: FileService with raw exceptions
+
+`FileService.download_from_url()` accepts the same `auth` and `client` that the source has. It handles 401 refresh internally for download streams. It raises raw `httpx` exceptions — the **source** decides what to do:
+
 ```python
-@classmethod
-async def create(cls, credentials: GitHubAuthConfig, config=None) -> "GitHubSource":
-    instance = cls()
-    instance.personal_access_token = credentials.personal_access_token
-    instance.repo_name = config["repo_name"]
-    return instance
+async def _download_attachment(self, entity, files):
+    try:
+        await files.download_from_url(entity=entity, client=self.http_client, auth=self.auth, logger=self.logger)
+        return entity if entity.local_path else None
+    except FileSkippedException:
+        return None           # intentional skip (unsupported type, too large)
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code == 401:
+            raise             # dead token → abort sync
+        return None           # other HTTP errors → skip file
+    # IOError/OSError propagate — infrastructure broken
 ```
 
-**After:**
+### Entity construction: `from_api()` classmethods
+
+Entity construction logic (field mapping, datetime parsing, breadcrumb building) moves from the source to the entity class:
+
+**Before** — 25 lines per entity in the source:
 ```python
-@classmethod
-async def create(cls, credentials=None, config=None, *,
-                 auth=None, logger=None, http_client=None) -> "GitHubSource":
-    instance = cls(auth=auth, logger=logger, http_client=http_client)
-    # Config fields still extracted from config
-    instance._repo_name = config["repo_name"] if config else None
-    return instance
+team_id = team.get("id")
+team_name = team.get("name")
+team_key = team.get("key")
+parent = team.get("parent")
+# ... 20 more lines of .get() calls ...
+yield LinearTeamEntity(entity_id=team_id, breadcrumbs=breadcrumbs, name=team_name, ...)
 ```
 
-The API key/PAT is normalized to `StaticTokenProvider` by the lifecycle. `await self._auth.get_token()` returns it.
-
-**Sources:** apollo, attio, document360, fireflies, freshdesk, github, pipedrive, servicenow, shopify, slab, slite, stripe, trello
-
-### Pattern C: Structured credentials (2 sources)
-Sources that need full credential objects (NTLM, multiple fields).
-
-**Before:**
+**After** — 2 lines in the source, logic in entity:
 ```python
-@classmethod
-async def create(cls, credentials: SP2019AuthConfig, config=None) -> "SP2019Source":
-    instance = cls()
-    instance._sp_username = credentials.sharepoint_username
-    instance._sp_password = credentials.sharepoint_password
-    ...
+self.logger.debug(f"Processing team: {team.get('name')}")
+yield LinearTeamEntity.from_api(team)
 ```
 
-**After:**
-```python
-@classmethod
-async def create(cls, credentials=None, config=None, *,
-                 auth=None, logger=None, http_client=None) -> "SP2019Source":
-    instance = cls(auth=auth, logger=logger, http_client=http_client)
-    # auth is DirectCredentialProvider[SP2019AuthConfig]
-    if auth and hasattr(auth, 'credentials'):
-        creds = auth.credentials
-        instance._sp_username = creds.sharepoint_username
-        ...
-    elif credentials:  # backward compat
-        ...
-```
+`from_api()` is a `@classmethod` that takes the raw API dict (+ any parent context as kwargs) and returns the entity. This:
+- Eliminates duplicated parsing logic across sources
+- Makes entity construction independently testable
+- Keeps the source focused on orchestration (pagination, error handling, yielding)
 
-**Sources:** sharepoint2019v2, ctti
+## Sources migrated so far
 
-### Pattern D: Internal/test sources (6 sources)
-Sources with minimal or no auth.
+| Source | Lines before | Lines after | Key changes |
+|---|---|---|---|
+| **Asana** | ~600 | 464 | Pilot migration. Recursive `_paginate` for "too large" 400s. `from_api()` on all entity models. |
+| **Linear** | 1,148 | 701 | Removed homebrew rate limiter. GraphQL `RATELIMITED` detection. `from_api()` on all 6 entity models. |
+| **Airtable** | 603 | 378 | Removed manual 429 sleep-and-retry. `from_api()` on all 6 entity models. |
+| **Apollo** | 338 | ~338 | Contract migration (earlier commit). |
+| **Attio** | 553 | ~553 | Contract migration (earlier commit). |
 
-**Before:**
-```python
-@classmethod
-async def create(cls, credentials=None, config=None) -> "StubSource":
-    instance = cls()
-    if credentials:
-        instance.seed = credentials.seed
-    return instance
-```
+## Infrastructure changes (in this branch)
 
-**After:**
-```python
-@classmethod
-async def create(cls, credentials=None, config=None, *,
-                 auth=None, logger=None, http_client=None) -> "StubSource":
-    instance = cls(auth=auth, logger=logger, http_client=http_client)
-    if credentials:
-        instance.seed = credentials.seed
-    return instance
-```
+### `platform/sources/http_helpers.py` (new)
+Centralized `raise_for_status()` — translates `httpx.Response` → domain exceptions. Requires `source_short_name` and `token_provider_kind` for every call.
 
-**Sources:** stub, file_stub, incremental_stub, timed, snapshot, calcom
+### `platform/sources/retry_helpers.py` (updated)
+`should_retry_on_rate_limit()` now recognizes `SourceRateLimitError`. `should_retry_on_server_error()` added for `SourceServerError`. `wait_rate_limit_with_backoff()` reads `retry_after` from the exception.
 
-## Migration: generate_entities()
+### `domains/sources/rate_limiting/` (refactored)
+- `SourceRateLimiter` — injects `redis.asyncio.Redis` + `RateLimitConfigProvider` (no global singletons)
+- `RateLimitConfig` dataclass, `InternalRateLimitExceeded` exception
+- `DatabaseRateLimitConfigProvider` — fetches from DB, caches in Redis
+- `AirweaveHttpClient` catches `InternalRateLimitExceeded` → synthetic HTTP 429 (transparent masquerade)
 
-### Sources that use self.cursor (10 sources)
-Change `self.cursor` to `cursor` param:
-```python
-# Before
-cursor_data = self.cursor.data if self.cursor else {}
+### `domains/sources/exceptions.py` (tightened)
+- `SourceAuthError` requires `status_code`, `source_short_name`, `token_provider_kind` (all non-optional)
+- `SourceEntityForbiddenError`, `SourceEntityNotFoundError` for per-entity 403/404
+- `SourceRateLimitError` carries `retry_after: float`
+- `SourceServerError` carries `status_code: int`
 
-# After
-cursor_data = cursor.data if cursor else {}
-```
+### `domains/storage/file_service.py` (simplified)
+Raises raw `httpx` exceptions. No domain exception translation — that's the source's job. Handles 401 refresh internally for download streams.
 
-**Sources:** calcom, ctti, github, gmail, google_drive, incremental_stub, linear, outlook_mail, sharepoint2019v2, sharepoint_online
+### `platform/sources/_base.py` (v2 contract)
+- `__init__` requires `auth`, `logger`, `http_client` (keyword-only)
+- `create()` requires typed kwargs
+- `generate_entities()` accepts `cursor`, `files`, `node_selections` as params
+- Deprecated setters kept as no-ops during migration
+- `self.get_access_token()` delegates to `self.auth.get_token()` for backward compat
 
-### Sources that use self.file_downloader (27 sources)
-Change `self.file_downloader` to `files` param:
-```python
-# Before
-downloaded = await self.file_downloader.download(url)
+## Execution checklist for remaining sources
 
-# After
-downloaded = await files.download(url)
-```
+For each source:
 
-**Sources:** airtable, asana, bitbucket, box, clickup, confluence, dropbox, github, gitlab, gmail, google_docs, google_drive, google_slides, linear, notion, onedrive, onenote, outlook_calendar, outlook_mail, powerpoint, sharepoint, sharepoint2019v2, sharepoint_online, word, zendesk
+1. **`create()`** — keyword-only: `auth: TokenProviderProtocol`, `logger: ContextualLogger`, `http_client: AirweaveHttpClient`, `config: XConfig`
+2. **`_get`/`_post`** — remove `client` param, use `self.http_client`, `self.auth.get_token()`, 401 refresh, `raise_for_status()`
+3. **`generate_entities()`** — accept `cursor`, `files`, `node_selections` kwargs
+4. **Remove `async with self.http_client() as client:`** — use `self.http_client` directly
+5. **Exception handling** — `SourceAuthError: raise` before any broad `except`. Remove `except Exception` from data fetchers.
+6. **File downloads** — `files.download_from_url(entity, client=self.http_client, auth=self.auth, logger=self.logger)`
+7. **Entity construction** — add `from_api()` classmethods, simplify source process functions
+8. **Remove dead code** — homebrew rate limiters, manual 429 handling, unused `_handle_http_error` methods
+9. **API quirks** — research the specific API's rate limit behavior (some return 400 not 429), handle before `raise_for_status`
 
-### Sources that use self._node_selections (2 sources)
-Change `self._node_selections` to `node_selections` param:
-```python
-# Before
-if self._node_selections:
-    for sel in self._node_selections:
-        ...
+## What to remove after all 57 sources are migrated
 
-# After
-if node_selections:
-    for sel in node_selections:
-        ...
-```
-
-**Sources:** sharepoint2019v2, sharepoint_online
-
-### Sources that use self.http_client() context manager (~all sources)
-Change from context manager to direct client access:
-```python
-# Before
-async with self.http_client() as client:
-    response = await client.get(url, headers=headers)
-
-# After
-response = await self._http_client.get(url, headers=headers)
-```
-
-Or if the source needs a vanilla httpx client for validation:
-```python
-async with httpx.AsyncClient() as client:
-    ...
-```
-
-## Execution checklist
-
-For each source, the migration is:
-
-1. [ ] Update `create()` signature to accept `*, auth, logger, http_client` kwargs
-2. [ ] Call `cls(auth=auth, logger=logger, http_client=http_client)` in create
-3. [ ] Remove `self.access_token = ...` (use `self._auth.get_token()` instead)
-4. [ ] Update `generate_entities()` signature to accept `*, cursor, files, node_selections`
-5. [ ] Replace `self.cursor` with `cursor` param
-6. [ ] Replace `self.file_downloader` with `files` param
-7. [ ] Replace `self._node_selections` with `node_selections` param
-8. [ ] Replace `async with self.http_client() as client:` with `self._http_client`
-9. [ ] Replace `await self.get_access_token()` with `await self._auth.get_token()`
-10. [ ] Run the source's tests to verify
-
-## Complete source matrix (57 sources)
-
-| # | Source | Auth pattern | Uses cursor | Uses files | Uses nodes | Complexity |
-|---|--------|-------------|-------------|------------|------------|------------|
-| 1 | airtable | A (token) | no | yes | no | low |
-| 2 | apollo | B (AuthConfig) | no | no | no | low |
-| 3 | asana | A (token) | no | yes | no | low |
-| 4 | attio | B (AuthConfig) | no | no | no | low |
-| 5 | bitbucket | B (AuthConfig) | no | yes | no | medium |
-| 6 | box | A (token) | no | yes | no | low |
-| 7 | calcom | D (internal) | yes | no | no | low |
-| 8 | clickup | A (token) | no | yes | no | low |
-| 9 | coda | A (token) | no | no | no | low |
-| 10 | confluence | A (token) | no | yes | no | low |
-| 11 | ctti | C (structured) | yes | no | no | medium |
-| 12 | document360 | B (AuthConfig) | no | no | no | low |
-| 13 | dropbox | A (token) | no | yes | no | low |
-| 14 | file_stub | D (internal) | no | no | no | low |
-| 15 | fireflies | B (AuthConfig) | no | no | no | low |
-| 16 | freshdesk | B (AuthConfig) | no | no | no | low |
-| 17 | github | B (AuthConfig) | yes | yes | no | medium |
-| 18 | gitlab | A (token) | no | yes | no | low |
-| 19 | gmail | A (token) | yes | yes | no | medium |
-| 20 | google_calendar | A (token) | no | no | no | low |
-| 21 | google_docs | A (token) | no | yes | no | low |
-| 22 | google_drive | A (token) | yes | yes | no | medium |
-| 23 | google_slides | A (token) | no | yes | no | low |
-| 24 | hubspot | A (token) | no | no | no | low |
-| 25 | incremental_stub | D (internal) | yes | no | no | low |
-| 26 | intercom | A (token) | no | no | no | low |
-| 27 | jira | A (token) | no | no | no | low |
-| 28 | linear | A (token) | yes | yes | no | medium |
-| 29 | monday | B (AuthConfig) | no | no | no | low |
-| 30 | notion | A (token) | no | yes | no | medium |
-| 31 | onedrive | A (token) | no | yes | no | low |
-| 32 | onenote | A (token) | no | yes | no | low |
-| 33 | outlook_calendar | A (token) | no | yes | no | low |
-| 34 | outlook_mail | A (token) | yes | yes | no | medium |
-| 35 | pipedrive | B (AuthConfig) | no | no | no | low |
-| 36 | powerpoint | A (token) | no | yes | no | low |
-| 37 | salesforce | A (token) | no | no | no | medium |
-| 38 | servicenow | B (AuthConfig) | no | no | no | low |
-| 39 | sharepoint | A (token) | no | yes | no | low |
-| 40 | sharepoint2019v2 | C (structured) | yes | yes | yes | high |
-| 41 | sharepoint_online | A (token) | yes | yes | yes | high |
-| 42 | shopify | B (AuthConfig) | no | no | no | medium |
-| 43 | slab | B (AuthConfig) | no | no | no | low |
-| 44 | slack | A (token) | no | no | no | low |
-| 45 | slite | B (AuthConfig) | no | no | no | low |
-| 46 | snapshot | D (internal) | no | no | no | medium |
-| 47 | stripe | B (AuthConfig) | no | no | no | low |
-| 48 | stub | D (internal) | no | no | no | low |
-| 49 | teams | A (token) | no | no | no | low |
-| 50 | timed | D (internal) | no | no | no | low |
-| 51 | todoist | A (token) | no | no | no | low |
-| 52 | trello | B (AuthConfig) | no | no | no | low |
-| 53 | word | A (token) | no | yes | no | low |
-| 54 | zendesk | A (token) | no | yes | no | medium |
-| 55 | zoho_crm | A (token) | no | no | no | low |
-| 56 | zoom | A (token) | no | no | no | low |
-| 57 | intercom | A (token) | no | no | no | medium |
-
-**Complexity breakdown:** 36 low, 14 medium, 2 high, 5 internal/test
-
-## Recommended execution order
-
-1. **Start with internal/test sources** (5): stub, file_stub, incremental_stub, timed, calcom — simplest, good for validating the pattern
-2. **Simple token sources with no deps** (17): slack, hubspot, teams, todoist, zoom, coda, google_calendar, intercom, jira, monday, zoho_crm, salesforce, apollo, attio, stripe, slite, fireflies
-3. **Token sources with file_downloader** (15): airtable, asana, box, clickup, confluence, dropbox, gitlab, google_docs, google_slides, notion, onedrive, onenote, outlook_calendar, powerpoint, sharepoint, word
-4. **Token sources with cursor + files** (6): gmail, google_drive, linear, outlook_mail, bitbucket, zendesk
-5. **AuthConfig sources** (6): document360, freshdesk, github, pipedrive, servicenow, slab, shopify, trello, snapshot
-6. **Complex sources** (3): sharepoint2019v2, sharepoint_online, ctti
-
-## Key learnings from this design session
-
-### Auth harmonization
-- The lifecycle service normalizes ALL auth methods (OAuth, API key, PAT, auth provider) into `SourceAuthProvider` before passing to sources
-- Sources never need to know which auth method was used at connection creation time
-- `TokenProviderProtocol` covers 90%+ of sources; `DirectCredentialProvider[T]` covers the rest
-
-### HTTP client
-- Sources get a pre-built `AirweaveHttpClient` (not a factory) with rate limiting already configured
-- Replace `async with self.http_client() as client:` with `self._http_client.get/post/etc()`
-- The client wraps `httpx.AsyncClient` with SSRF protection and rate limiting
-
-### Operation-time deps
-- `cursor`, `files`, `node_selections` are NOT on `self` — they're params on `generate_entities()`
-- This makes the source stateless between sync runs and testable without full lifecycle setup
-
-### Backward compatibility
-- The v2 `create()` accepts BOTH positional `credentials/config` AND keyword `auth/logger/http_client`
-- Deprecated setters are kept as no-ops during migration
-- `self.get_access_token()` still works (delegates to `self._auth.get_token()`)
-- `self.cursor` property still works (reads from deprecated `self._cursor`)
-- Registry warns (not errors) for unmigrated sources at startup
-
-### What to remove after all sources are migrated
-- All deprecated setters on BaseSource (`set_logger`, `set_token_provider`, `set_http_client_factory`, `set_file_downloader`, `set_cursor`, `set_node_selections`)
+- All deprecated setters on `BaseSource` (`set_logger`, `set_token_provider`, `set_http_client_factory`, `set_file_downloader`, `set_cursor`, `set_node_selections`)
 - Deprecated properties (`cursor`, `file_downloader`, `token_provider`)
 - `http_client_ctx()` context manager
-- `_http_client_factory` backward-compat property
+- `_http_client_factory` backward-compat shim
 - Positional `credentials` and `config` params on `create()`
 - Change registry validation from warnings to errors

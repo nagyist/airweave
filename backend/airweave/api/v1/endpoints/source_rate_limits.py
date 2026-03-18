@@ -83,7 +83,7 @@ async def set_source_rate_limit(
     if not ctx.has_feature(FeatureFlag.SOURCE_RATE_LIMITING):
         raise HTTPException(status_code=403, detail="Feature not enabled")
 
-    from airweave.core.source_rate_limit_helpers import set_source_rate_limit
+    from airweave.domains.sources.rate_limiting.helpers import set_source_rate_limit
 
     result = await set_source_rate_limit(
         db,

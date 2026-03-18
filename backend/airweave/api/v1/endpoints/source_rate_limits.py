@@ -14,6 +14,9 @@ from airweave.api.router import TrailingSlashRouter
 from airweave.core.shared_models import FeatureFlag
 from airweave.db.session import get_db
 from airweave.domains.sources.protocols import SourceRegistryProtocol
+from airweave.domains.sources.rate_limiting.helpers import (
+    set_source_rate_limit as _set_source_rate_limit,
+)
 from airweave.models.source_rate_limit import SourceRateLimit
 
 router = TrailingSlashRouter()
@@ -83,9 +86,7 @@ async def set_source_rate_limit(
     if not ctx.has_feature(FeatureFlag.SOURCE_RATE_LIMITING):
         raise HTTPException(status_code=403, detail="Feature not enabled")
 
-    from airweave.domains.sources.rate_limiting.helpers import set_source_rate_limit
-
-    result = await set_source_rate_limit(
+    result = await _set_source_rate_limit(
         db,
         org_id=ctx.organization.id,
         source_short_name=source_short_name,

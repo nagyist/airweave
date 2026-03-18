@@ -147,16 +147,8 @@ class AsanaSource(BaseSource):
                 source_short_name=self.short_name,
                 token_provider_kind=self.auth.provider_kind,
             )
-        except SourceAuthError:
-            raise SourceAuthError(
-                message="Authentication failed after token refresh",
-                source_short_name=self.short_name,
-                status_code=response.status_code,
-                token_provider_kind=self.auth.provider_kind,
-            )
-            # more granular error handling is done in raise_for_status -> can we get meta
-        except SourceError as e:
-            self.logger.warning(f"Failed to fetch data from {url}: {e}")
+        except SourceAuthError as e:
+            self.logger.error(f"Failed to fetch data from {url}: {e}")
             raise
         return response.json()
 
@@ -365,6 +357,9 @@ class AsanaSource(BaseSource):
             self.logger.debug(f"Skipping attachment {entity.gid}: {e.reason}")
             return None
         except httpx.HTTPStatusError as e:
+            # We don't want to raise an error here, we just want to log it and skip the file.
+            # If it's a structural error on our side, we want to raise an error,
+            # and it should propagate.
             self.logger.warning(
                 f"HTTP {e.response.status_code} downloading attachment {entity.gid}: {e}"
             )

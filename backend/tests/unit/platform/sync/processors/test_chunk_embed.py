@@ -278,6 +278,29 @@ class TestChunkEmbedProcessor:
         assert "no dense embedding" in str(exc_info.value).lower()
 
     @pytest.mark.asyncio
+    async def test_embed_entities_logs_error_on_dense_failure(
+        self, processor, mock_sync_context, mock_runtime
+    ):
+        """Test that dense embedding failure logs entity IDs and re-raises."""
+        mock_entity = MagicMock()
+        mock_entity.textual_representation = "Test"
+        mock_entity.entity_id = "test-123"
+        mock_entity.airweave_system_metadata = MagicMock()
+
+        mock_runtime.dense_embedder.embed_many = AsyncMock(
+            side_effect=RuntimeError("API error")
+        )
+
+        with pytest.raises(RuntimeError, match="API error"):
+            await processor._embed_entities(
+                [mock_entity], mock_sync_context, mock_runtime
+            )
+
+        mock_sync_context.logger.error.assert_called_once()
+        log_args = mock_sync_context.logger.error.call_args[0]
+        assert "test-123" in str(log_args)
+
+    @pytest.mark.asyncio
     async def test_full_pipeline_with_mocks(
         self, processor, mock_sync_context, mock_runtime
     ):

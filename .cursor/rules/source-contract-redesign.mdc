@@ -96,7 +96,6 @@ All providers translate upstream errors into `TokenProviderError` subtypes (see 
 | `WITH_REFRESH` (Airtable, Asana, Google Drive, Salesforce, etc.) | `OAuthTokenProvider` | `True` |
 | `WITH_ROTATING_REFRESH` (Confluence, Jira) | `OAuthTokenProvider` | `True` |
 | Auth provider (Pipedream/Composio, any source) | `AuthProviderTokenProvider` | n/a |
-| Proxy mode | None (HTTP client handles auth) | n/a |
 
 ### BaseSource token cleanup
 - `_token_manager` removed. `_token_provider` is the single path.
@@ -107,23 +106,22 @@ All providers translate upstream errors into `TokenProviderError` subtypes (see 
 ### oauth2_service
 Added `refresh_and_persist()` — full load + decrypt + refresh + persist-rotation cycle in one call. OAuthTokenProvider is thin (~185 lines, zero infra deps).
 
+### Auth protocol hierarchy (SourceAuthProvider)
+- `SourceAuthProvider` base protocol with `AuthProviderKind` enum (`provider_kind`) and `supports_refresh`
+- `TokenProviderProtocol` extends `SourceAuthProvider` (backward-compatible)
+- `DirectCredentialProvider[T]` for structured credentials (NTLM, client_credentials)
+- `TokenExpiredError` for fast-abort on known-dead tokens
+- All 3 existing providers implement explicit `TokenProviderProtocol` inheritance
+
+### Supporting class cleanup
+- Pipedream proxy mode removed entirely (PipedreamProxyClient deleted, proxy rate limiting removed)
+- SourceRateLimiter moved to `domains/sources/rate_limiting/`, injected into SourceLifecycleService
+- SyncCursorService moved to `domains/syncs/cursors/`, registered in container
+- SourceContextBuilder removed — logic inlined into SyncFactory
+- SourceContext dataclass removed
+- AuthProviderMode enum removed (only DIRECT mode remains)
+
 ## What's remaining (prioritized)
-
-### Phase 1: Stop the bleeding (URGENT — production bug)
-Sources `except Exception` and swallow everything. A 401 on every API call results in a "successful" sync with 0 entities (observed in Linear sync). ~186 `except Exception` instances across ~30 source files.
-
-**1a. Sources raise typed exceptions:**
-- 401 after refresh attempt → `SourceAuthError` (abort sync)
-- 429 → `SourceRateLimitError` (retry)
-- 403 on single entity → `SourceEntityForbiddenError` (skip entity)
-- 5xx / timeout → `SourceServerError` (retry)
-- File download failure → `SourceFileDownloadError` (skip entity)
-
-**1b. Pipeline routes exceptions:**
-- `SourceAuthError` → mark sync as auth_failed, abort
-- `SourceEntityError` subtypes → skip entity, increment skipped counter
-- `SourceRateLimitError` / `SourceServerError` → retry or abort after N retries
-- Orchestrator (`platform/sync/orchestrator.py`), stream (`platform/sync/stream.py`) need updates
 
 ### Phase 2: Kill setters, make construction explicit
 **2a. Construction-time deps into `create()` params** — `logger`, `token_provider`, `http_client_factory` passed at creation, not via `set_*()` after.
@@ -132,21 +130,10 @@ Sources `except Exception` and swallow everything. A 401 on every API call resul
 
 **2c. Update SourceLifecycleService** — passes deps at construction.
 
-**2d. Update SourceContextBuilder** — passes cursor/files/selections as method params.
-
 ### Phase 3: Make `create()` typed
 **3a. New `create()` signature** — Token sources: `create(*, auth: TokenProvider, config: Optional[BaseModel])`. Structured-credential sources: `create(*, auth: AuthConfig, config: Optional[BaseModel])`.
 
 **3b. Update all ~30 source implementations.**
-
-### Phase 4: Extract utilities from BaseSource
-- `_validate_oauth2` (~150 lines) → standalone or on TokenProvider
-- `clean_content_for_embedding` (~40 lines) → standalone utility
-- `process_entities_concurrent` → stays (used by 5+ sources, only needs self.logger)
-
-### Phase 5: Lifecycle consolidation
-- Validation path currently bypasses lifecycle service (direct `source_cls.create()`) — bring it in
-- Absorb `SourceContextBuilder` sync-specific concerns into lifecycle service
 
 ## Design decisions
 
@@ -172,7 +159,8 @@ Sources `except Exception` and swallow everything. A 401 on every API call resul
 | `domains/sources/exceptions.py` | Full exception hierarchy (done) |
 | `domains/sources/token_providers/` | Protocol + 3 implementations (done) |
 | `domains/sources/lifecycle.py` | Creates + configures sources. Has `_configure_token_provider`. |
-| `platform/builders/source.py` | Sync-specific: cursor, file_downloader, node_selections (to be absorbed) |
+| `domains/sources/rate_limiting/service.py` | SourceRateLimiter (injected, no singleton) |
+| `domains/syncs/cursors/` | SyncCursorService (registered in container) |
 | `domains/oauth/oauth2_service.py` | `refresh_and_persist()` (done) |
 | `tests/unit/platform/sync/test_token_providers.py` | 21 tests covering all 3 providers |
 

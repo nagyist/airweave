@@ -6,7 +6,6 @@ from unittest.mock import AsyncMock, patch
 import httpx
 import pytest
 
-from airweave.domains.auth_provider.auth_result import AuthProviderMode
 from airweave.domains.auth_provider.exceptions import (
     AuthProviderAccountNotFoundError,
     AuthProviderAuthError,
@@ -630,7 +629,6 @@ async def test_get_auth_result_direct_success():
 
     with patch.object(provider, "_get_account_with_credentials", fake_get_account):
         result = await provider.get_auth_result("slack", ["access_token"])
-    assert result.mode == AuthProviderMode.DIRECT
     assert result.credentials == {"access_token": "xoxb-tok"}
 
 

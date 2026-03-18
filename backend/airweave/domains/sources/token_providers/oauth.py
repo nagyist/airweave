@@ -24,6 +24,7 @@ from airweave.domains.oauth.exceptions import (
     OAuthRefreshTokenRevokedError,
 )
 from airweave.domains.oauth.types import RefreshResult
+from airweave.domains.sources.token_providers.protocol import AuthProviderKind, TokenProviderProtocol
 from airweave.domains.sources.token_providers.exceptions import (
     TokenCredentialsInvalidError,
     TokenProviderConfigError,
@@ -44,10 +45,8 @@ _MIN_REFRESH_INTERVAL_SECONDS = 60
 _MAX_REFRESH_INTERVAL_SECONDS = 50 * 60
 
 
-class OAuthTokenProvider:
+class OAuthTokenProvider(TokenProviderProtocol):
     """TokenProvider backed by OAuth2 credentials.
-
-    Satisfies both ``SourceAuthProvider`` and ``TokenProviderProtocol``.
 
     Accepts raw credentials and determines refresh capability internally:
     - If oauth_type supports refresh AND a refresh_token is present,
@@ -91,9 +90,9 @@ class OAuthTokenProvider:
     # ------------------------------------------------------------------
 
     @property
-    def provider_kind(self) -> str:
+    def provider_kind(self) -> AuthProviderKind:
         """Discriminator for this auth provider type."""
-        return "oauth"
+        return AuthProviderKind.OAUTH
 
     @property
     def supports_refresh(self) -> bool:

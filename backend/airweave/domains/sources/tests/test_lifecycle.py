@@ -28,7 +28,6 @@ from airweave.domains.sources.fakes.registry import FakeSourceRegistry
 from airweave.domains.sources.lifecycle import SourceLifecycleService
 from airweave.domains.sources.tests.conftest import _make_ctx, _make_entry
 from airweave.domains.sources.types import AuthConfig, SourceConnectionData
-from airweave.domains.auth_provider.auth_result import AuthProviderMode
 from airweave.platform.configs._base import Fields
 
 
@@ -437,13 +436,11 @@ async def test_get_auth_configuration_routing(case: AuthConfigRoutingCase):
         )
         assert isinstance(result, AuthConfig)
         assert result.credentials == case.access_token
-        assert result.auth_mode == AuthProviderMode.DIRECT
     elif case.expected_route == "auth_provider":
         with patch.object(service, "_get_auth_provider_configuration",
                           new_callable=AsyncMock) as mock_ap:
             mock_ap.return_value = AuthConfig(
-                credentials="ap", auth_mode=AuthProviderMode.DIRECT,
-                http_client_factory=None, auth_provider_instance=None,
+                credentials="ap", auth_provider_instance=None,
             )
             result = await service._get_auth_configuration(
                 db=MagicMock(), source_connection_data=data, ctx=ctx,
@@ -454,8 +451,7 @@ async def test_get_auth_configuration_routing(case: AuthConfigRoutingCase):
         with patch.object(service, "_get_database_credentials",
                           new_callable=AsyncMock) as mock_db:
             mock_db.return_value = AuthConfig(
-                credentials="db", auth_mode=AuthProviderMode.DIRECT,
-                http_client_factory=None, auth_provider_instance=None,
+                credentials="db", auth_provider_instance=None,
             )
             result = await service._get_auth_configuration(
                 db=MagicMock(), source_connection_data=data, ctx=ctx,
@@ -530,7 +526,6 @@ async def test_get_database_credentials(case: DBCredCase):
             )
         assert isinstance(result, AuthConfig)
         assert result.credentials == {"access_token": "decrypted"}
-        assert result.auth_mode == AuthProviderMode.DIRECT
 
 
 # ===========================================================================
@@ -695,7 +690,6 @@ def test_normalize_credentials(case: ProcessCredsCase):
 class TokenManagerCase:
     id: str
     access_token: str | None = None
-    auth_mode: AuthProviderMode = AuthProviderMode.DIRECT
     oauth_type: str | None = None
     expect_tm_set: bool = False
 
@@ -721,9 +715,7 @@ async def test_configure_token_provider(case: TokenManagerCase):
     ctx = _make_ctx()
     auth_config = AuthConfig(
         credentials="tok",
-        http_client_factory=None,
         auth_provider_instance=None,
-        auth_mode=case.auth_mode,
     )
     service = _make_service()
 
@@ -767,8 +759,8 @@ class TestConfigureHttpClientFactory:
         source = MagicMock()
         factory = MagicMock()
         ac = AuthConfig(
-            credentials="x", http_client_factory=factory,
-            auth_provider_instance=None, auth_mode=AuthProviderMode.DIRECT,
+            credentials="x",
+            auth_provider_instance=None,
         )
         SourceLifecycleService._configure_http_client_factory(source, ac)
         source.set_http_client_factory.assert_called_once_with(factory)
@@ -776,8 +768,8 @@ class TestConfigureHttpClientFactory:
     def test_noop_when_none(self):
         source = MagicMock()
         ac = AuthConfig(
-            credentials="x", http_client_factory=None,
-            auth_provider_instance=None, auth_mode=AuthProviderMode.DIRECT,
+            credentials="x",
+            auth_provider_instance=None,
         )
         SourceLifecycleService._configure_http_client_factory(source, ac)
         source.set_http_client_factory.assert_not_called()

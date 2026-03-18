@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import crud, schemas
 from airweave.core.context import BaseContext
+from airweave.core.exceptions import NotFoundException
 from airweave.core.logging import ContextualLogger, LoggerConfigurator
 from airweave.platform.contexts.sync import SyncContext
 from airweave.platform.sync.config import SyncConfig
@@ -115,8 +116,6 @@ class SyncContextBuilder:
             db, sync_id=sync.id, ctx=ctx
         )
         if not source_connection_obj:
-            from airweave.core.exceptions import NotFoundException
-
             raise NotFoundException(
                 f"Source connection record not found for sync {sync.id}"
             )

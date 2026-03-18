@@ -20,6 +20,7 @@ from airweave.domains.auth_provider.exceptions import (
     AuthProviderRateLimitError,
     AuthProviderServerError,
 )
+from airweave.domains.sources.token_providers.protocol import AuthProviderKind, TokenProviderProtocol
 from airweave.domains.sources.token_providers.exceptions import (
     TokenCredentialsInvalidError,
     TokenProviderAccountGoneError,
@@ -33,11 +34,10 @@ if TYPE_CHECKING:
     from airweave.domains.sources.protocols import SourceRegistryProtocol
 
 
-class AuthProviderTokenProvider:
+class AuthProviderTokenProvider(TokenProviderProtocol):
     """TokenProvider backed by an external auth provider (Pipedream / Composio).
 
-    Satisfies both ``SourceAuthProvider`` and ``TokenProviderProtocol``.
-    In *direct* mode the auth provider holds the user's OAuth connection
+    In direct mode the auth provider holds the user's OAuth connection
     and can vend fresh access tokens on demand.
     """
 
@@ -56,9 +56,9 @@ class AuthProviderTokenProvider:
         self._logger = logger
 
     @property
-    def provider_kind(self) -> str:
+    def provider_kind(self) -> AuthProviderKind:
         """Discriminator for this auth provider type."""
-        return "auth_provider"
+        return AuthProviderKind.AUTH_PROVIDER
 
     @property
     def supports_refresh(self) -> bool:

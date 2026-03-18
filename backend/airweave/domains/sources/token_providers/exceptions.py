@@ -49,8 +49,9 @@ class TokenProviderError(SourceError):
 class TokenExpiredError(TokenProviderError):
     """Token is known to be expired/invalid and cannot be refreshed.
 
-    Raised by ``get_token()`` when the provider can detect expiry
-    (e.g. JWT ``exp`` claim peek) and ``supports_refresh`` is ``False``.
+    Raised by providers (e.g. JWT ``exp`` claim peek when
+    ``supports_refresh`` is ``False``) or by sources when
+    source-specific documentation indicates the token is dead.
     Lets the pipeline abort immediately instead of waiting for a 401.
     """
 

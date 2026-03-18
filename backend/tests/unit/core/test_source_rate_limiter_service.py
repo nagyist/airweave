@@ -10,7 +10,7 @@ from uuid import uuid4
 import pytest
 
 from airweave.core.exceptions import SourceRateLimitExceededException
-from airweave.core.source_rate_limiter_service import SourceRateLimiter
+from airweave.domains.sources.rate_limiting.service import SourceRateLimiter
 
 
 @pytest.fixture

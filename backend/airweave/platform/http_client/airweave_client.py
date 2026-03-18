@@ -14,7 +14,7 @@ import httpx
 
 from airweave.core.exceptions import SourceRateLimitExceededException
 from airweave.core.logging import ContextualLogger
-from airweave.core.source_rate_limiter_service import SourceRateLimiter
+from airweave.domains.sources.rate_limiting.service import SourceRateLimiter
 from airweave.platform.utils.ssrf import SSRFViolation, validate_url
 
 

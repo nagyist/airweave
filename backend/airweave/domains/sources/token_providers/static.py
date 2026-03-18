@@ -5,13 +5,11 @@ and OAuth callback validation where no refresh is possible.
 """
 
 from airweave.domains.sources.token_providers.exceptions import TokenRefreshNotSupportedError
+from airweave.domains.sources.token_providers.protocol import AuthProviderKind, TokenProviderProtocol
 
 
-class StaticTokenProvider:
-    """TokenProvider backed by a single immutable token string.
-
-    Satisfies both ``SourceAuthProvider`` and ``TokenProviderProtocol``.
-    """
+class StaticTokenProvider(TokenProviderProtocol):
+    """TokenProvider backed by a single immutable token string."""
 
     def __init__(self, token: str, *, source_short_name: str = ""):
         """Initialize with a raw token string."""
@@ -21,9 +19,9 @@ class StaticTokenProvider:
         self._source_short_name = source_short_name
 
     @property
-    def provider_kind(self) -> str:
+    def provider_kind(self) -> AuthProviderKind:
         """Discriminator for this auth provider type."""
-        return "static"
+        return AuthProviderKind.STATIC
 
     @property
     def supports_refresh(self) -> bool:

@@ -20,7 +20,11 @@ from airweave.core import container as container_mod
 from airweave.core.context import BaseContext
 from airweave.core.exceptions import NotFoundException
 from airweave.core.logging import LoggerConfigurator, logger
+from airweave.domains.browse_tree.repository import NodeSelectionRepository
+from airweave.domains.browse_tree.types import NodeSelectionData
 from airweave.domains.embedders.protocols import DenseEmbedderProtocol, SparseEmbedderProtocol
+from airweave.domains.storage.file_service import FileService
+from airweave.domains.syncs.cursors.cursor import SyncCursor
 from airweave.platform.builders import SyncContextBuilder
 from airweave.platform.builders.tracking import TrackingContextBuilder
 from airweave.platform.contexts.runtime import SyncRuntime
@@ -203,8 +207,6 @@ class SyncFactory:
 
         Returns (source, cursor, files, node_selections) tuple.
         """
-        from airweave.domains.storage.file_service import FileService
-
         sync_logger = LoggerConfigurator.configure_logger(
             "airweave.platform.sync.source_build",
             dimensions={
@@ -267,7 +269,6 @@ class SyncFactory:
     async def _build_arf_replay_source(cls, db, sync, ctx, logger):
         """Build source for ARF replay mode. Returns (source, cursor)."""
         from airweave.domains.arf.replay_source import ArfReplaySource
-        from airweave.domains.syncs.cursors.cursor import SyncCursor
 
         source_connection = await crud.source_connection.get_by_sync_id(
             db, sync_id=sync.id, ctx=ctx
@@ -322,8 +323,6 @@ class SyncFactory:
     async def _create_cursor(cls, db, sync, source_class, ctx, logger, force_full_sync,
                              execution_config):
         """Create sync cursor with optional data loading."""
-        from airweave.domains.syncs.cursors.cursor import SyncCursor
-
         cursor_schema = None
         if hasattr(source_class, "cursor_class") and source_class.cursor_class:
             cursor_schema = source_class.cursor_class
@@ -352,9 +351,6 @@ class SyncFactory:
     @staticmethod
     async def _load_node_selections(db, source_connection_id, ctx):
         """Load node selections for a source connection (for targeted sync)."""
-        from airweave.domains.browse_tree.repository import NodeSelectionRepository
-        from airweave.domains.browse_tree.types import NodeSelectionData
-
         repo = NodeSelectionRepository()
         rows = await repo.get_by_source_connection(db, source_connection_id, ctx.organization.id)
         return [

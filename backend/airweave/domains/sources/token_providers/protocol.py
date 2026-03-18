@@ -15,7 +15,17 @@ All implementations raise exceptions from
 ``domains.sources.token_providers.exceptions``.
 """
 
+from enum import Enum
 from typing import Protocol, runtime_checkable
+
+
+class AuthProviderKind(str, Enum):
+    """Discriminator for auth provider type."""
+
+    OAUTH = "oauth"
+    STATIC = "static"
+    AUTH_PROVIDER = "auth_provider"
+    CREDENTIAL = "credential"
 
 
 @runtime_checkable
@@ -29,8 +39,8 @@ class SourceAuthProvider(Protocol):
     """
 
     @property
-    def provider_kind(self) -> str:
-        """Discriminator: ``"oauth"`` | ``"static"`` | ``"auth_provider"`` | ``"credential"``."""
+    def provider_kind(self) -> AuthProviderKind:
+        """The kind of auth this provider supplies."""
         ...
 
     @property

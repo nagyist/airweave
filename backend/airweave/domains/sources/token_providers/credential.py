@@ -9,7 +9,7 @@ Implements ``SourceAuthProvider`` but NOT ``TokenProviderProtocol`` — calling
 
 from typing import Generic, TypeVar
 
-from airweave.domains.sources.token_providers.protocol import SourceAuthProvider
+from airweave.domains.sources.token_providers.protocol import AuthProviderKind, SourceAuthProvider
 
 T = TypeVar("T")
 
@@ -35,9 +35,9 @@ class DirectCredentialProvider(SourceAuthProvider, Generic[T]):
         return self._credentials
 
     @property
-    def provider_kind(self) -> str:
+    def provider_kind(self) -> AuthProviderKind:
         """Discriminator for this auth provider type."""
-        return "credential"
+        return AuthProviderKind.CREDENTIAL
 
     @property
     def supports_refresh(self) -> bool:

@@ -18,7 +18,6 @@ from airweave.core.exceptions import NotFoundException
 from airweave.core.logging import ContextualLogger
 from airweave.core.shared_models import FeatureFlag
 from airweave.domains.auth_provider._base import BaseAuthProvider
-from airweave.domains.auth_provider.auth_result import AuthProviderMode
 from airweave.domains.auth_provider.protocols import AuthProviderRegistryProtocol
 from airweave.domains.connections.protocols import ConnectionRepositoryProtocol
 from airweave.domains.credentials.protocols import (
@@ -37,6 +36,7 @@ from airweave.domains.sources.protocols import (
     SourceLifecycleServiceProtocol,
     SourceRegistryProtocol,
 )
+from airweave.domains.sources.rate_limiting.service import SourceRateLimiter
 from airweave.domains.sources.token_providers.auth_provider import AuthProviderTokenProvider
 from airweave.domains.sources.token_providers.oauth import OAuthTokenProvider
 from airweave.domains.sources.token_providers.static import StaticTokenProvider
@@ -70,8 +70,6 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
         self._conn_repo = conn_repo
         self._cred_repo = cred_repo
         self._oauth2_service = oauth2_service
-
-        from airweave.core.source_rate_limiter_service import SourceRateLimiter
 
         self._rate_limiter = SourceRateLimiter(source_registry=source_registry)
 
@@ -269,7 +267,6 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
             return AuthConfig(
                 credentials=access_token,
                 auth_provider_instance=None,
-                auth_mode=AuthProviderMode.DIRECT,
             )
 
         # Case 2: Auth provider connection
@@ -337,7 +334,6 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
         return AuthConfig(
             credentials=auth_result.credentials,
             auth_provider_instance=auth_provider_instance,
-            auth_mode=AuthProviderMode.DIRECT,
         )
 
     async def _get_database_credentials(
@@ -370,13 +366,11 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
             return AuthConfig(
                 credentials=processed,
                 auth_provider_instance=None,
-                auth_mode=AuthProviderMode.DIRECT,
             )
 
         return AuthConfig(
             credentials=decrypted_credential,
             auth_provider_instance=None,
-            auth_mode=AuthProviderMode.DIRECT,
         )
 
     # ------------------------------------------------------------------
@@ -618,24 +612,18 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
     # Private: rate limiting wrapper
     # ------------------------------------------------------------------
 
-    @staticmethod
     def _wrap_source_with_airweave_client(
+        self,
         source: BaseSource,
         source_short_name: str,
         source_connection_id: UUID,
         ctx: ApiContext,
         logger: ContextualLogger,
     ) -> None:
-        """Wrap source HTTP client with AirweaveHttpClient for rate limiting.
-
-        ALL sources are wrapped. The client checks internally:
-        1. Is SOURCE_RATE_LIMITING feature enabled? -> No = skip check
-        2. Is rate_limit_level set? -> No = skip check
-        3. Is limit configured in DB? -> No = skip check
-        4. Otherwise -> enforce limit
-        """
+        """Wrap source HTTP client with AirweaveHttpClient for rate limiting."""
         feature_enabled = ctx.has_feature(FeatureFlag.SOURCE_RATE_LIMITING)
         original_factory = source._http_client_factory
+        rate_limiter = self._rate_limiter
 
         def airweave_client_factory(**kwargs):
             if original_factory:
@@ -647,6 +635,7 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
                 wrapped_client=base_client,
                 org_id=ctx.organization.id,
                 source_short_name=source_short_name,
+                rate_limiter=rate_limiter,
                 source_connection_id=source_connection_id,
                 feature_flag_enabled=feature_enabled,
                 logger=logger,

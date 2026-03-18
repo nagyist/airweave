@@ -59,6 +59,10 @@ if [ -n "$AUTH0_AUDIENCE" ]; then
   validate_audience "$AUTH0_AUDIENCE"
 fi
 
+if [ -n "$VITE_CONNECT_URL" ]; then
+  validate_url_or_path "$VITE_CONNECT_URL"
+fi
+
 # Determine if auth should be enabled
 # Priority: 1. ENABLE_AUTH env var 2. If AUTH0 vars present 3. Default off
 if [ "${ENABLE_AUTH}" = "true" ]; then
@@ -93,8 +97,23 @@ sed -i 's|</head>|  <script src="/config.js"></script>\n  </head>|' /app/dist/in
 
 echo "Runtime config injected successfully. API_URL set to: ${API_URL:-/api}"
 
-# Copy serve.json to dist directory for security headers (CASA-6)
+# Substitute environment variables into serve.json CSP and copy to dist
 if [ -f /app/serve.json ]; then
+  if [ -n "$API_URL" ]; then
+    sed -i "s|__API_URL__|${API_URL}|g" /app/serve.json
+  else
+    sed -i "s| __API_URL__||g" /app/serve.json
+  fi
+  if [ -n "$AUTH0_DOMAIN" ]; then
+    sed -i "s|__AUTH0_DOMAIN__|https://${AUTH0_DOMAIN}|g" /app/serve.json
+  else
+    sed -i "s| __AUTH0_DOMAIN__||g" /app/serve.json
+  fi
+  if [ -n "$VITE_CONNECT_URL" ]; then
+    sed -i "s|__CONNECT_URL__|${VITE_CONNECT_URL}|g" /app/serve.json
+  else
+    sed -i "s| __CONNECT_URL__||g" /app/serve.json
+  fi
   cp /app/serve.json /app/dist/serve.json
   echo "Security headers configuration loaded"
 fi

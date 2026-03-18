@@ -231,10 +231,13 @@ class ChunkEmbedProcessor:
         if not chunk_entities:
             return
 
+        if runtime.dense_embedder is None:
+            return
+
         expected_dims = runtime.dense_embedder.dimensions
 
         # Dense embeddings (provider-specific dimensions for neural search)
-        dense_texts = [e.textual_representation for e in chunk_entities]
+        dense_texts = [e.textual_representation or "" for e in chunk_entities]
         entity_ids = [e.entity_id for e in chunk_entities]
         sync_context.logger.info(
             "[ChunkEmbedProcessor] Embedding %d chunk entities. Entity IDs: %s",

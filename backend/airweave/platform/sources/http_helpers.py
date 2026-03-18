@@ -138,13 +138,15 @@ _STATUS_HANDLERS = {
 def translate_httpx_error(
     exc: httpx.HTTPStatusError,
     *,
-    source_short_name: str = "",
+    source_short_name: str,
+    token_provider_kind: AuthProviderKind,
     context: str = "",
 ) -> None:
     """Re-raise an ``httpx.HTTPStatusError`` as the correct domain exception."""
     raise_for_status(
         exc.response,
         source_short_name=source_short_name,
+        token_provider_kind=token_provider_kind,
         context=context,
     )
 

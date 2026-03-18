@@ -357,9 +357,8 @@ class AsanaSource(BaseSource):
             self.logger.debug(f"Skipping attachment {entity.gid}: {e.reason}")
             return None
         except httpx.HTTPStatusError as e:
-            # We don't want to raise an error here, we just want to log it and skip the file.
-            # If it's a structural error on our side, we want to raise an error,
-            # and it should propagate.
+            if e.response.status_code == 401:
+                raise
             self.logger.warning(
                 f"HTTP {e.response.status_code} downloading attachment {entity.gid}: {e}"
             )
@@ -408,6 +407,8 @@ class AsanaSource(BaseSource):
         try:
             async for comment in self._generate_comments(task_entity.gid, task_breadcrumbs):
                 yield comment
+        except SourceAuthError:
+            raise
         except SourceEntityForbiddenError:
             self.logger.warning(f"No access to comments for task {task_entity.gid}, skipping")
         except SourceError as exc:

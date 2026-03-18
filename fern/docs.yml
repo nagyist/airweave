@@ -33,6 +33,8 @@ navigation:
     path: docs/pages/cli.mdx
   - page: Agent Skills
     path: docs/pages/skills.mdx
+  - page: Connect
+    path: docs/pages/connect.mdx
   - section: Webhooks
     contents:
     - page: Overview

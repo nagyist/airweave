@@ -23,16 +23,18 @@ The Connect widget is an embeddable component that allows end users to manage th
 ```
 connect/src/
 ├── components/         # UI components
-│   ├── ConnectionItem.tsx     # Single connection display
+│   ├── ActionErrorBanner.tsx  # Dismissible inline error banner for action failures
+│   ├── ConnectionItem.tsx     # Single connection display (supports reconnect loading state)
 │   ├── ConnectionsErrorView.tsx
 │   ├── DynamicFormField.tsx   # Dynamic form fields with markdown support
 │   ├── EmptyState.tsx         # Dual-layout empty state (rich hero when showConnect=true, simple manage view otherwise)
 │   ├── ErrorScreen.tsx        # Full-screen error display
 │   ├── FolderSelectionView.tsx # Folder picker wrapper (optional feature)
 │   ├── FolderTree.tsx         # Hierarchical folder checkbox tree
-│   ├── LoadingScreen.tsx      # Loading spinner
+│   ├── LoadingScreen.tsx      # Loading spinner (legacy, prefer contextual skeletons)
 │   ├── PoweredByAirweave.tsx  # Footer branding
 │   ├── SessionProvider.tsx    # Session context provider
+│   ├── Skeleton.tsx           # Contextual skeleton loaders (ConnectionItemSkeleton, SourceItemSkeleton, SourceConfigSkeleton)
 │   ├── SourceItem.tsx         # Single source in picker
 │   ├── SourcesList.tsx        # Source selection grid
 │   └── SuccessScreen.tsx      # Main connected state
@@ -85,7 +87,7 @@ const handleMessage = (event: MessageEvent) => {
   if (data.type === "TOKEN_RESPONSE" && !parentOriginRef.current) {
     parentOriginRef.current = event.origin;
   }
-  
+
   // Validate all messages once origin is established
   if (parentOriginRef.current && event.origin !== parentOriginRef.current) {
     return; // Ignore messages from unexpected origins
@@ -222,10 +224,21 @@ const { data, isLoading, error } = useQuery({
 
 ### 4. API Integration
 ```typescript
-// Always handle loading and error states
-if (isLoading) return <LoadingScreen />;
-if (error) return <ErrorScreen error={error} />;
+// Use contextual skeleton loaders instead of a generic LoadingScreen
+if (isLoading) {
+  return (
+    <PageLayout title={labels.sourcesHeading}>
+      <ConnectionItemSkeleton />
+      <ConnectionItemSkeleton />
+    </PageLayout>
+  );
+}
+if (error) return <ConnectionsErrorView error={error} labels={labels} />;
 ```
+
+Available skeleton components: `ConnectionItemSkeleton`, `SourceItemSkeleton`, `SourceConfigSkeleton` (all in `Skeleton.tsx`).
+
+For action-level errors (e.g. delete or reconnect failures), use `ActionErrorBanner` — a dismissible, auto-fading inline banner styled with `--connect-error`.
 
 ### 5. Coding Conventions
 - Prefix unused variables/arguments with `_` (enforced by ESLint)

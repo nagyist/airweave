@@ -7,7 +7,7 @@ import os
 import re
 import time
 from datetime import datetime, timezone
-from typing import Any, AsyncGenerator, Dict, List, Optional, Union
+from typing import AsyncGenerator, Dict, List, Optional, Union
 from uuid import uuid4
 
 import httpx
@@ -150,51 +150,6 @@ class LinearSource(BaseSource):
         return body
 
     # ------------------------------------------------------------------
-    # Helpers
-    # ------------------------------------------------------------------
-
-    @staticmethod
-    def _parse_datetime(value: Optional[str]) -> Optional[datetime]:
-        """Parse Linear ISO8601 timestamps into timezone-aware datetimes."""
-        if not value:
-            return None
-        try:
-            return datetime.fromisoformat(value.replace("Z", "+00:00"))
-        except ValueError:
-            return None
-
-    def _build_issue_context(
-        self, issue: Dict[str, Any]
-    ) -> tuple[List[Breadcrumb], Optional[str], Optional[str], Optional[str], Optional[str]]:
-        """Assemble breadcrumb trail and related metadata for an issue."""
-        breadcrumbs: List[Breadcrumb] = []
-        team = issue.get("team") or {}
-        team_id = team.get("id")
-        team_name = team.get("name")
-        if team_id:
-            breadcrumbs.append(
-                Breadcrumb(
-                    entity_id=team_id,
-                    name=team_name or "Team",
-                    entity_type=LinearTeamEntity.__name__,
-                )
-            )
-
-        project = issue.get("project") or {}
-        project_id = project.get("id")
-        project_name = project.get("name")
-        if project_id:
-            breadcrumbs.append(
-                Breadcrumb(
-                    entity_id=project_id,
-                    name=project_name or "Project",
-                    entity_type=LinearProjectEntity.__name__,
-                )
-            )
-
-        return breadcrumbs, team_id, team_name, project_id, project_name
-
-    # ------------------------------------------------------------------
     # Pagination
     # ------------------------------------------------------------------
 
@@ -292,46 +247,8 @@ class LinearSource(BaseSource):
         )
 
         async def process_team(team):
-            team_id = team.get("id")
-            team_name = team.get("name")
-            team_key = team.get("key")
-            parent = team.get("parent")
-            team_parent_id = parent.get("id", "") if parent else ""
-            team_parent_name = parent.get("name", "") if parent else ""
-
-            self.logger.debug(f"Processing team: {team_name} ({team_key})")
-
-            breadcrumbs = [
-                Breadcrumb(
-                    entity_id=team_id,
-                    name=team_name or team_key or "Team",
-                    entity_type=LinearTeamEntity.__name__,
-                )
-            ]
-            created_time = self._parse_datetime(team.get("createdAt")) or datetime.utcnow()
-            updated_time = self._parse_datetime(team.get("updatedAt")) or created_time
-
-            yield LinearTeamEntity(
-                entity_id=team_id,
-                breadcrumbs=breadcrumbs,
-                name=team_name or "",
-                created_at=created_time,
-                updated_at=updated_time,
-                team_id=team_id,
-                team_name=team_name or "",
-                created_time=created_time,
-                updated_time=updated_time,
-                key=team_key,
-                description=team.get("description", ""),
-                color=team.get("color", ""),
-                icon=team.get("icon", ""),
-                private=team.get("private", False),
-                timezone=team.get("timezone", ""),
-                parent_id=team_parent_id,
-                parent_name=team_parent_name,
-                issue_count=team.get("issueCount", 0),
-                web_url_value=f"https://linear.app/team/{team_key}",
-            )
+            self.logger.debug(f"Processing team: {team.get('name')} ({team.get('key')})")
+            yield LinearTeamEntity.from_api(team)
 
         async for entity in self._paginated_query(
             query_template, process_team, entity_type="teams"
@@ -383,55 +300,8 @@ class LinearSource(BaseSource):
         )
 
         async def process_project(project):
-            project_id = project.get("id")
-            project_name = project.get("name")
-
-            self.logger.debug(f"Processing project: {project_name}")
-
-            team_ids: List[Optional[str]] = []
-            team_names: List[Optional[str]] = []
-            for team in project.get("teams", {}).get("nodes", []):
-                team_ids.append(team.get("id"))
-                team_names.append(team.get("name"))
-
-            breadcrumbs: List[Breadcrumb] = []
-            for t_id, t_name in zip(team_ids, team_names, strict=False):
-                if t_id:
-                    breadcrumbs.append(
-                        Breadcrumb(
-                            entity_id=t_id,
-                            name=t_name or "Team",
-                            entity_type=LinearTeamEntity.__name__,
-                        )
-                    )
-
-            created_time = self._parse_datetime(project.get("createdAt")) or datetime.utcnow()
-            updated_time = self._parse_datetime(project.get("updatedAt")) or created_time
-
-            yield LinearProjectEntity(
-                entity_id=project_id,
-                breadcrumbs=breadcrumbs,
-                name=project_name or "",
-                created_at=created_time,
-                updated_at=updated_time,
-                project_id=project_id,
-                project_name=project_name or "",
-                created_time=created_time,
-                updated_time=updated_time,
-                slug_id=project.get("slugId"),
-                description=project.get("description"),
-                priority=project.get("priority"),
-                state=project.get("state"),
-                completed_at=self._parse_datetime(project.get("completedAt")),
-                started_at=self._parse_datetime(project.get("startedAt")),
-                target_date=project.get("targetDate"),
-                start_date=project.get("startDate"),
-                team_ids=team_ids if team_ids else None,
-                team_names=team_names if team_names else None,
-                progress=project.get("progress"),
-                lead=project.get("lead", {}).get("name") if project.get("lead") else None,
-                web_url_value=f"https://linear.app/project/{project.get('slugId')}",
-            )
+            self.logger.debug(f"Processing project: {project.get('name')}")
+            yield LinearProjectEntity.from_api(project)
 
         async for entity in self._paginated_query(
             query_template, process_project, entity_type="projects"
@@ -485,59 +355,8 @@ class LinearSource(BaseSource):
         )
 
         async def process_user(user):
-            user_id = user.get("id")
-            user_name = user.get("name")
-            display_name = user.get("displayName")
-
-            self.logger.debug(f"Processing user: {user_name} ({display_name})")
-
-            team_ids = []
-            team_names = []
-            for team in user.get("teams", {}).get("nodes", []):
-                team_ids.append(team.get("id"))
-                team_names.append(team.get("name"))
-
-            breadcrumbs: List[Breadcrumb] = []
-            for t_id, t_name in zip(team_ids, team_names, strict=False):
-                if t_id:
-                    breadcrumbs.append(
-                        Breadcrumb(
-                            entity_id=t_id,
-                            name=t_name or "Team",
-                            entity_type=LinearTeamEntity.__name__,
-                        )
-                    )
-
-            display_label = display_name or user_name or user.get("email") or user_id
-            created_time = self._parse_datetime(user.get("createdAt")) or datetime.utcnow()
-            updated_time = self._parse_datetime(user.get("updatedAt")) or created_time
-
-            yield LinearUserEntity(
-                entity_id=user_id,
-                breadcrumbs=breadcrumbs,
-                name=user_name or display_label,
-                created_at=created_time,
-                updated_at=updated_time,
-                user_id=user_id,
-                display_name=display_label,
-                created_time=created_time,
-                updated_time=updated_time,
-                email=user.get("email"),
-                avatar_url=user.get("avatarUrl"),
-                description=user.get("description"),
-                timezone=user.get("timezone"),
-                active=user.get("active"),
-                admin=user.get("admin"),
-                guest=user.get("guest"),
-                last_seen=user.get("lastSeen"),
-                status_emoji=user.get("statusEmoji"),
-                status_label=user.get("statusLabel"),
-                status_until_at=user.get("statusUntilAt"),
-                created_issue_count=user.get("createdIssueCount"),
-                team_ids=team_ids if team_ids else None,
-                team_names=team_names if team_names else None,
-                web_url_value=f"https://linear.app/u/{user_id}",
-            )
+            self.logger.debug(f"Processing user: {user.get('name')} ({user.get('displayName')})")
+            yield LinearUserEntity.from_api(user)
 
         async for entity in self._paginated_query(
             query_template, process_user, entity_type="users"
@@ -551,51 +370,22 @@ class LinearSource(BaseSource):
     async def _process_issue_comments(
         self,
         comments: List[Dict],
-        issue_id: str,
-        issue_identifier: str,
+        issue: LinearIssueEntity,
         issue_breadcrumbs: List[Breadcrumb],
-        team_id: Optional[str],
-        team_name: Optional[str],
-        project_id: Optional[str],
-        project_name: Optional[str],
     ) -> AsyncGenerator[LinearCommentEntity, None]:
         """Yield comment entities for an issue."""
         for comment in comments:
-            comment_id = comment.get("id")
-            comment_body = comment.get("body", "")
-
-            if not comment_body.strip():
+            if not comment.get("body", "").strip():
                 continue
-
-            user = comment.get("user", {})
-            user_id = user.get("id") if user else None
-            user_name = user.get("name") if user else None
-
-            comment_url = f"https://linear.app/issue/{issue_identifier}#comment-{comment_id}"
-            comment_preview = comment_body[:50] + "..." if len(comment_body) > 50 else comment_body
-            created_time = self._parse_datetime(comment.get("createdAt")) or datetime.utcnow()
-            updated_time = self._parse_datetime(comment.get("updatedAt")) or created_time
-
-            yield LinearCommentEntity(
-                entity_id=comment_id,
-                breadcrumbs=issue_breadcrumbs.copy(),
-                name=comment_preview,
-                created_at=created_time,
-                updated_at=updated_time,
-                comment_id=comment_id,
-                body_preview=comment_preview,
-                created_time=created_time,
-                updated_time=updated_time,
-                issue_id=issue_id,
-                issue_identifier=issue_identifier,
-                body=comment_body,
-                user_id=user_id,
-                user_name=user_name,
-                team_id=team_id,
-                team_name=team_name,
-                project_id=project_id,
-                project_name=project_name,
-                web_url_value=comment_url,
+            yield LinearCommentEntity.from_api(
+                comment,
+                issue_id=issue.issue_id,
+                issue_identifier=issue.identifier,
+                breadcrumbs=issue_breadcrumbs,
+                team_id=issue.team_id,
+                team_name=issue.team_name,
+                project_id=issue.project_id,
+                project_name=issue.project_name,
             )
 
     async def _download_description_attachment(
@@ -689,7 +479,7 @@ class LinearSource(BaseSource):
             if downloaded:
                 yield downloaded
 
-    async def _generate_issue_entities(  # noqa: C901
+    async def _generate_issue_entities(
         self,
         since: Optional[str] = None,
         files: FileService | None = None,
@@ -751,84 +541,38 @@ class LinearSource(BaseSource):
         """
         )
 
-        async def process_issue(issue):
-            issue_identifier = issue.get("identifier")
-
-            if issue.get("archivedAt"):
+        async def process_issue(data):
+            if data.get("archivedAt"):
                 self.logger.warning(
-                    f"Archived issue {issue_identifier} passed GraphQL filter — skipping"
+                    f"Archived issue {data.get('identifier')} passed GraphQL filter — skipping"
                 )
                 return
 
-            issue_title = issue.get("title")
-            issue_description = issue.get("description", "")
+            self.logger.debug(f"Processing issue: {data.get('identifier')} — '{data.get('title')}'")
 
-            self.logger.debug(f"Processing issue: {issue_identifier} — '{issue_title}'")
+            issue = LinearIssueEntity.from_api(data)
+            yield issue
 
-            (
-                breadcrumbs,
-                team_id,
-                team_name,
-                project_id,
-                project_name,
-            ) = self._build_issue_context(issue)
+            issue_breadcrumbs = issue.breadcrumbs + [
+                Breadcrumb(
+                    entity_id=issue.issue_id,
+                    name=issue.title,
+                    entity_type=LinearIssueEntity.__name__,
+                )
+            ]
 
-            issue_id = issue.get("id")
-            issue_url = f"https://linear.app/issue/{issue_identifier}"
-            issue_title = issue.get("title", "") or issue_identifier
-            created_time = self._parse_datetime(issue.get("createdAt")) or datetime.utcnow()
-            updated_time = self._parse_datetime(issue.get("updatedAt")) or created_time
-            completed_at = self._parse_datetime(issue.get("completedAt"))
+            comments = data.get("comments", {}).get("nodes", [])
+            self.logger.debug(f"Processing {len(comments)} comments for issue {issue.identifier}")
+            async for comment in self._process_issue_comments(comments, issue, issue_breadcrumbs):
+                yield comment
 
-            yield LinearIssueEntity(
-                entity_id=issue_id,
-                breadcrumbs=breadcrumbs,
-                name=issue_title,
-                created_at=created_time,
-                updated_at=updated_time,
-                issue_id=issue_id,
-                identifier=issue_identifier,
-                title=issue_title,
-                created_time=created_time,
-                updated_time=updated_time,
-                description=issue_description,
-                priority=issue.get("priority"),
-                state=issue.get("state", {}).get("name"),
-                completed_at=completed_at,
-                due_date=issue.get("dueDate"),
-                team_id=team_id,
-                team_name=team_name,
-                project_id=project_id,
-                project_name=project_name,
-                assignee=(issue.get("assignee", {}).get("name") if issue.get("assignee") else None),
-                web_url_value=issue_url,
-            )
-
-            issue_breadcrumb = Breadcrumb(
-                entity_id=issue_id,
-                name=issue_title,
-                entity_type=LinearIssueEntity.__name__,
-            )
-            issue_breadcrumbs = breadcrumbs + [issue_breadcrumb]
-
-            comments = issue.get("comments", {}).get("nodes", [])
-            self.logger.debug(f"Processing {len(comments)} comments for issue {issue_identifier}")
-
-            async for comment_entity in self._process_issue_comments(
-                comments,
-                issue_id,
-                issue_identifier,
-                issue_breadcrumbs,
-                team_id,
-                team_name,
-                project_id,
-                project_name,
-            ):
-                yield comment_entity
-
-            if issue_description and files:
+            if issue.description and files:
                 async for attachment in self._generate_attachment_entities_from_description(
-                    issue_id, issue_identifier, issue_description, issue_breadcrumbs, files
+                    issue.issue_id,
+                    issue.identifier,
+                    issue.description,
+                    issue_breadcrumbs,
+                    files,
                 ):
                     yield attachment
 

@@ -370,23 +370,20 @@ class TemporalScheduleService(TemporalScheduleServiceProtocol):
         if not sync:
             raise ValueError(f"Sync {sync_id} not found")
 
-        # If the sync already has a schedule in Temporal, update it
+        # If the sync already has a schedule in Temporal, tear down all
+        # existing schedules and recreate from scratch.  A simple cron update
+        # is insufficient because the schedule *type* may change (e.g.
+        # regular ↔ minute-level), which requires adding/removing companion
+        # cleanup schedules.
         if sync.temporal_schedule_id:
             status = await self._check_schedule_exists(sync.temporal_schedule_id)
             if status["exists"]:
-                await self._update_schedule(
-                    schedule_id=sync.temporal_schedule_id,
-                    cron_expression=cron_schedule,
-                    sync_id=sync_id,
-                    db=db,
-                    uow=uow,
-                    ctx=ctx,
+                await self.delete_all_schedules_for_sync(sync_id, db, ctx)
+            else:
+                logger.warning(
+                    f"Schedule {sync.temporal_schedule_id} not found in Temporal "
+                    f"for sync {sync_id}, will create new one"
                 )
-                return sync.temporal_schedule_id
-            logger.warning(
-                f"Schedule {sync.temporal_schedule_id} not found in Temporal "
-                f"for sync {sync_id}, will create new one"
-            )
 
         sync_dict, collection_dict, connection_dict = await self._gather_schedule_data(
             sync_id,

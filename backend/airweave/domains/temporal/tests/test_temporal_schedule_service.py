@@ -528,7 +528,7 @@ async def test_create_or_update_schedule(case: CreateOrUpdateCase):
             "schedule_info": None,
         }
     )
-    svc._update_schedule = AsyncMock()
+    svc.delete_all_schedules_for_sync = AsyncMock()
     svc._gather_schedule_data = AsyncMock(return_value=({}, {}, {}))
     svc._create_schedule = AsyncMock(return_value="new-sched-id")
 
@@ -553,8 +553,10 @@ async def test_create_or_update_schedule(case: CreateOrUpdateCase):
         result = await svc.create_or_update_schedule(SYNC_ID, case.cron, db, ctx, uow)
 
         if case.has_existing_schedule and case.existing_schedule_found:
-            svc._update_schedule.assert_called_once()
-            assert result == "existing-sched"
+            # Update path: deletes all existing schedules, then recreates
+            svc.delete_all_schedules_for_sync.assert_called_once()
+            svc._create_schedule.assert_called_once()
+            assert result == "new-sched-id"
         else:
             svc._create_schedule.assert_called_once()
             assert result == "new-sched-id"

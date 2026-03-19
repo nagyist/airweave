@@ -9,7 +9,7 @@ import { toast } from "sonner";
 import { getAuthProviderIconUrl } from "@/lib/utils/icons";
 import { format } from "date-fns";
 import { useAuthProvidersStore } from "@/lib/stores/authProviders";
-import { useOrganizationStore } from "@/lib/stores/organizations";
+import { useOrganizationContext } from "@/hooks/use-organization-context";
 import { clearStoredErrorDetails } from "@/lib/error-utils";
 import '@/styles/connection-animation.css';
 import {
@@ -207,10 +207,8 @@ export const AuthProviderDetailView: React.FC<AuthProviderDetailViewProps> = ({
     const { resolvedTheme } = useTheme();
     const isDark = resolvedTheme === 'dark';
     const { fetchAuthProviderConnections } = useAuthProvidersStore();
-    const { currentOrganization } = useOrganizationStore();
-    const canManage = currentOrganization
-        ? ['owner', 'admin'].includes(currentOrganization.role)
-        : false;
+    const { canManageOrganization } = useOrganizationContext();
+    const canManage = canManageOrganization();
 
     const awLogoSrc = isDark ? "/airweave-logo-svg-white-darkbg.svg" : "/airweave-logo-svg-lightbg-blacklogo.svg";
     const { error: awLogoError, onError: onAwLogoError } = useImageFallback(awLogoSrc);

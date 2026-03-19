@@ -10,6 +10,32 @@ from pydantic_settings import BaseSettings
 
 from airweave.core.config.enums import Environment, StorageBackendType
 
+_BANNED_PASSWORDS: frozenset[str] = frozenset(
+    {
+        "admin",
+        "password",
+        "changeme",
+        "change_me",
+        "airweave",
+        "airweave1234!",
+        "secret",
+        "superuser",
+        "default",
+        "test",
+        "testpassword",
+        "12345678",
+        "123456789",
+    }
+)
+
+_BANNED_SUPERUSER_EMAILS: frozenset[str] = frozenset(
+    {
+        "admin@example.com",
+        "root@example.com",
+        "sa@example.com",
+    }
+)
+
 
 class Settings(BaseSettings):
     """Pydantic settings class.
@@ -75,6 +101,7 @@ class Settings(BaseSettings):
     DISABLE_RATE_LIMIT: bool = False  # For testing purposes - disables rate limiting completely
     FIRST_SUPERUSER: str
     FIRST_SUPERUSER_PASSWORD: str
+    FIRST_SUPERUSER_NAME: str = "Admin"
 
     AUTH_ENABLED: Optional[bool] = False
     AUTH0_DOMAIN: Optional[str] = None
@@ -238,7 +265,7 @@ class Settings(BaseSettings):
 
     # Svix (webhooks) configuration
     SVIX_URL: str = "http://localhost:8071"
-    SVIX_JWT_SECRET: str = "default_signing_secret_change_me!"
+    SVIX_JWT_SECRET: str
     WEBHOOK_VERIFY_ENDPOINTS: bool = True
 
     @field_validator("HEALTH_CHECK_TIMEOUT", mode="before")
@@ -390,6 +417,49 @@ class Settings(BaseSettings):
                 "STATE_SECRET must be at least 32 characters long. "
                 "Generate a strong secret using: "
                 "python -c 'import secrets; print(secrets.token_urlsafe(32))'"
+            )
+        return v
+
+    @field_validator("SVIX_JWT_SECRET", mode="before")
+    def validate_svix_jwt_secret(cls, v: str) -> str:
+        """Validate that SVIX_JWT_SECRET has minimum required length."""
+        if not v or len(v) < 32:
+            raise ValueError(
+                "SVIX_JWT_SECRET must be at least 32 characters long. "
+                "Generate a strong secret using: "
+                "python -c 'import secrets; print(secrets.token_urlsafe(32))'"
+            )
+        return v
+
+    @field_validator("FIRST_SUPERUSER_PASSWORD", mode="before")
+    def validate_first_superuser_password(cls, v: str, info: ValidationInfo) -> str:
+        """Reject weak superuser passwords in non-local environments."""
+        environment = info.data.get("ENVIRONMENT", "local")
+        env_str = environment.value if isinstance(environment, Environment) else environment
+        if env_str in ("local", "test"):
+            return v
+        if not v or len(v) < 12:
+            raise ValueError(
+                "FIRST_SUPERUSER_PASSWORD must be at least 12 characters in non-local environments."
+            )
+        if v.lower() in _BANNED_PASSWORDS:
+            raise ValueError(
+                "FIRST_SUPERUSER_PASSWORD is a well-known default "
+                "and cannot be used in non-local environments."
+            )
+        return v
+
+    @field_validator("FIRST_SUPERUSER", mode="before")
+    def validate_first_superuser_email(cls, v: str, info: ValidationInfo) -> str:
+        """Reject well-known placeholder emails in non-local environments."""
+        environment = info.data.get("ENVIRONMENT", "local")
+        env_str = environment.value if isinstance(environment, Environment) else environment
+        if env_str in ("local", "test"):
+            return v
+        if v and v.lower() in _BANNED_SUPERUSER_EMAILS:
+            raise ValueError(
+                "FIRST_SUPERUSER cannot be a well-known placeholder email "
+                "in non-local environments."
             )
         return v
 

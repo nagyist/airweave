@@ -30,7 +30,7 @@ async def init_db(db: AsyncSession) -> None:
         logger.info(f"User {settings.FIRST_SUPERUSER} not found, creating...")
         user_in = schemas.UserCreate(
             email=settings.FIRST_SUPERUSER,
-            full_name="Superuser",
+            full_name=settings.FIRST_SUPERUSER_NAME,
             password=settings.FIRST_SUPERUSER_PASSWORD,
         )
         user, organization = await crud.user.create_with_organization(db, obj_in=user_in)

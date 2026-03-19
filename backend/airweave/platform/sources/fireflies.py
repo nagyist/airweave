@@ -7,8 +7,7 @@ https://docs.fireflies.ai/schema/transcript.
 
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Any, AsyncGenerator, Dict, List, Optional
+from typing import Any, AsyncGenerator, Dict, Optional
 
 from tenacity import retry, stop_after_attempt
 
@@ -136,65 +135,6 @@ class FirefliesSource(BaseSource):
             )
         return data
 
-    @staticmethod
-    def _parse_date(ms: Optional[float]) -> Optional[datetime]:
-        """Convert milliseconds since epoch to UTC datetime."""
-        if ms is None:
-            return None
-        try:
-            return datetime.utcfromtimestamp(ms / 1000.0)
-        except (OSError, ValueError):
-            return None
-
-    @staticmethod
-    def _normalize_action_items(value: Any) -> Optional[List[str]]:
-        """Normalize action_items from API (string or list) to List[str]."""
-        if value is None:
-            return None
-        if isinstance(value, list):
-            return [str(x).strip() for x in value if str(x).strip()]
-        if isinstance(value, str):
-            return [s.strip() for s in value.split("\n") if s.strip()] or None
-        return None
-
-    def _transcript_to_entity(self, t: Dict[str, Any]) -> FirefliesTranscriptEntity:
-        """Map a raw transcript object from the API to FirefliesTranscriptEntity."""
-        transcript_id = t.get("id") or ""
-        title = t.get("title") or "Untitled meeting"
-        date_ms = t.get("date")
-        created_time = self._parse_date(date_ms)
-        summary = t.get("summary") or {}
-        sentences = t.get("sentences") or []
-        content_parts = []
-        for s in sentences:
-            raw = (s.get("raw_text") or s.get("text") or "").strip()
-            if raw:
-                content_parts.append(raw)
-        content = "\n".join(content_parts) if content_parts else None
-
-        return FirefliesTranscriptEntity(
-            entity_id=transcript_id,
-            breadcrumbs=[],
-            name=title,
-            created_at=created_time,
-            updated_at=created_time,
-            transcript_id=transcript_id,
-            title=title,
-            organizer_email=t.get("organizer_email"),
-            transcript_url=t.get("transcript_url"),
-            participants=t.get("participants") or [],
-            duration=t.get("duration"),
-            date=date_ms,
-            date_string=t.get("dateString"),
-            created_time=created_time,
-            speakers=t.get("speakers") or [],
-            summary_overview=summary.get("overview") or summary.get("short_summary"),
-            summary_keywords=summary.get("keywords") or [],
-            summary_action_items=self._normalize_action_items(summary.get("action_items")),
-            content=content,
-            fireflies_users=t.get("fireflies_users") or [],
-        )
-
     async def generate_entities(
         self,
         *,
@@ -249,7 +189,7 @@ class FirefliesSource(BaseSource):
             if not transcripts:
                 break
             for t in transcripts:
-                yield self._transcript_to_entity(t)
+                yield FirefliesTranscriptEntity.from_api(t)
             if len(transcripts) < TRANSCRIPTS_PAGE_SIZE:
                 break
             skip += TRANSCRIPTS_PAGE_SIZE

@@ -179,16 +179,6 @@ class GoogleCalendarSource(BaseSource):
         )
         return response.json()
 
-    @staticmethod
-    def _parse_datetime(value: Optional[str]) -> Optional[datetime]:
-        """Parse Google Calendar RFC3339 timestamps into timezone-aware datetimes."""
-        if not value:
-            return None
-        try:
-            return datetime.fromisoformat(value.replace("Z", "+00:00"))
-        except ValueError:
-            return None
-
     # -----------------------
     # Listing / entity helpers
     # -----------------------
@@ -206,26 +196,7 @@ class GoogleCalendarSource(BaseSource):
             items = data.get("items", []) or []
             self.logger.info(f"CalendarList page #{page} returned {len(items)} items")
             for cal in items:
-                name = cal.get("summaryOverride") or cal.get("summary") or "Untitled Calendar"
-                calendar_id = cal["id"]
-                web_url = f"https://calendar.google.com/calendar/u/0/r?cid={urllib.parse.quote(calendar_id)}"
-
-                yield GoogleCalendarListEntity(
-                    breadcrumbs=[],
-                    calendar_key=calendar_id,
-                    display_name=name,
-                    summary=cal.get("summary"),
-                    summary_override=cal.get("summaryOverride"),
-                    color_id=cal.get("colorId"),
-                    background_color=cal.get("backgroundColor"),
-                    foreground_color=cal.get("foregroundColor"),
-                    hidden=cal.get("hidden", False),
-                    selected=cal.get("selected", False),
-                    access_role=cal.get("accessRole"),
-                    primary=cal.get("primary", False),
-                    deleted=cal.get("deleted", False),
-                    web_url_value=web_url,
-                )
+                yield GoogleCalendarListEntity.from_api(cal)
             next_page_token = data.get("nextPageToken")
             if not next_page_token:
                 self.logger.info("No more CalendarList pages")
@@ -240,18 +211,7 @@ class GoogleCalendarSource(BaseSource):
         url = f"https://www.googleapis.com/calendar/v3/calendars/{encoded_calendar_id}"
         self.logger.info(f"Fetching Calendar resource for calendar_id={calendar_id}")
         data = await self._get(url)
-        display_name = data.get("summary") or "Untitled Calendar"
-        web_url = f"https://calendar.google.com/calendar/u/0/r?cid={encoded_calendar_id}"
-        yield GoogleCalendarCalendarEntity(
-            breadcrumbs=[],
-            calendar_key=data["id"],
-            display_name=display_name,
-            summary=data.get("summary"),
-            description=data.get("description"),
-            location=data.get("location"),
-            time_zone=data.get("timeZone"),
-            web_url_value=web_url,
-        )
+        yield GoogleCalendarCalendarEntity.from_api(data)
 
     async def _generate_event_entities(
         self, calendar_list_entry: GoogleCalendarListEntity
@@ -279,45 +239,10 @@ class GoogleCalendarSource(BaseSource):
                 f"{len(events)} events"
             )
             for event in events:
-                event_id = event["id"]
-                start_info = event.get("start", {}) or {}
-                end_info = event.get("end", {}) or {}
-                start_datetime = self._parse_datetime(start_info.get("dateTime"))
-                start_date = start_info.get("date")
-                end_datetime = self._parse_datetime(end_info.get("dateTime"))
-                end_date = end_info.get("date")
-                created_time = self._parse_datetime(event.get("created")) or datetime.utcnow()
-                updated_time = self._parse_datetime(event.get("updated")) or created_time
-                title = event.get("summary") or f"Event {event_id}"
-                web_url = event.get("htmlLink")
-
-                yield GoogleCalendarEventEntity(
-                    breadcrumbs=[cal_breadcrumb],
-                    event_key=event_id,
+                yield GoogleCalendarEventEntity.from_api(
+                    event,
                     calendar_key=calendar_list_entry.calendar_key,
-                    title=title,
-                    created_time=created_time,
-                    updated_time=updated_time,
-                    status=event.get("status"),
-                    html_link=event.get("htmlLink"),
-                    summary=event.get("summary"),
-                    description=event.get("description"),
-                    location=event.get("location"),
-                    color_id=event.get("colorId"),
-                    start_datetime=start_datetime,
-                    start_date=start_date,
-                    end_datetime=end_datetime,
-                    end_date=end_date,
-                    recurrence=event.get("recurrence"),
-                    recurring_event_id=event.get("recurringEventId"),
-                    organizer=event.get("organizer"),
-                    creator=event.get("creator"),
-                    attendees=event.get("attendees"),
-                    transparency=event.get("transparency"),
-                    visibility=event.get("visibility"),
-                    conference_data=event.get("conferenceData"),
-                    event_type=event.get("eventType"),
-                    web_url_value=web_url,
+                    breadcrumbs=[cal_breadcrumb],
                 )
 
             next_page_token = data.get("nextPageToken")

@@ -7,7 +7,6 @@ Authentication: API token (header api_token).
 
 from __future__ import annotations
 
-from datetime import datetime
 from typing import Any, AsyncGenerator, Dict, List, Optional
 
 from tenacity import retry, stop_after_attempt, wait_exponential
@@ -34,16 +33,6 @@ from airweave.schemas.source_connection import AuthenticationMethod
 
 DEFAULT_BASE_URL = "https://apihub.document360.io"
 API_PATH_PREFIX = "/v2"
-
-
-def _parse_iso_datetime(value: Optional[str]) -> Optional[datetime]:
-    """Parse ISO 8601 datetime string to datetime."""
-    if not value:
-        return None
-    try:
-        return datetime.fromisoformat(value.replace("Z", "+00:00"))
-    except (ValueError, TypeError):
-        return None
 
 
 @source(
@@ -176,41 +165,20 @@ class Document360Source(BaseSource):
             version_id = v.get("id")
             if not version_id:
                 continue
-            version_name = (
-                v.get("version_code_name")
-                or (str(v["version_number"]) if v.get("version_number") is not None else None)
-                or version_id
-            )
-            version_entity = Document360ProjectVersionEntity(
-                entity_id=version_id,
-                breadcrumbs=[],
-                id=version_id,
-                name=str(version_name),
-                version_number=v.get("version_number"),
-                version_code_name=v.get("version_code_name"),
-                is_main_version=v.get("is_main_version", False),
-                is_public=v.get("is_public", True),
-                is_beta=v.get("is_beta", False),
-                is_deprecated=v.get("is_deprecated", False),
-                created_at=_parse_iso_datetime(v.get("created_at")),
-                modified_at=_parse_iso_datetime(v.get("modified_at")),
-                slug=v.get("slug"),
-                order=v.get("order"),
-                version_type=v.get("version_type"),
-            )
+            version_entity = Document360ProjectVersionEntity.from_api(v)
             yield version_entity
 
             version_breadcrumb = Breadcrumb(
-                entity_id=version_id,
-                name=str(version_name),
+                entity_id=version_entity.id,
+                name=version_entity.name,
                 entity_type="Document360ProjectVersionEntity",
             )
 
             categories = await self._fetch_categories_tree(version_id)
             async for entity in self._yield_categories_and_articles(
                 categories,
-                version_id,
-                str(version_name),
+                version_entity.id,
+                version_entity.name,
                 [version_breadcrumb],
                 [],
             ):
@@ -230,31 +198,21 @@ class Document360Source(BaseSource):
             cat_id = cat.get("id")
             if not cat_id:
                 continue
-            cat_name = cat.get("name") or "Unnamed category"
+            category_entity = Document360CategoryEntity.from_api(
+                cat,
+                project_version_id=project_version_id,
+                project_version_name=project_version_name,
+                breadcrumbs=parent_breadcrumbs,
+            )
+            yield category_entity
+
             cat_breadcrumbs = parent_breadcrumbs + [
                 Breadcrumb(
-                    entity_id=cat_id,
-                    name=cat_name,
+                    entity_id=category_entity.id,
+                    name=category_entity.name,
                     entity_type="Document360CategoryEntity",
                 )
             ]
-            category_entity = Document360CategoryEntity(
-                entity_id=cat_id,
-                breadcrumbs=parent_breadcrumbs,
-                id=cat_id,
-                name=cat_name,
-                description=cat.get("description"),
-                project_version_id=project_version_id,
-                project_version_name=project_version_name,
-                parent_category_id=cat.get("parent_category_id"),
-                order=cat.get("order"),
-                slug=cat.get("slug"),
-                category_type=cat.get("category_type"),
-                hidden=cat.get("hidden", False),
-                created_at=_parse_iso_datetime(cat.get("created_at")),
-                modified_at=_parse_iso_datetime(cat.get("modified_at")),
-            )
-            yield category_entity
 
             for art in cat.get("articles") or []:
                 article_id = art.get("id")
@@ -264,51 +222,16 @@ class Document360Source(BaseSource):
                 full_article = await self._fetch_article_by_version(
                     article_id, self._lang_code, int(version_num)
                 )
-                content = None
-                html_content = None
-                authors = []
-                created_at = None
-                modified_at = None
-                description = None
-                if full_article:
-                    content = full_article.get("content")
-                    html_content = full_article.get("html_content")
-                    authors = full_article.get("authors") or []
-                    created_at = _parse_iso_datetime(full_article.get("created_at"))
-                    modified_at = _parse_iso_datetime(full_article.get("modified_at"))
-                    description = full_article.get("description")
-
-                title = (
-                    art.get("title") or full_article.get("title")
-                    if full_article
-                    else "Unnamed article"
-                )
-                article_url = art.get("url")
-                article_entity = Document360ArticleEntity(
-                    entity_id=article_id,
-                    breadcrumbs=cat_breadcrumbs,
-                    id=article_id,
-                    name=title,
-                    content=content,
-                    html_content=html_content,
-                    description=description,
-                    category_id=cat_id,
-                    category_name=cat_name,
+                yield Document360ArticleEntity.from_api(
+                    art,
+                    detail=full_article,
+                    category_id=category_entity.id,
+                    category_name=category_entity.name,
                     project_version_id=project_version_id,
                     project_version_name=project_version_name,
-                    slug=art.get("slug") or (full_article.get("slug") if full_article else None),
-                    status=art.get("status")
-                    or (full_article.get("status") if full_article else None),
-                    language_code=art.get("language_code") or self._lang_code,
-                    public_version=art.get("public_version"),
-                    latest_version=art.get("latest_version"),
-                    authors=authors,
-                    created_at=created_at or _parse_iso_datetime(art.get("modified_at")),
-                    modified_at=modified_at or _parse_iso_datetime(art.get("modified_at")),
-                    article_url=article_url,
-                    web_url_value=article_url,
+                    breadcrumbs=cat_breadcrumbs,
+                    lang_code=self._lang_code,
                 )
-                yield article_entity
 
             child_cats = cat.get("child_categories") or []
             if child_cats:
@@ -317,7 +240,7 @@ class Document360Source(BaseSource):
                     project_version_id,
                     project_version_name,
                     cat_breadcrumbs,
-                    parent_category_names + [cat_name],
+                    parent_category_names + [category_entity.name],
                 ):
                     yield e
 

@@ -369,35 +369,7 @@ class GmailSource(BaseSource):
 
     async def _create_thread_entity(self, thread_id: str, thread_data: Dict) -> GmailThreadEntity:
         """Create a thread entity from thread data."""
-        snippet = thread_data.get("snippet", "")
-        history_id = thread_data.get("historyId")
-        message_list = thread_data.get("messages", []) or []
-
-        message_count = len(message_list)
-        last_message_date = None
-        if message_list:
-            sorted_msgs = sorted(
-                message_list, key=lambda m: int(m.get("internalDate", 0)), reverse=True
-            )
-            last_message_date_ms = sorted_msgs[0].get("internalDate")
-            if last_message_date_ms:
-                last_message_date = datetime.utcfromtimestamp(int(last_message_date_ms) / 1000)
-
-        label_ids = message_list[0].get("labelIds", []) if message_list else []
-
-        thread_name = snippet[:50] + "..." if len(snippet) > 50 else snippet or "Thread"
-
-        return GmailThreadEntity(
-            breadcrumbs=[],
-            thread_key=f"thread_{thread_id}",
-            gmail_thread_id=thread_id,
-            title=thread_name,
-            last_message_at=last_message_date,
-            snippet=snippet,
-            history_id=history_id,
-            message_count=message_count,
-            label_ids=label_ids,
-        )
+        return GmailThreadEntity.from_api(thread_data, thread_id=thread_id)
 
     async def _process_thread_messages(
         self,
@@ -503,77 +475,15 @@ class GmailSource(BaseSource):
         else:
             self.logger.debug("Message already contains payload data")
 
-        self.logger.debug(f"Extracting fields for message {message_id}")
-        internal_date_ms = message_data.get("internalDate")
-        internal_date = None
-        if internal_date_ms:
-            internal_date = datetime.utcfromtimestamp(int(internal_date_ms) / 1000)
-            self.logger.debug(f"Internal date: {internal_date}")
-
-        payload = message_data.get("payload", {}) or {}
-        headers = payload.get("headers", []) or []
-
-        self.logger.debug(f"Parsing headers for message {message_id}")
-        subject = None
-        sender = None
-        to_list: List[str] = []
-        cc_list: List[str] = []
-        bcc_list: List[str] = []
-        date = None
-
-        for header in headers:
-            name = header.get("name", "").lower()
-            value = header.get("value", "")
-            if name == "subject":
-                subject = value
-            elif name == "from":
-                sender = value
-            elif name == "to":
-                to_list = [addr.strip() for addr in value.split(",")] if value else []
-            elif name == "cc":
-                cc_list = [addr.strip() for addr in value.split(",")] if value else []
-            elif name == "bcc":
-                bcc_list = [addr.strip() for addr in value.split(",")] if value else []
-            elif name == "date":
-                try:
-                    from email.utils import parsedate_to_datetime
-
-                    date = parsedate_to_datetime(value)
-                except (TypeError, ValueError):
-                    self.logger.warning(f"Failed to parse date header: {value}")
-
-        self.logger.debug(f"Extracting body content for message {message_id}")
-        body_plain, body_html = self._extract_body_content(payload)
-
         self.logger.debug(f"Creating message entity for message {message_id}")
-        subject_value = subject or f"Message {message_id}"
-        sent_at = date or internal_date or datetime.utcfromtimestamp(0)
-        internal_ts = internal_date or sent_at
-
-        message_entity = GmailMessageEntity(
-            breadcrumbs=[thread_breadcrumb],
-            message_key=f"msg_{message_id}",
-            message_id=message_id,
-            subject=subject_value,
-            sent_at=sent_at,
-            internal_timestamp=internal_ts,
-            url=f"https://mail.google.com/mail/u/0/#inbox/{message_id}",
-            size=message_data.get("sizeEstimate", 0),
-            file_type="html",
-            mime_type="text/html",
-            local_path=None,
-            thread_id=thread_id,
-            sender=sender,
-            to=to_list,
-            cc=cc_list,
-            bcc=bcc_list,
-            date=date,
-            snippet=message_data.get("snippet"),
-            label_ids=message_data.get("labelIds", []),
-            internal_date=internal_date,
-            web_url_value=f"https://mail.google.com/mail/u/0/#inbox/{message_id}",
+        message_entity = GmailMessageEntity.from_api(
+            message_data, thread_id=thread_id, breadcrumbs=[thread_breadcrumb]
         )
         self.logger.debug(f"Message entity created with key: {message_entity.message_key}")
+
+        payload = message_data.get("payload", {}) or {}
+        self.logger.debug(f"Extracting body content for message {message_id}")
+        body_plain, body_html = self._extract_body_content(payload)
 
         try:
             if files:

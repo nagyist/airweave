@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import base64
 import mimetypes
-from datetime import datetime
 from pathlib import Path
 from typing import Any, AsyncGenerator, Dict, List, Optional
 
@@ -29,6 +28,7 @@ from airweave.platform.entities.gitlab import (
     GitLabMergeRequestEntity,
     GitLabProjectEntity,
     GitLabUserEntity,
+    _require_gl_datetime,
 )
 from airweave.platform.http_client.airweave_client import AirweaveHttpClient
 from airweave.platform.sources._base import BaseSource
@@ -70,21 +70,6 @@ class GitLabSource(BaseSource):
     """
 
     BASE_URL = "https://gitlab.com/api/v4"
-
-    @staticmethod
-    def _parse_datetime(value: Optional[str]) -> Optional[datetime]:
-        """Parse GitLab ISO8601 timestamps into aware datetimes."""
-        if not value:
-            return None
-        return datetime.fromisoformat(value.replace("Z", "+00:00"))
-
-    @classmethod
-    def _require_datetime(cls, value: Optional[str], field_name: str) -> datetime:
-        """Parse a required timestamp, raising if it's missing."""
-        parsed = cls._parse_datetime(value)
-        if parsed is None:
-            raise ValueError(f"GitLab response missing required datetime '{field_name}'.")
-        return parsed
 
     @classmethod
     async def create(
@@ -206,7 +191,7 @@ class GitLabSource(BaseSource):
             breadcrumbs=[],
             user_id=user_data["id"],
             name=user_data["name"],
-            created_at=self._require_datetime(user_data.get("created_at"), "user.created_at"),
+            created_at=_require_gl_datetime(user_data.get("created_at"), "user.created_at"),
             username=user_data["username"],
             state=user_data["state"],
             avatar_url=user_data.get("avatar_url"),
@@ -223,32 +208,7 @@ class GitLabSource(BaseSource):
         """Get project information."""
         url = f"{self.BASE_URL}/projects/{project_id}"
         project_data = await self._get(url)
-
-        return GitLabProjectEntity(
-            breadcrumbs=[],
-            project_id=project_data["id"],
-            name=project_data["name"],
-            created_at=self._require_datetime(project_data.get("created_at"), "project.created_at"),
-            last_activity_at=self._require_datetime(
-                project_data.get("last_activity_at")
-                or project_data.get("updated_at")
-                or project_data.get("created_at"),
-                "project.last_activity_at",
-            ),
-            path=project_data["path"],
-            path_with_namespace=project_data["path_with_namespace"],
-            description=project_data.get("description"),
-            default_branch=project_data.get("default_branch"),
-            visibility=project_data["visibility"],
-            topics=project_data.get("topics", []),
-            namespace=project_data.get("namespace", {}),
-            star_count=project_data.get("star_count", 0),
-            forks_count=project_data.get("forks_count", 0),
-            open_issues_count=project_data.get("open_issues_count", 0),
-            archived=project_data.get("archived", False),
-            empty_repo=project_data.get("empty_repo", False),
-            web_url_value=project_data.get("web_url"),
-        )
+        return GitLabProjectEntity.from_api(project_data)
 
     async def _get_project_issues(
         self, project_id: str, project_breadcrumbs: List[Breadcrumb]
@@ -258,28 +218,8 @@ class GitLabSource(BaseSource):
         issues = await self._get_paginated_results(url)
 
         for issue in issues:
-            yield GitLabIssueEntity(
-                breadcrumbs=project_breadcrumbs,
-                issue_id=issue["id"],
-                title=issue["title"],
-                created_at=self._require_datetime(issue.get("created_at"), "issue.created_at"),
-                updated_at=self._require_datetime(
-                    issue.get("updated_at") or issue.get("created_at"),
-                    "issue.updated_at",
-                ),
-                description=issue.get("description"),
-                state=issue["state"],
-                closed_at=self._parse_datetime(issue.get("closed_at")),
-                labels=issue.get("labels", []),
-                author=issue.get("author", {}),
-                assignees=issue.get("assignees", []),
-                milestone=issue.get("milestone"),
-                project_id=str(project_id),
-                iid=issue["iid"],
-                web_url_value=issue.get("web_url"),
-                user_notes_count=issue.get("user_notes_count", 0),
-                upvotes=issue.get("upvotes", 0),
-                downvotes=issue.get("downvotes", 0),
+            yield GitLabIssueEntity.from_api(
+                issue, project_id=str(project_id), breadcrumbs=project_breadcrumbs
             )
 
     async def _get_project_merge_requests(
@@ -290,35 +230,8 @@ class GitLabSource(BaseSource):
         merge_requests = await self._get_paginated_results(url)
 
         for mr in merge_requests:
-            yield GitLabMergeRequestEntity(
-                breadcrumbs=project_breadcrumbs,
-                merge_request_id=mr["id"],
-                title=mr["title"],
-                created_at=self._require_datetime(mr.get("created_at"), "merge_request.created_at"),
-                updated_at=self._require_datetime(
-                    mr.get("updated_at") or mr.get("created_at"),
-                    "merge_request.updated_at",
-                ),
-                description=mr.get("description"),
-                state=mr["state"],
-                merged_at=self._parse_datetime(mr.get("merged_at")),
-                closed_at=self._parse_datetime(mr.get("closed_at")),
-                labels=mr.get("labels", []),
-                author=mr.get("author", {}),
-                assignees=mr.get("assignees", []),
-                reviewers=mr.get("reviewers", []),
-                source_branch=mr["source_branch"],
-                target_branch=mr["target_branch"],
-                milestone=mr.get("milestone"),
-                project_id=str(project_id),
-                iid=mr["iid"],
-                web_url_value=mr.get("web_url"),
-                merge_status=mr.get("merge_status", "unchecked"),
-                draft=mr.get("draft", False),
-                work_in_progress=mr.get("work_in_progress", False),
-                upvotes=mr.get("upvotes", 0),
-                downvotes=mr.get("downvotes", 0),
-                user_notes_count=mr.get("user_notes_count", 0),
+            yield GitLabMergeRequestEntity.from_api(
+                mr, project_id=str(project_id), breadcrumbs=project_breadcrumbs
             )
 
     async def _traverse_repository(

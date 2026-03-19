@@ -109,69 +109,16 @@ class DropboxSource(BaseSource):
         """Generate Dropbox account-level entities using the Dropbox API."""
         url = "https://api.dropboxapi.com/2/users/get_current_account"
         account_data = await self._post(url, None)
-
-        name_data = account_data.get("name", {})
-        display_name = name_data.get("display_name") or "Dropbox Account"
-        account_id = account_data.get("account_id") or "dropbox-account"
-
-        yield DropboxAccountEntity(
-            account_id=account_id,
-            display_name=display_name,
-            breadcrumbs=[],
-            abbreviated_name=name_data.get("abbreviated_name"),
-            familiar_name=name_data.get("familiar_name"),
-            given_name=name_data.get("given_name"),
-            surname=name_data.get("surname"),
-            email=account_data.get("email"),
-            email_verified=account_data.get("email_verified", False),
-            disabled=account_data.get("disabled", False),
-            account_type=(
-                account_data.get("account_type", {}).get(".tag")
-                if account_data.get("account_type")
-                else None
-            ),
-            is_teammate=account_data.get("is_teammate", False),
-            is_paired=account_data.get("is_paired", False),
-            team_member_id=account_data.get("team_member_id"),
-            locale=account_data.get("locale"),
-            country=account_data.get("country"),
-            profile_photo_url=account_data.get("profile_photo_url"),
-            referral_link=account_data.get("referral_link"),
-            space_used=account_data.get("space_usage", {}).get("used")
-            if account_data.get("space_usage")
-            else None,
-            space_allocated=account_data.get("space_usage", {})
-            .get("allocation", {})
-            .get("allocated")
-            if account_data.get("space_usage")
-            else None,
-            team_info=account_data.get("team"),
-            root_info=account_data.get("root_info"),
-        )
+        yield DropboxAccountEntity.from_api(account_data)
 
     def _create_folder_entity(
         self, entry: Dict, account_breadcrumb: Breadcrumb
     ) -> Tuple[DropboxFolderEntity, str]:
         """Create a DropboxFolderEntity from an API response entry."""
-        folder_id = entry.get("id", "")
-        folder_name = entry.get("name", "Unnamed Folder")
-        folder_path = entry.get("path_lower", "")
-        sharing_info = entry.get("sharing_info", {})
-
-        folder_entity = DropboxFolderEntity(
-            id=folder_id if folder_id else f"folder-{folder_path}",
-            breadcrumbs=[account_breadcrumb],
-            name=folder_name,
-            path_lower=entry.get("path_lower"),
-            path_display=entry.get("path_display"),
-            sharing_info=sharing_info,
-            read_only=sharing_info.get("read_only", False),
-            traverse_only=sharing_info.get("traverse_only", False),
-            no_access=sharing_info.get("no_access", False),
-            property_groups=entry.get("property_groups"),
+        folder_entity = DropboxFolderEntity.from_api(
+            entry, breadcrumbs=[account_breadcrumb]
         )
-
-        return folder_entity, folder_path
+        return folder_entity, entry.get("path_lower", "")
 
     async def _get_paginated_entries(
         self, url: str, initial_data: Dict, continuation_url: str | None = None

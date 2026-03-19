@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import base64
 import mimetypes
-from datetime import datetime
 from pathlib import Path
 from typing import Any, AsyncGenerator, Dict, List, Optional
 
@@ -236,23 +235,7 @@ class GitHubSource(BaseSource):
                 branch=self._branch,
             )
 
-        return GitHubRepositoryEntity(
-            breadcrumbs=[],
-            repo_id=repo_data["id"],
-            name=repo_data["name"],
-            created_at=datetime.fromisoformat(repo_data["created_at"].replace("Z", "+00:00")),
-            updated_at=datetime.fromisoformat(repo_data["updated_at"].replace("Z", "+00:00")),
-            full_name=repo_data["full_name"],
-            description=repo_data.get("description"),
-            default_branch=repo_data["default_branch"],
-            language=repo_data.get("language"),
-            fork=repo_data["fork"],
-            size=repo_data["size"],
-            stars_count=repo_data.get("stargazers_count"),
-            watchers_count=repo_data.get("watchers_count"),
-            forks_count=repo_data.get("forks_count"),
-            open_issues_count=repo_data.get("open_issues_count"),
-        )
+        return GitHubRepositoryEntity.from_api(repo_data)
 
     async def _traverse_repository(
         self,
@@ -719,44 +702,18 @@ class GitHubSource(BaseSource):
                 entity_type=GitHubPullRequestEntity.__name__,
             )
 
-            labels = [lbl["name"] for lbl in pr_data.get("labels", []) if lbl.get("name")]
-            assignees = [a["login"] for a in pr_data.get("assignees", []) if a.get("login")]
-            reviewers = [
-                r["login"] for r in pr_data.get("requested_reviewers", []) if r.get("login")
-            ]
-
             files_data = await self._get_paginated_results(
                 f"{self.BASE_URL}/repos/{repo_name}/pulls/{pr_number}/files",
                 {},
             )
             changed_paths = [f["filename"] for f in files_data if f.get("filename")]
 
-            pr_entity = GitHubPullRequestEntity(
-                breadcrumbs=[repo_breadcrumb],
-                pr_id=f"{repo_name}#{pr_number}",
-                title=pr_data["title"],
-                body=pr_data.get("body"),
-                number=pr_number,
-                state=pr_data["state"],
-                author=pr_data.get("user", {}).get("login"),
-                labels=labels or None,
-                assignees=assignees or None,
-                reviewers=reviewers or None,
-                base_branch=pr_data.get("base", {}).get("ref"),
-                head_branch=pr_data.get("head", {}).get("ref"),
-                additions=pr_data.get("additions"),
-                deletions=pr_data.get("deletions"),
-                changed_files=pr_data.get("changed_files"),
-                changed_files_list=changed_paths or None,
-                merge_commit_sha=pr_data.get("merge_commit_sha"),
-                created_time=datetime.fromisoformat(pr_data["created_at"].replace("Z", "+00:00")),
-                updated_time=datetime.fromisoformat(pr_data["updated_at"].replace("Z", "+00:00")),
-                merged_at=datetime.fromisoformat(pr_data["merged_at"].replace("Z", "+00:00"))
-                if pr_data.get("merged_at")
-                else None,
+            pr_entity = GitHubPullRequestEntity.from_api(
+                pr_data,
                 repo_name=repo,
                 repo_owner=owner,
-                web_url_value=pr_data.get("html_url"),
+                changed_files_list=changed_paths or None,
+                breadcrumbs=[repo_breadcrumb],
             )
             yield pr_entity
 
@@ -787,34 +744,12 @@ class GitHubSource(BaseSource):
             return
 
         for comment in comments:
-            comment_id = comment["id"]
-            author = comment.get("user", {}).get("login", "unknown")
-            path = comment.get("path", "")
-            body = comment.get("body", "")
-
-            label_parts = []
-            if author:
-                label_parts.append(author)
-            if path:
-                label_parts.append(path)
-            label = (
-                f"Comment by {' on '.join(label_parts)}" if label_parts else f"Comment {comment_id}"
-            )
-
-            yield GitHubPRCommentEntity(
-                breadcrumbs=breadcrumbs.copy(),
-                comment_id=f"{repo_name}#{pr_number}/comment/{comment_id}",
-                comment_label=label,
-                body=body,
-                path=path,
-                diff_hunk=comment.get("diff_hunk"),
-                author=author,
-                pr_number=pr_number,
-                created_time=datetime.fromisoformat(comment["created_at"].replace("Z", "+00:00")),
-                updated_time=datetime.fromisoformat(comment["updated_at"].replace("Z", "+00:00")),
+            yield GitHubPRCommentEntity.from_api(
+                comment,
                 repo_name=repo,
                 repo_owner=owner,
-                web_url_value=comment.get("html_url"),
+                pr_number=pr_number,
+                breadcrumbs=breadcrumbs.copy(),
             )
 
     async def generate_entities(

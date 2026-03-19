@@ -6,7 +6,6 @@ API reference: https://developers.freshdesk.com/api/
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
 from typing import Any, AsyncGenerator, Dict, List, Optional
 
 import httpx
@@ -38,21 +37,6 @@ from airweave.platform.sources.retry_helpers import (
     wait_rate_limit_with_backoff,
 )
 from airweave.schemas.source_connection import AuthenticationMethod
-
-
-def _parse_datetime(value: Optional[str]) -> Optional[datetime]:
-    """Parse Freshdesk ISO8601 timestamps to timezone-aware datetimes."""
-    if not value:
-        return None
-    try:
-        return datetime.fromisoformat(value.replace("Z", "+00:00"))
-    except (ValueError, TypeError):
-        return None
-
-
-def _now() -> datetime:
-    """Return current UTC time."""
-    return datetime.now(timezone.utc)
 
 
 @source(
@@ -192,84 +176,22 @@ class FreshdeskSource(BaseSource):
     async def _generate_company_entities(self) -> AsyncGenerator[BaseEntity, None]:
         """Generate company entities from GET /api/v2/companies."""
         async for company in self._paginate_list("/companies"):
-            company_id = company["id"]
-            name = company.get("name") or f"Company {company_id}"
-            created_at = _parse_datetime(company.get("created_at")) or _now()
-            updated_at = _parse_datetime(company.get("updated_at")) or created_at
-            yield FreshdeskCompanyEntity(
-                entity_id=str(company_id),
-                breadcrumbs=[],
-                name=name,
-                created_at=created_at,
-                updated_at=updated_at,
-                company_id=company_id,
-                created_at_value=created_at,
-                updated_at_value=updated_at,
-                web_url_value=self._build_company_url(company_id),
-                description=company.get("description"),
-                note=company.get("note"),
-                domains=company.get("domains") or [],
-                custom_fields=company.get("custom_fields") or {},
-                industry=company.get("industry"),
+            yield FreshdeskCompanyEntity.from_api(
+                company, web_url=self._build_company_url(company["id"])
             )
 
     async def _generate_contact_entities(self) -> AsyncGenerator[BaseEntity, None]:
         """Generate contact entities from GET /api/v2/contacts."""
         async for contact in self._paginate_list("/contacts"):
-            contact_id = contact["id"]
-            name = contact.get("name") or contact.get("email") or f"Contact {contact_id}"
-            created_at = _parse_datetime(contact.get("created_at")) or _now()
-            updated_at = _parse_datetime(contact.get("updated_at")) or created_at
-            yield FreshdeskContactEntity(
-                entity_id=str(contact_id),
-                breadcrumbs=[],
-                name=name,
-                created_at=created_at,
-                updated_at=updated_at,
-                contact_id=contact_id,
-                email=contact.get("email"),
-                created_at_value=created_at,
-                updated_at_value=updated_at,
-                web_url_value=self._build_contact_url(contact_id),
-                company_id=contact.get("company_id"),
-                job_title=contact.get("job_title"),
-                phone=contact.get("phone"),
-                mobile=contact.get("mobile"),
-                description=contact.get("description"),
-                tags=contact.get("tags") or [],
-                custom_fields=contact.get("custom_fields") or {},
+            yield FreshdeskContactEntity.from_api(
+                contact, web_url=self._build_contact_url(contact["id"])
             )
 
     async def _generate_ticket_entities(self) -> AsyncGenerator[BaseEntity, None]:
         """Generate ticket entities from GET /api/v2/tickets."""
         async for ticket in self._paginate_list("/tickets"):
-            ticket_id = ticket["id"]
-            subject = ticket.get("subject") or f"Ticket #{ticket_id}"
-            created_at = _parse_datetime(ticket.get("created_at")) or _now()
-            updated_at = _parse_datetime(ticket.get("updated_at")) or created_at
-            yield FreshdeskTicketEntity(
-                entity_id=str(ticket_id),
-                breadcrumbs=[],
-                name=subject,
-                created_at=created_at,
-                updated_at=updated_at,
-                ticket_id=ticket_id,
-                subject=subject,
-                created_at_value=created_at,
-                updated_at_value=updated_at,
-                web_url_value=self._build_ticket_url(ticket_id),
-                description=ticket.get("description"),
-                description_text=ticket.get("description_text"),
-                status=ticket.get("status"),
-                priority=ticket.get("priority"),
-                requester_id=ticket.get("requester_id"),
-                responder_id=ticket.get("responder_id"),
-                company_id=ticket.get("company_id"),
-                group_id=ticket.get("group_id"),
-                type=ticket.get("type"),
-                source=ticket.get("source"),
-                tags=ticket.get("tags") or [],
-                custom_fields=ticket.get("custom_fields") or {},
+            yield FreshdeskTicketEntity.from_api(
+                ticket, web_url=self._build_ticket_url(ticket["id"])
             )
 
     async def _generate_conversation_entities(self) -> AsyncGenerator[BaseEntity, None]:
@@ -300,31 +222,12 @@ class FreshdeskSource(BaseSource):
                 if not conversations:
                     break
                 for conv in conversations:
-                    conv_id = conv["id"]
-                    body_text = (
-                        conv.get("body_text")
-                        or (conv.get("body") or "").strip()
-                        or f"Conversation {conv_id}"
-                    )
-                    created_at = _parse_datetime(conv.get("created_at")) or _now()
-                    updated_at = _parse_datetime(conv.get("updated_at")) or created_at
-                    yield FreshdeskConversationEntity(
-                        entity_id=f"{ticket_id}_{conv_id}",
-                        breadcrumbs=[ticket_breadcrumb],
-                        name=body_text[:200] if body_text else f"Conversation {conv_id}",
-                        created_at=created_at,
-                        updated_at=updated_at,
-                        conversation_id=conv_id,
+                    yield FreshdeskConversationEntity.from_api(
+                        conv,
                         ticket_id=ticket_id,
                         ticket_subject=ticket_subject,
-                        body=conv.get("body"),
-                        body_text=body_text,
-                        created_at_value=created_at,
-                        updated_at_value=updated_at,
-                        user_id=conv.get("user_id"),
-                        incoming=conv.get("incoming", False),
-                        private=conv.get("private", False),
-                        web_url_value=ticket_url,
+                        ticket_url=ticket_url,
+                        breadcrumbs=[ticket_breadcrumb],
                     )
                 link_header = response.headers.get("link") or response.headers.get("Link")
                 if self._parse_link_header(link_header) and len(conversations) == 100:
@@ -352,29 +255,14 @@ class FreshdeskSource(BaseSource):
             if not articles:
                 break
             for article in articles:
-                article_id = article["id"]
-                title = article.get("title") or f"Article {article_id}"
-                created_at = _parse_datetime(article.get("created_at")) or _now()
-                updated_at = _parse_datetime(article.get("updated_at")) or created_at
-                yield FreshdeskSolutionArticleEntity(
-                    entity_id=str(article_id),
-                    breadcrumbs=breadcrumbs,
-                    name=title,
-                    created_at=created_at,
-                    updated_at=updated_at,
-                    article_id=article_id,
-                    title=title,
-                    created_at_value=created_at,
-                    updated_at_value=updated_at,
-                    web_url_value=self._build_article_url(article_id),
-                    description=article.get("description"),
-                    description_text=article.get("description_text"),
-                    status=article.get("status"),
+                yield FreshdeskSolutionArticleEntity.from_api(
+                    article,
+                    web_url=self._build_article_url(article["id"]),
                     folder_id=folder_id,
-                    category_id=category_id,
                     folder_name=folder_name,
+                    category_id=category_id,
                     category_name=category_name,
-                    tags=article.get("tags") or [],
+                    breadcrumbs=breadcrumbs,
                 )
             link_header = art_response.headers.get("link") or art_response.headers.get("Link")
             if self._parse_link_header(link_header) and len(articles) == 100:

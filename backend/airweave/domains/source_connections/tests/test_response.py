@@ -710,8 +710,9 @@ async def test_schedule_next_run_computed_from_cron():
 
     result = await f.builder.build_response(None, sc, _make_ctx())
 
-    now = datetime.now(timezone.utc)
+    assert result.schedule is not None
     assert result.schedule.next_run is not None
+    now = datetime.now(timezone.utc)
     assert result.schedule.next_run > now
     assert result.schedule.next_run <= now + timedelta(minutes=5, seconds=1)
     assert result.schedule.next_run.tzinfo is not None

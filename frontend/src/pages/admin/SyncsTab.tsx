@@ -245,10 +245,15 @@ export function SyncsTab() {
         let failed = 0;
 
         // Use nested SyncConfig structure
+        const requestBody: any = { execution_config: resyncConfig };
+        if (resyncTags.length > 0) {
+            requestBody.tags = resyncTags;
+        }
+
         for (const sync of selected) {
             try {
                 const bulkParams = forceFullSync ? '?force_full_sync=true' : '';
-                const response = await apiClient.post(`/admin/resync/${sync.id}${bulkParams}`, resyncConfig);
+                const response = await apiClient.post(`/admin/resync/${sync.id}${bulkParams}`, requestBody);
 
                 if (response.ok) {
                     successful++;

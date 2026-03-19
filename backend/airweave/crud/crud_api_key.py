@@ -1,10 +1,12 @@
 """CRUD operations for the APIKey model."""
 
+import hmac
 import secrets
 from datetime import datetime, timedelta
 from typing import Optional
 from uuid import UUID
 
+from cryptography.fernet import InvalidToken
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -133,13 +135,13 @@ class CRUDAPIKey(CRUDBaseOrganization[APIKey, APIKeyCreate, APIKeyUpdate]):
         for api_key in api_keys:
             try:
                 decrypted_data = credentials.decrypt(api_key.encrypted_key)
-                if decrypted_data["key"] == key:
-                    # Check expiration
-                    if api_key.expiration_date < utc_now_naive():
-                        raise PermissionException("API key has expired")
-                    return api_key
-            except Exception:
+            except (InvalidToken, ValueError):
                 continue
+
+            if hmac.compare_digest(decrypted_data.get("key", ""), key):
+                if api_key.expiration_date < utc_now_naive():
+                    raise PermissionException("API key has expired")
+                return api_key
 
         raise NotFoundException("API key not found")
 

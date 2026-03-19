@@ -72,20 +72,18 @@ class BitbucketSource(BaseSource):
         http_client: AirweaveHttpClient,
         config: BitbucketConfig,
     ) -> "BitbucketSource":
-        """Create a new source instance with authentication."""
-        from airweave.domains.sources.token_providers.credential import DirectCredentialProvider
+        """Create a new source instance with authentication.
 
+        Bitbucket uses Basic Auth (email:token), so we access the credential
+        object directly for email/workspace/repo_slug.
+        """
         instance = cls(auth=auth, logger=logger, http_client=http_client)
-        if isinstance(auth, DirectCredentialProvider):
-            instance._email = auth.credentials.email
-            instance._workspace = auth.credentials.workspace
-            instance._repo_slug = auth.credentials.repo_slug
-        else:
-            instance._email = ""
-            instance._workspace = ""
-            instance._repo_slug = ""
-        instance._branch = config.branch if config else ""
-        instance._file_extensions = config.file_extensions if config else []
+        creds: BitbucketAuthConfig = auth.credentials
+        instance._email = creds.email
+        instance._workspace = creds.workspace
+        instance._repo_slug = creds.repo_slug
+        instance._branch = config.branch
+        instance._file_extensions = config.file_extensions
         return instance
 
     @retry(

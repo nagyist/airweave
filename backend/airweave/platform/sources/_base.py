@@ -145,27 +145,6 @@ class BaseSource:
         return None
 
     # ------------------------------------------------------------------
-    # HTTP client convenience (backward compat during migration)
-    # ------------------------------------------------------------------
-
-    @property
-    def _http_client_factory(self) -> Callable:
-        """Deprecated shim — only exists for unmigrated callers.
-
-        Will be removed once all sources and FileService callers are migrated.
-        """
-
-        def _factory(**kwargs):
-            return self._http_client
-
-        return _factory
-
-    @_http_client_factory.setter
-    def _http_client_factory(self, value):
-        """No-op setter for backward compat during migration."""
-        pass
-
-    # ------------------------------------------------------------------
     # Class metadata methods
     # ------------------------------------------------------------------
 
@@ -296,47 +275,14 @@ class BaseSource:
         )
 
     # ------------------------------------------------------------------
-    # Backward compat — setters (deprecated, to be removed in Phase D)
+    # Backward compat — to be removed once sharepoint2019v2 + google_drive
+    # stop stashing cursor on self (they should use the generate_entities param).
     # ------------------------------------------------------------------
-
-    def set_logger(self, value) -> None:
-        """Deprecated: logger is now a required param on create()."""
-        self._logger = value
-
-    def set_token_provider(self, provider) -> None:
-        """Deprecated: auth is now a required param on create()."""
-        self._auth = provider
-
-    def set_http_client_factory(self, factory) -> None:
-        """Deprecated no-op: http_client is now a required param on create()."""
-        pass
-
-    def set_file_downloader(self, downloader) -> None:
-        """Deprecated: pass files to generate_entities() instead."""
-        self._file_downloader = downloader
-
-    def set_cursor(self, cursor) -> None:
-        """Deprecated: pass cursor to generate_entities() instead."""
-        self._cursor = cursor
-
-    def set_node_selections(self, selections: list) -> None:
-        """Deprecated: pass node_selections to generate_entities() instead."""
-        self._node_selections = selections
 
     @property
     def cursor(self):
-        """Deprecated: cursor is now a param on generate_entities()."""
+        """Temporary shim: sharepoint2019v2 and google_drive read self.cursor."""
         return getattr(self, "_cursor", None)
-
-    @property
-    def file_downloader(self):
-        """Deprecated: files is now a param on generate_entities()."""
-        return getattr(self, "_file_downloader", None)
-
-    @property
-    def token_provider(self) -> SourceAuthProvider:
-        """Deprecated: use self.auth instead."""
-        return self._auth
 
     # ------------------------------------------------------------------
     # Utilities

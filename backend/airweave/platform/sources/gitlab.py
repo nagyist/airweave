@@ -82,14 +82,8 @@ class GitLabSource(BaseSource):
     ) -> GitLabSource:
         """Create a new source instance with authentication."""
         instance = cls(auth=auth, logger=logger, http_client=http_client)
-
-        if config:
-            instance.project_id = getattr(config, "project_id", None)
-            instance.branch = getattr(config, "branch", "") or ""
-        else:
-            instance.project_id = None
-            instance.branch = ""
-
+        instance.project_id = config.project_id or None
+        instance.branch = config.branch or ""
         return instance
 
     # ------------------------------------------------------------------
@@ -320,7 +314,7 @@ class GitLabSource(BaseSource):
         except Exception as e:
             self.logger.error(f"Error traversing path {path}: {str(e)}")
 
-    async def _process_file(
+    async def _process_file(  # noqa: C901
         self,
         project_id: str,
         project_path: str,
@@ -426,7 +420,7 @@ class GitLabSource(BaseSource):
                 self.logger.warning(f"Failed to get project {proj_data.get('id')}: {e}")
         return projects
 
-    async def _process_project(
+    async def _process_project(  # noqa: C901
         self,
         project: GitLabProjectEntity,
         project_breadcrumbs: List[Breadcrumb],

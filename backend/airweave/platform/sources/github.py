@@ -79,14 +79,8 @@ class GitHubSource(BaseSource):
         config: GitHubConfig,
     ) -> GitHubSource:
         """Create a new source instance with authentication."""
-        from airweave.domains.sources.token_providers.credential import DirectCredentialProvider
-
         instance = cls(auth=auth, logger=logger, http_client=http_client)
-        if isinstance(auth, DirectCredentialProvider):
-            instance._personal_access_token = auth.credentials.personal_access_token
-        else:
-            instance._personal_access_token = await auth.get_token()
-
+        instance._personal_access_token = await auth.get_token()
         instance._repo_name = config.repo_name
         instance._branch = config.branch or None
         instance._sync_pull_requests = config.sync_pull_requests
@@ -473,7 +467,7 @@ class GitHubSource(BaseSource):
         )
         return printable_ratio > 0.7
 
-    async def _traverse_directory(
+    async def _traverse_directory(  # noqa: C901
         self,
         repo_name: str,
         path: str,
@@ -557,7 +551,7 @@ class GitHubSource(BaseSource):
         except Exception as e:
             self.logger.error(f"Error traversing path {path}: {str(e)}")
 
-    async def _process_file(
+    async def _process_file(  # noqa: C901
         self,
         repo_name: str,
         item_path: str,

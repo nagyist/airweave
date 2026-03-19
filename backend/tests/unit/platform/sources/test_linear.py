@@ -122,7 +122,7 @@ def linear_source_with_cursor(linear_source):
     """Linear source with a cursor set for incremental sync."""
     mock_cursor = MagicMock()
     mock_cursor.data = {"last_synced_at": "2024-06-01T00:00:00Z"}
-    linear_source.set_cursor(mock_cursor)
+    linear_source._cursor = mock_cursor
     return linear_source
 
 
@@ -160,7 +160,7 @@ def test_get_last_synced_at_empty_cursor(linear_source):
     """_get_last_synced_at returns None when cursor has empty last_synced_at."""
     mock_cursor = MagicMock()
     mock_cursor.data = {"last_synced_at": ""}
-    linear_source.set_cursor(mock_cursor)
+    linear_source._cursor = mock_cursor
     assert linear_source._get_last_synced_at() is None
 
 

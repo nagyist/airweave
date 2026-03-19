@@ -66,13 +66,8 @@ class FreshdeskSource(BaseSource):
         config: FreshdeskConfig,
     ) -> FreshdeskSource:
         """Create a new Freshdesk source instance."""
-        from airweave.domains.sources.token_providers.credential import DirectCredentialProvider
-
         instance = cls(auth=auth, logger=logger, http_client=http_client)
-        if isinstance(auth, DirectCredentialProvider):
-            instance._api_key = auth.credentials.api_key
-        else:
-            instance._api_key = await auth.get_token()
+        instance._api_key = await auth.get_token()
         instance._domain = config.domain
         return instance
 

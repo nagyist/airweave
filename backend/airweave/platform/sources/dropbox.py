@@ -71,7 +71,7 @@ class DropboxSource(BaseSource):
     ) -> DropboxSource:
         """Create a new Dropbox source with credentials and config."""
         instance = cls(auth=auth, logger=logger, http_client=http_client)
-        instance._exclude_path = getattr(config, "exclude_path", "") or ""
+        instance._exclude_path = config.exclude_path or ""
         return instance
 
     @retry(
@@ -115,9 +115,7 @@ class DropboxSource(BaseSource):
         self, entry: Dict, account_breadcrumb: Breadcrumb
     ) -> Tuple[DropboxFolderEntity, str]:
         """Create a DropboxFolderEntity from an API response entry."""
-        folder_entity = DropboxFolderEntity.from_api(
-            entry, breadcrumbs=[account_breadcrumb]
-        )
+        folder_entity = DropboxFolderEntity.from_api(entry, breadcrumbs=[account_breadcrumb])
         return folder_entity, entry.get("path_lower", "")
 
     async def _get_paginated_entries(

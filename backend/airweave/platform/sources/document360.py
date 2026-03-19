@@ -65,16 +65,10 @@ class Document360Source(BaseSource):
         config: Document360Config,
     ) -> Document360Source:
         """Create and configure the source."""
-        from airweave.domains.sources.token_providers.credential import DirectCredentialProvider
-
         instance = cls(auth=auth, logger=logger, http_client=http_client)
-        if isinstance(auth, DirectCredentialProvider):
-            instance._api_token = auth.credentials.api_token
-        else:
-            instance._api_token = await auth.get_token()
-
-        instance._base_url = (getattr(config, "base_url", None) or DEFAULT_BASE_URL).rstrip("/")
-        instance._lang_code = getattr(config, "lang_code", "en") or "en"
+        instance._api_token = await auth.get_token()
+        instance._base_url = (config.base_url or DEFAULT_BASE_URL).rstrip("/")
+        instance._lang_code = config.lang_code or "en"
         return instance
 
     def _api_url(self, path: str) -> str:

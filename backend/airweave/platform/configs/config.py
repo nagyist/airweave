@@ -113,6 +113,14 @@ class ConfluenceConfig(SourceConfig):
 class DropboxConfig(SourceConfig):
     """Dropbox configuration schema."""
 
+    exclude_path: str = Field(
+        default="",
+        title="Exclude Path",
+        description=(
+            "Path prefix to exclude from sync (e.g., '/archive'). If empty, nothing is excluded."
+        ),
+    )
+
 
 class FirefliesConfig(SourceConfig):
     """Fireflies configuration schema.
@@ -656,6 +664,12 @@ class StripeConfig(SourceConfig):
     pass
 
 
+class PipedriveConfig(SourceConfig):
+    """Pipedrive configuration schema."""
+
+    pass
+
+
 class SalesforceConfig(SourceConfig):
     """Salesforce configuration schema.
 
@@ -672,6 +686,13 @@ class SalesforceConfig(SourceConfig):
             "exclude_from_ui": True,
             "auth_provider_field": "instance_url",
         },
+    )
+
+    api_version: str = Field(
+        default="58.0",
+        title="API Version",
+        description="Salesforce API version to use (e.g., '58.0').",
+        json_schema_extra={"exclude_from_ui": True},
     )
 
     @field_validator("instance_url", mode="before")

@@ -372,14 +372,11 @@ class FileStubSource(BaseSource):
     ) -> FileStubSource:
         """Create a configured FileStubSource from credentials and config."""
         instance = cls(auth=auth, logger=logger, http_client=http_client)
-        seed = getattr(config, "seed", 42) or 42
-        custom_content_prefix = getattr(config, "custom_content_prefix", None)
-
-        instance._seed = seed
-        instance._custom_content_prefix = custom_content_prefix
+        instance._seed = config.seed
+        instance._custom_content_prefix = config.custom_content_prefix
         instance._generator = ContentGenerator(
-            seed=seed,
-            custom_content_prefix=custom_content_prefix,
+            seed=config.seed,
+            custom_content_prefix=config.custom_content_prefix,
         )
         instance._temp_dir: Optional[str] = None
         return instance

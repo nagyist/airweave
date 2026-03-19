@@ -70,10 +70,7 @@ class BoxSource(BaseSource):
     ) -> BoxSource:
         """Create a new Box source."""
         instance = cls(auth=auth, logger=logger, http_client=http_client)
-        folder_id = "0"
-        if config and hasattr(config, "folder_id") and config.folder_id:
-            folder_id = str(config.folder_id).strip() or "0"
-        instance._folder_id = folder_id
+        instance._folder_id = str(config.folder_id).strip() or "0"
         return instance
 
     @retry(

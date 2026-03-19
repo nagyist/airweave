@@ -221,7 +221,10 @@ class SyncFactory:
 
         if execution_config and execution_config.behavior.replay_from_arf:
             source, cursor = await cls._build_arf_replay_source(
-                db=db, sync=sync, ctx=ctx, logger=sync_logger,
+                db=db,
+                sync=sync,
+                ctx=ctx,
+                logger=sync_logger,
             )
             return source, cursor, None, None
 
@@ -251,8 +254,12 @@ class SyncFactory:
         )
 
         cursor = await cls._create_cursor(
-            db=db, sync=sync, source_class=type(source), ctx=ctx,
-            logger=sync_logger, force_full_sync=force_full_sync,
+            db=db,
+            sync=sync,
+            source_class=type(source),
+            ctx=ctx,
+            logger=sync_logger,
+            force_full_sync=force_full_sync,
             execution_config=execution_config,
         )
 
@@ -260,9 +267,7 @@ class SyncFactory:
             db, UUID(str(source_connection_obj.id)), ctx
         )
         if node_selections:
-            sync_logger.info(
-                f"Loaded {len(node_selections)} node selections for targeted sync"
-            )
+            sync_logger.info(f"Loaded {len(node_selections)} node selections for targeted sync")
 
         return source, cursor, files, node_selections
 
@@ -288,8 +293,6 @@ class SyncFactory:
             restore_files=True,
             original_short_name=original_short_name,
         )
-        if hasattr(source, "set_logger"):
-            source.set_logger(logger)
 
         if not await source.validate():
             raise NotFoundException(
@@ -321,8 +324,9 @@ class SyncFactory:
                 pass
 
     @classmethod
-    async def _create_cursor(cls, db, sync, source_class, ctx, logger, force_full_sync,
-                             execution_config):
+    async def _create_cursor(
+        cls, db, sync, source_class, ctx, logger, force_full_sync, execution_config
+    ):
         """Create sync cursor with optional data loading."""
         cursor_schema = None
         if hasattr(source_class, "cursor_class") and source_class.cursor_class:
@@ -343,9 +347,7 @@ class SyncFactory:
                 db=db, sync_id=sync.id, ctx=ctx
             )
             if cursor_data:
-                logger.info(
-                    f"Incremental sync: Using cursor data with {len(cursor_data)} keys"
-                )
+                logger.info(f"Incremental sync: Using cursor data with {len(cursor_data)} keys")
 
         return SyncCursor(sync_id=sync.id, cursor_schema=cursor_schema, cursor_data=cursor_data)
 

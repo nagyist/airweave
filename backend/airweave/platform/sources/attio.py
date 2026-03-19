@@ -71,14 +71,8 @@ class AttioSource(BaseSource):
         config: AttioConfig,
     ) -> AttioSource:
         """Create a new Attio source instance."""
-        from airweave.domains.sources.token_providers.credential import DirectCredentialProvider
-
         instance = cls(auth=auth, logger=logger, http_client=http_client)
-        if isinstance(auth, DirectCredentialProvider):
-            creds = auth.credentials
-            instance._api_key = creds["api_key"] if isinstance(creds, dict) else creds.api_key
-        else:
-            instance._api_key = await auth.get_token()
+        instance._api_key = await auth.get_token()
         return instance
 
     # ------------------------------------------------------------------
@@ -210,7 +204,7 @@ class AttioSource(BaseSource):
                 parent_object=parent_object,
             )
 
-    async def _generate_records_for_object(  # noqa: C901
+    async def _generate_records_for_object(
         self,
         object_slug: str,
         object_name: str,
@@ -230,7 +224,7 @@ class AttioSource(BaseSource):
         except SourceEntityNotFoundError:
             self.logger.warning(f"Object {object_slug} not found or not accessible, skipping")
 
-    async def _generate_records_for_list(  # noqa: C901
+    async def _generate_records_for_list(
         self,
         list_id: str,
         list_name: str,
@@ -474,7 +468,7 @@ class AttioSource(BaseSource):
     # Main entry point
     # ------------------------------------------------------------------
 
-    async def generate_entities(
+    async def generate_entities(  # noqa: C901
         self,
         *,
         cursor: SyncCursor | None = None,

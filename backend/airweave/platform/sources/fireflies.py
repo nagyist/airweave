@@ -5,17 +5,31 @@ See https://docs.fireflies.ai/graphql-api/query/transcripts and
 https://docs.fireflies.ai/schema/transcript.
 """
 
+from __future__ import annotations
+
 from datetime import datetime
 from typing import Any, AsyncGenerator, Dict, List, Optional
 
-import httpx
+from tenacity import retry, stop_after_attempt
 
+from airweave.core.logging import ContextualLogger
+from airweave.domains.browse_tree.types import NodeSelectionData
+from airweave.domains.sources.exceptions import SourceAuthError, SourceError
+from airweave.domains.sources.token_providers.protocol import TokenProviderProtocol
+from airweave.domains.storage.file_service import FileService
+from airweave.domains.syncs.cursors.cursor import SyncCursor
 from airweave.platform.configs.auth import FirefliesAuthConfig
 from airweave.platform.configs.config import FirefliesConfig
 from airweave.platform.decorators import source
 from airweave.platform.entities._base import BaseEntity
 from airweave.platform.entities.fireflies import FirefliesTranscriptEntity
+from airweave.platform.http_client.airweave_client import AirweaveHttpClient
 from airweave.platform.sources._base import BaseSource
+from airweave.platform.sources.http_helpers import raise_for_status
+from airweave.platform.sources.retry_helpers import (
+    retry_if_rate_limit_or_timeout,
+    wait_rate_limit_with_backoff,
+)
 from airweave.schemas.source_connection import AuthenticationMethod
 
 FIREFLIES_GRAPHQL_URL = "https://api.fireflies.ai/graphql"
@@ -42,34 +56,34 @@ class FirefliesSource(BaseSource):
     @classmethod
     async def create(
         cls,
-        credentials: FirefliesAuthConfig,
-        config: Optional[Dict[str, Any]] = None,
-    ) -> "FirefliesSource":
-        """Create and configure the Fireflies source.
+        *,
+        auth: TokenProviderProtocol,
+        logger: ContextualLogger,
+        http_client: AirweaveHttpClient,
+        config: FirefliesConfig,
+    ) -> FirefliesSource:
+        """Create and configure the Fireflies source."""
+        from airweave.domains.sources.token_providers.credential import DirectCredentialProvider
 
-        Args:
-            credentials: Fireflies API key from app.fireflies.ai/integrations.
-            config: Optional source configuration (unused for now).
-
-        Returns:
-            Configured FirefliesSource instance.
-        """
-        instance = cls()
-        api_key = (credentials.api_key or "").strip()
-        if not api_key:
-            raise ValueError(
-                "Fireflies API key is required. Get it from app.fireflies.ai/integrations."
-            )
-        instance.api_key = api_key
+        instance = cls(auth=auth, logger=logger, http_client=http_client)
+        if isinstance(auth, DirectCredentialProvider):
+            instance._api_key = auth.credentials.api_key
+        else:
+            instance._api_key = await auth.get_token()
         return instance
 
+    @retry(
+        stop=stop_after_attempt(5),
+        retry=retry_if_rate_limit_or_timeout,
+        wait=wait_rate_limit_with_backoff,
+        reraise=True,
+    )
     async def _graphql(
-        self, client: httpx.AsyncClient, query: str, variables: Optional[Dict[str, Any]] = None
+        self, query: str, variables: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """Execute a GraphQL request against the Fireflies API.
 
         Args:
-            client: HTTP client.
             query: GraphQL query or mutation string (will be stripped).
             variables: Optional variables dict.
 
@@ -77,39 +91,49 @@ class FirefliesSource(BaseSource):
             JSON response body (data or errors).
 
         Raises:
-            httpx.HTTPStatusError: On non-2xx response (message includes response body).
-            ValueError: If the response contains GraphQL errors.
+            SourceAuthError: On 401 (credentials invalid or revoked).
+            SourceError: On GraphQL-level errors.
         """
         payload: Dict[str, Any] = {"query": query.strip()}
         if variables:
             payload["variables"] = variables
-        response = await client.post(
+
+        token = self._api_key
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {token}",
+        }
+
+        response = await self.http_client.post(
             FIREFLIES_GRAPHQL_URL,
             json=payload,
-            headers={
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {self.api_key}",
-            },
+            headers=headers,
             timeout=30.0,
         )
-        if response.status_code >= 400:
-            body = response.text
-            try:
-                err_json = response.json()
-                if "errors" in err_json and err_json["errors"]:
-                    messages = [e.get("message", str(e)) for e in err_json["errors"]]
-                    body = "; ".join(messages)
-            except Exception:
-                pass
-            raise httpx.HTTPStatusError(
-                f"Fireflies API {response.status_code}: {body}",
-                request=response.request,
-                response=response,
+
+        if response.status_code == 401 and self.auth.supports_refresh:
+            new_token = await self.auth.force_refresh()
+            headers["Authorization"] = f"Bearer {new_token}"
+            response = await self.http_client.post(
+                FIREFLIES_GRAPHQL_URL,
+                json=payload,
+                headers=headers,
+                timeout=30.0,
             )
+
+        raise_for_status(
+            response,
+            source_short_name=self.short_name,
+            token_provider_kind=self.auth.provider_kind,
+        )
+
         data = response.json()
         if "errors" in data and data["errors"]:
             msg = "; ".join(e.get("message", str(e)) for e in data["errors"])
-            raise ValueError(f"Fireflies GraphQL errors: {msg}")
+            raise SourceError(
+                f"Fireflies GraphQL errors: {msg}",
+                source_short_name=self.short_name,
+            )
         return data
 
     @staticmethod
@@ -171,7 +195,13 @@ class FirefliesSource(BaseSource):
             fireflies_users=t.get("fireflies_users") or [],
         )
 
-    async def generate_entities(self) -> AsyncGenerator[BaseEntity, None]:
+    async def generate_entities(
+        self,
+        *,
+        cursor: SyncCursor | None = None,
+        files: FileService | None = None,
+        node_selections: list[NodeSelectionData] | None = None,
+    ) -> AsyncGenerator[BaseEntity, None]:
         """Generate transcript entities from the Fireflies API.
 
         Paginates through the transcripts query (limit 50 per request).
@@ -204,18 +234,25 @@ class FirefliesSource(BaseSource):
         }
         """
         skip = 0
-        async with self.http_client() as client:
-            while True:
-                variables = {"limit": TRANSCRIPTS_PAGE_SIZE, "skip": skip}
-                data = await self._graphql(client, query, variables)
-                transcripts = (data.get("data") or {}).get("transcripts") or []
-                if not transcripts:
-                    break
-                for t in transcripts:
-                    yield self._transcript_to_entity(t)
-                if len(transcripts) < TRANSCRIPTS_PAGE_SIZE:
-                    break
-                skip += TRANSCRIPTS_PAGE_SIZE
+        while True:
+            variables = {"limit": TRANSCRIPTS_PAGE_SIZE, "skip": skip}
+            try:
+                data = await self._graphql(query, variables)
+            except SourceAuthError:
+                raise
+            except SourceError:
+                raise
+            except Exception as e:
+                self.logger.error(f"Error fetching transcripts at skip={skip}: {e}")
+                break
+            transcripts = (data.get("data") or {}).get("transcripts") or []
+            if not transcripts:
+                break
+            for t in transcripts:
+                yield self._transcript_to_entity(t)
+            if len(transcripts) < TRANSCRIPTS_PAGE_SIZE:
+                break
+            skip += TRANSCRIPTS_PAGE_SIZE
 
     async def validate(self) -> bool:
         """Validate credentials by running a minimal transcripts query.
@@ -231,8 +268,7 @@ class FirefliesSource(BaseSource):
         }
         """
         try:
-            async with self.http_client() as client:
-                await self._graphql(client, query)
+            await self._graphql(query)
             return True
-        except (httpx.HTTPStatusError, ValueError):
+        except Exception:
             return False

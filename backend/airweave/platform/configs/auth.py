@@ -1,9 +1,12 @@
 """Auth config."""
 
-from typing import Any, Optional, Self
+from __future__ import annotations
+
+from typing import Any, Optional
 from urllib.parse import urlparse
 
 from pydantic import ConfigDict, Field, ValidationInfo, field_validator, model_validator
+from typing_extensions import Self
 
 from airweave.platform.configs._base import BaseConfig
 from airweave.platform.utils.ssrf import validate_host, validate_url

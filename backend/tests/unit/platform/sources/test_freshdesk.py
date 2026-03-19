@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import httpx
 import pytest
 
+from airweave.domains.sources.token_providers.credential import DirectCredentialProvider
 from airweave.platform.configs.auth import FreshdeskAuthConfig
 from airweave.platform.configs.config import FreshdeskConfig
 from airweave.platform.entities.freshdesk import (
@@ -21,6 +22,21 @@ from airweave.platform.sources.freshdesk import (
 )
 
 
+def _mock_auth(api_key="test-key-123"):
+    creds = FreshdeskAuthConfig(api_key=api_key)
+    return DirectCredentialProvider(creds, source_short_name="freshdesk")
+
+
+def _mock_http_client():
+    client = AsyncMock()
+    client.get = AsyncMock()
+    return client
+
+
+def _mock_logger():
+    return MagicMock()
+
+
 # ---------------------------------------------------------------------------
 # create()
 # ---------------------------------------------------------------------------
@@ -29,21 +45,26 @@ from airweave.platform.sources.freshdesk import (
 @pytest.mark.asyncio
 async def test_create_stores_api_key_and_domain():
     """create() should set api_key from auth_config and domain from config."""
-    auth = FreshdeskAuthConfig(api_key="test-key-123")
-    config = {"domain": "mycompany"}
-    source = await FreshdeskSource.create(auth, config)
-    assert source.api_key == "test-key-123"
-    assert source.domain == "mycompany"
+    source = await FreshdeskSource.create(
+        auth=_mock_auth(api_key="test-key-123"),
+        logger=_mock_logger(),
+        http_client=_mock_http_client(),
+        config=FreshdeskConfig(domain="mycompany"),
+    )
+    assert source._api_key == "test-key-123"
+    assert source._domain == "mycompany"
 
 
 @pytest.mark.asyncio
 async def test_create_domain_defaults_to_empty():
-    """create() with no config or empty config should set domain to empty string."""
-    auth = FreshdeskAuthConfig(api_key="key")
-    source = await FreshdeskSource.create(auth, None)
-    assert source.domain == ""
-    source2 = await FreshdeskSource.create(auth, {})
-    assert source2.domain == ""
+    """create() with empty domain in config should set _domain to empty string."""
+    source = await FreshdeskSource.create(
+        auth=_mock_auth(api_key="key"),
+        logger=_mock_logger(),
+        http_client=_mock_http_client(),
+        config=FreshdeskConfig(domain=""),
+    )
+    assert source._domain == ""
 
 
 # ---------------------------------------------------------------------------
@@ -54,8 +75,12 @@ async def test_create_domain_defaults_to_empty():
 @pytest.mark.asyncio
 async def test_base_url():
     """_base_url() should return correct Freshdesk API base URL."""
-    auth = FreshdeskAuthConfig(api_key="k")
-    source = await FreshdeskSource.create(auth, {"domain": "acme"})
+    source = await FreshdeskSource.create(
+        auth=_mock_auth(api_key="k"),
+        logger=_mock_logger(),
+        http_client=_mock_http_client(),
+        config=FreshdeskConfig(domain="acme"),
+    )
     assert source._base_url() == "https://acme.freshdesk.com/api/v2"
     assert source._build_ticket_url(42) == "https://acme.freshdesk.com/a/tickets/42"
     assert source._build_contact_url(1) == "https://acme.freshdesk.com/a/contacts/1"
@@ -70,27 +95,33 @@ async def test_base_url():
 
 def test_parse_link_header_returns_next_url():
     """_parse_link_header should extract next page URL from Link header."""
-    source = FreshdeskSource()
-    source.api_key = "k"
-    source.domain = "d"
+    source = FreshdeskSource(
+        auth=_mock_auth(),
+        logger=_mock_logger(),
+        http_client=_mock_http_client(),
+    )
     link = '<https://d.freshdesk.com/api/v2/tickets?page=2>; rel="next"'
     assert source._parse_link_header(link) == "https://d.freshdesk.com/api/v2/tickets?page=2"
 
 
 def test_parse_link_header_returns_none_when_empty():
     """_parse_link_header should return None for None or empty."""
-    source = FreshdeskSource()
-    source.api_key = "k"
-    source.domain = "d"
+    source = FreshdeskSource(
+        auth=_mock_auth(),
+        logger=_mock_logger(),
+        http_client=_mock_http_client(),
+    )
     assert source._parse_link_header(None) is None
     assert source._parse_link_header("") is None
 
 
 def test_parse_link_header_returns_none_when_no_next():
     """_parse_link_header should return None when rel=next is absent."""
-    source = FreshdeskSource()
-    source.api_key = "k"
-    source.domain = "d"
+    source = FreshdeskSource(
+        auth=_mock_auth(),
+        logger=_mock_logger(),
+        http_client=_mock_http_client(),
+    )
     link = '<https://example.com/prev>; rel="prev"'
     assert source._parse_link_header(link) is None
 
@@ -103,24 +134,20 @@ def test_parse_link_header_returns_none_when_no_next():
 @pytest.mark.asyncio
 async def test_validate_success():
     """validate() should return True when GET /agents/me returns 200."""
-    auth = FreshdeskAuthConfig(api_key="valid-key")
-    source = await FreshdeskSource.create(auth, {"domain": "test"})
+    source = await FreshdeskSource.create(
+        auth=_mock_auth(api_key="valid-key"),
+        logger=_mock_logger(),
+        http_client=_mock_http_client(),
+        config=FreshdeskConfig(domain="test"),
+    )
 
     mock_response = MagicMock()
     mock_response.status_code = 200
     mock_response.raise_for_status = MagicMock()
 
-    with patch.object(source, "http_client") as mock_http_client:
-        mock_client = AsyncMock()
-        mock_client.get = AsyncMock(return_value=mock_response)
-        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_client.__aexit__ = AsyncMock(return_value=None)
-        mock_http_client.return_value.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_http_client.return_value.__aexit__ = AsyncMock(return_value=None)
-
-        with patch.object(source, "_get_with_auth", new_callable=AsyncMock) as mock_get:
-            mock_get.return_value = mock_response
-            result = await source.validate()
+    with patch.object(source, "_get", new_callable=AsyncMock) as mock_get:
+        mock_get.return_value = mock_response
+        result = await source.validate()
     assert result is True
     mock_get.assert_called_once()
 
@@ -128,9 +155,13 @@ async def test_validate_success():
 @pytest.mark.asyncio
 async def test_validate_fails_when_missing_api_key():
     """validate() should return False when api_key is missing."""
-    auth = FreshdeskAuthConfig(api_key="k")
-    source = await FreshdeskSource.create(auth, {"domain": "d"})
-    source.api_key = None
+    source = await FreshdeskSource.create(
+        auth=_mock_auth(api_key="k"),
+        logger=_mock_logger(),
+        http_client=_mock_http_client(),
+        config=FreshdeskConfig(domain="d"),
+    )
+    source._api_key = None
     result = await source.validate()
     assert result is False
 
@@ -138,9 +169,13 @@ async def test_validate_fails_when_missing_api_key():
 @pytest.mark.asyncio
 async def test_validate_fails_when_missing_domain():
     """validate() should return False when domain is missing."""
-    auth = FreshdeskAuthConfig(api_key="k")
-    source = await FreshdeskSource.create(auth, {"domain": "d"})
-    source.domain = None
+    source = await FreshdeskSource.create(
+        auth=_mock_auth(api_key="k"),
+        logger=_mock_logger(),
+        http_client=_mock_http_client(),
+        config=FreshdeskConfig(domain="d"),
+    )
+    source._domain = None
     result = await source.validate()
     assert result is False
 
@@ -148,19 +183,20 @@ async def test_validate_fails_when_missing_domain():
 @pytest.mark.asyncio
 async def test_validate_fails_on_http_error():
     """validate() should return False when API returns non-2xx."""
-    auth = FreshdeskAuthConfig(api_key="bad")
-    source = await FreshdeskSource.create(auth, {"domain": "d"})
+    source = await FreshdeskSource.create(
+        auth=_mock_auth(api_key="bad"),
+        logger=_mock_logger(),
+        http_client=_mock_http_client(),
+        config=FreshdeskConfig(domain="d"),
+    )
 
-    with patch.object(source, "http_client") as mock_http_client:
-        mock_client = AsyncMock()
-        mock_http_client.return_value.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_http_client.return_value.__aexit__ = AsyncMock(return_value=None)
-        with patch.object(source, "_get_with_auth", new_callable=AsyncMock) as mock_get:
-            mock_get.side_effect = httpx.HTTPStatusError(
-                "401", request=MagicMock(), response=MagicMock(status_code=401)
-            )
-            result = await source.validate()
+    with patch.object(source, "_get", new_callable=AsyncMock) as mock_get:
+        mock_get.side_effect = httpx.HTTPStatusError(
+            "401", request=MagicMock(), response=MagicMock(status_code=401)
+        )
+        result = await source.validate()
     assert result is False
+
 
 # ---------------------------------------------------------------------------
 # _generate_ticket_entities (entity mapping)
@@ -170,8 +206,12 @@ async def test_validate_fails_on_http_error():
 @pytest.mark.asyncio
 async def test_generate_ticket_entities_maps_api_to_entity():
     """Ticket API payload should map to FreshdeskTicketEntity with correct fields."""
-    auth = FreshdeskAuthConfig(api_key="k")
-    source = await FreshdeskSource.create(auth, {"domain": "test"})
+    source = await FreshdeskSource.create(
+        auth=_mock_auth(api_key="k"),
+        logger=_mock_logger(),
+        http_client=_mock_http_client(),
+        config=FreshdeskConfig(domain="test"),
+    )
     ticket_payload = {
         "id": 100,
         "subject": "Help with login",
@@ -183,12 +223,12 @@ async def test_generate_ticket_entities_maps_api_to_entity():
         "updated_at": "2025-01-15T11:00:00Z",
     }
 
-    async def fake_paginate(client, path, params=None):
+    async def fake_paginate(path, params=None):
         yield ticket_payload
 
     entities = []
     with patch.object(source, "_paginate_list", fake_paginate):
-        async for entity in source._generate_ticket_entities(AsyncMock()):
+        async for entity in source._generate_ticket_entities():
             entities.append(entity)
 
     assert len(entities) == 1
@@ -208,8 +248,12 @@ async def test_generate_ticket_entities_maps_api_to_entity():
 @pytest.mark.asyncio
 async def test_generate_company_entities_maps_api_to_entity():
     """Company API payload should map to FreshdeskCompanyEntity."""
-    auth = FreshdeskAuthConfig(api_key="k")
-    source = await FreshdeskSource.create(auth, {"domain": "test"})
+    source = await FreshdeskSource.create(
+        auth=_mock_auth(api_key="k"),
+        logger=_mock_logger(),
+        http_client=_mock_http_client(),
+        config=FreshdeskConfig(domain="test"),
+    )
     company_payload = {
         "id": 5,
         "name": "Acme Corp",
@@ -218,12 +262,12 @@ async def test_generate_company_entities_maps_api_to_entity():
         "updated_at": "2024-06-02T00:00:00Z",
     }
 
-    async def fake_paginate(client, path, params=None):
+    async def fake_paginate(path, params=None):
         yield company_payload
 
     entities = []
     with patch.object(source, "_paginate_list", fake_paginate):
-        async for entity in source._generate_company_entities(AsyncMock()):
+        async for entity in source._generate_company_entities():
             entities.append(entity)
 
     assert len(entities) == 1
@@ -376,18 +420,21 @@ def test_solution_article_entity_web_url_fallback():
 @pytest.mark.asyncio
 async def test_paginate_list_yields_list_response():
     """_paginate_list yields items from a list JSON response."""
-    auth = FreshdeskAuthConfig(api_key="k")
-    source = await FreshdeskSource.create(auth, {"domain": "fd"})
-    mock_client = AsyncMock()
+    source = await FreshdeskSource.create(
+        auth=_mock_auth(api_key="k"),
+        logger=_mock_logger(),
+        http_client=_mock_http_client(),
+        config=FreshdeskConfig(domain="fd"),
+    )
     mock_response = MagicMock()
     mock_response.json.return_value = [{"id": 1}, {"id": 2}]
     mock_response.headers = {}
     mock_response.raise_for_status = MagicMock()
 
-    with patch.object(source, "_get_with_auth", new_callable=AsyncMock) as mock_get:
+    with patch.object(source, "_get", new_callable=AsyncMock) as mock_get:
         mock_get.return_value = mock_response
         items = []
-        async for item in source._paginate_list(mock_client, "/companies"):
+        async for item in source._paginate_list("/companies"):
             items.append(item)
     assert items == [{"id": 1}, {"id": 2}]
     assert mock_get.call_count == 1
@@ -396,18 +443,21 @@ async def test_paginate_list_yields_list_response():
 @pytest.mark.asyncio
 async def test_paginate_list_uses_results_key_when_not_list():
     """_paginate_list uses 'results' or 'records' when response is a dict."""
-    auth = FreshdeskAuthConfig(api_key="k")
-    source = await FreshdeskSource.create(auth, {"domain": "fd"})
-    mock_client = AsyncMock()
+    source = await FreshdeskSource.create(
+        auth=_mock_auth(api_key="k"),
+        logger=_mock_logger(),
+        http_client=_mock_http_client(),
+        config=FreshdeskConfig(domain="fd"),
+    )
     mock_response = MagicMock()
     mock_response.json.return_value = {"results": [{"id": 10}]}
     mock_response.headers = {}
     mock_response.raise_for_status = MagicMock()
 
-    with patch.object(source, "_get_with_auth", new_callable=AsyncMock) as mock_get:
+    with patch.object(source, "_get", new_callable=AsyncMock) as mock_get:
         mock_get.return_value = mock_response
         items = []
-        async for item in source._paginate_list(mock_client, "/contacts"):
+        async for item in source._paginate_list("/contacts"):
             items.append(item)
     assert items == [{"id": 10}]
 
@@ -415,10 +465,13 @@ async def test_paginate_list_uses_results_key_when_not_list():
 @pytest.mark.asyncio
 async def test_paginate_list_follows_link_header():
     """_paginate_list follows Link rel=next to next page."""
-    auth = FreshdeskAuthConfig(api_key="k")
-    source = await FreshdeskSource.create(auth, {"domain": "fd"})
+    source = await FreshdeskSource.create(
+        auth=_mock_auth(api_key="k"),
+        logger=_mock_logger(),
+        http_client=_mock_http_client(),
+        config=FreshdeskConfig(domain="fd"),
+    )
     base = source._base_url()
-    mock_client = AsyncMock()
     r1 = MagicMock()
     r1.json.return_value = [{"id": 1}]
     r1.headers = {"link": f'<{base}/companies?page=2>; rel="next"'}
@@ -428,10 +481,10 @@ async def test_paginate_list_follows_link_header():
     r2.headers = {}
     r2.raise_for_status = MagicMock()
 
-    with patch.object(source, "_get_with_auth", new_callable=AsyncMock) as mock_get:
+    with patch.object(source, "_get", new_callable=AsyncMock) as mock_get:
         mock_get.side_effect = [r1, r2]
         items = []
-        async for item in source._paginate_list(mock_client, "/companies"):
+        async for item in source._paginate_list("/companies"):
             items.append(item)
     assert items == [{"id": 1}, {"id": 2}]
     assert mock_get.call_count == 2
@@ -440,9 +493,12 @@ async def test_paginate_list_follows_link_header():
 @pytest.mark.asyncio
 async def test_paginate_list_increments_page_when_no_link():
     """_paginate_list increments page when full page and no Link next."""
-    auth = FreshdeskAuthConfig(api_key="k")
-    source = await FreshdeskSource.create(auth, {"domain": "fd"})
-    mock_client = AsyncMock()
+    source = await FreshdeskSource.create(
+        auth=_mock_auth(api_key="k"),
+        logger=_mock_logger(),
+        http_client=_mock_http_client(),
+        config=FreshdeskConfig(domain="fd"),
+    )
     full_page = [{"id": i} for i in range(100)]
     r1 = MagicMock()
     r1.json.return_value = full_page
@@ -453,10 +509,10 @@ async def test_paginate_list_increments_page_when_no_link():
     r2.headers = {}
     r2.raise_for_status = MagicMock()
 
-    with patch.object(source, "_get_with_auth", new_callable=AsyncMock) as mock_get:
+    with patch.object(source, "_get", new_callable=AsyncMock) as mock_get:
         mock_get.side_effect = [r1, r2]
         items = []
-        async for item in source._paginate_list(mock_client, "/tickets"):
+        async for item in source._paginate_list("/tickets"):
             items.append(item)
     assert len(items) == 101
     assert mock_get.call_count == 2
@@ -472,8 +528,12 @@ async def test_paginate_list_increments_page_when_no_link():
 @pytest.mark.asyncio
 async def test_generate_contact_entities_maps_api_to_entity():
     """Contact API payload maps to FreshdeskContactEntity."""
-    auth = FreshdeskAuthConfig(api_key="k")
-    source = await FreshdeskSource.create(auth, {"domain": "test"})
+    source = await FreshdeskSource.create(
+        auth=_mock_auth(api_key="k"),
+        logger=_mock_logger(),
+        http_client=_mock_http_client(),
+        config=FreshdeskConfig(domain="test"),
+    )
     contact_payload = {
         "id": 7,
         "name": "Jane Doe",
@@ -482,12 +542,12 @@ async def test_generate_contact_entities_maps_api_to_entity():
         "updated_at": "2024-06-02T00:00:00Z",
     }
 
-    async def fake_paginate(client, path, params=None):
+    async def fake_paginate(path, params=None):
         yield contact_payload
 
     entities = []
     with patch.object(source, "_paginate_list", fake_paginate):
-        async for entity in source._generate_contact_entities(AsyncMock()):
+        async for entity in source._generate_contact_entities():
             entities.append(entity)
     assert len(entities) == 1
     ent = entities[0]
@@ -505,8 +565,12 @@ async def test_generate_contact_entities_maps_api_to_entity():
 @pytest.mark.asyncio
 async def test_generate_conversation_entities_maps_api_to_entity():
     """Conversation payload maps to FreshdeskConversationEntity."""
-    auth = FreshdeskAuthConfig(api_key="k")
-    source = await FreshdeskSource.create(auth, {"domain": "test"})
+    source = await FreshdeskSource.create(
+        auth=_mock_auth(api_key="k"),
+        logger=_mock_logger(),
+        http_client=_mock_http_client(),
+        config=FreshdeskConfig(domain="test"),
+    )
     ticket_payload = {"id": 10, "subject": "Help"}
     conv_payload = {
         "id": 20,
@@ -518,7 +582,7 @@ async def test_generate_conversation_entities_maps_api_to_entity():
         "private": False,
     }
 
-    async def fake_paginate(client, path, params=None):
+    async def fake_paginate(path, params=None):
         yield ticket_payload
 
     mock_conv_response = MagicMock()
@@ -526,11 +590,11 @@ async def test_generate_conversation_entities_maps_api_to_entity():
     mock_conv_response.headers = {}
 
     with patch.object(source, "_paginate_list", fake_paginate), patch.object(
-        source, "_get_with_auth", new_callable=AsyncMock
+        source, "_get", new_callable=AsyncMock
     ) as mock_get:
         mock_get.return_value = mock_conv_response
         entities = []
-        async for entity in source._generate_conversation_entities(AsyncMock()):
+        async for entity in source._generate_conversation_entities():
             entities.append(entity)
     assert len(entities) == 1
     ent = entities[0]
@@ -549,8 +613,12 @@ async def test_generate_conversation_entities_maps_api_to_entity():
 @pytest.mark.asyncio
 async def test_generate_solution_article_entities_maps_api_to_entity():
     """Solution article payload maps to FreshdeskSolutionArticleEntity."""
-    auth = FreshdeskAuthConfig(api_key="k")
-    source = await FreshdeskSource.create(auth, {"domain": "test"})
+    source = await FreshdeskSource.create(
+        auth=_mock_auth(api_key="k"),
+        logger=_mock_logger(),
+        http_client=_mock_http_client(),
+        config=FreshdeskConfig(domain="test"),
+    )
     cat_response = MagicMock()
     cat_response.json.return_value = [{"id": 1, "name": "Cat1"}]
     folder_response = MagicMock()
@@ -568,7 +636,7 @@ async def test_generate_solution_article_entities_maps_api_to_entity():
     subfolders_response = MagicMock()
     subfolders_response.json.return_value = []  # no nested subfolders
 
-    with patch.object(source, "_get_with_auth", new_callable=AsyncMock) as mock_get:
+    with patch.object(source, "_get", new_callable=AsyncMock) as mock_get:
         mock_get.side_effect = [
             cat_response,
             folder_response,
@@ -576,7 +644,7 @@ async def test_generate_solution_article_entities_maps_api_to_entity():
             subfolders_response,
         ]
         entities = []
-        async for entity in source._generate_solution_article_entities(AsyncMock()):
+        async for entity in source._generate_solution_article_entities():
             entities.append(entity)
     assert len(entities) == 1
     ent = entities[0]
@@ -594,11 +662,15 @@ async def test_generate_solution_article_entities_maps_api_to_entity():
 @pytest.mark.asyncio
 async def test_generate_entities_yields_from_all_generators():
     """generate_entities yields from companies, contacts, tickets, conversations, articles."""
-    auth = FreshdeskAuthConfig(api_key="k")
-    source = await FreshdeskSource.create(auth, {"domain": "test"})
+    source = await FreshdeskSource.create(
+        auth=_mock_auth(api_key="k"),
+        logger=_mock_logger(),
+        http_client=_mock_http_client(),
+        config=FreshdeskConfig(domain="test"),
+    )
     seen = []
 
-    async def fake_company(client):
+    async def fake_company():
         yield FreshdeskCompanyEntity(
             entity_id="1",
             breadcrumbs=[],
@@ -612,7 +684,7 @@ async def test_generate_entities_yields_from_all_generators():
         )
         seen.append("company")
 
-    async def fake_contact(client):
+    async def fake_contact():
         yield FreshdeskContactEntity(
             entity_id="1",
             breadcrumbs=[],
@@ -626,7 +698,7 @@ async def test_generate_entities_yields_from_all_generators():
         )
         seen.append("contact")
 
-    async def fake_ticket(client):
+    async def fake_ticket():
         yield FreshdeskTicketEntity(
             entity_id="1",
             breadcrumbs=[],
@@ -641,7 +713,7 @@ async def test_generate_entities_yields_from_all_generators():
         )
         seen.append("ticket")
 
-    async def fake_conv(client):
+    async def fake_conv():
         yield FreshdeskConversationEntity(
             entity_id="1_2",
             breadcrumbs=[],
@@ -658,7 +730,7 @@ async def test_generate_entities_yields_from_all_generators():
         )
         seen.append("conversation")
 
-    async def fake_article(client):
+    async def fake_article():
         yield FreshdeskSolutionArticleEntity(
             entity_id="1",
             breadcrumbs=[],
@@ -679,10 +751,7 @@ async def test_generate_entities_yields_from_all_generators():
         source, "_generate_conversation_entities", fake_conv
     ), patch.object(
         source, "_generate_solution_article_entities", fake_article
-    ), patch.object(source, "http_client") as mock_http:
-        mock_client = AsyncMock()
-        mock_http.return_value.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_http.return_value.__aexit__ = AsyncMock(return_value=None)
+    ):
         out = []
         async for entity in source.generate_entities():
             out.append(entity)
@@ -698,12 +767,13 @@ async def test_generate_entities_yields_from_all_generators():
 @pytest.mark.asyncio
 async def test_validate_fails_on_generic_exception():
     """validate() returns False on unexpected exception."""
-    auth = FreshdeskAuthConfig(api_key="k")
-    source = await FreshdeskSource.create(auth, {"domain": "d"})
-    with patch.object(source, "http_client") as mock_http_client:
-        mock_http_client.return_value.__aenter__ = AsyncMock(
-            side_effect=RuntimeError("connection failed")
-        )
-        mock_http_client.return_value.__aexit__ = AsyncMock(return_value=None)
+    source = await FreshdeskSource.create(
+        auth=_mock_auth(api_key="k"),
+        logger=_mock_logger(),
+        http_client=_mock_http_client(),
+        config=FreshdeskConfig(domain="d"),
+    )
+    with patch.object(source, "_get", new_callable=AsyncMock) as mock_get:
+        mock_get.side_effect = RuntimeError("connection failed")
         result = await source.validate()
     assert result is False

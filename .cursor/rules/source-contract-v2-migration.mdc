@@ -23,6 +23,7 @@ Sources had invisible, mutable state injected after construction via setters:
 ```python
 # v1: dependencies appear magically after create()
 instance = await SourceClass.create(access_token="...", config={})
+
 instance.set_logger(logger)                    # set later
 instance.set_token_provider(token_provider)    # set later
 instance.set_http_client_factory(factory)      # set later
@@ -125,9 +126,15 @@ Critical rule: **`SourceAuthError` always propagates.** No `except SourceError` 
 
 Some APIs don't follow HTTP conventions. These are handled in the source's `_get`/`_post` method **before** `raise_for_status`:
 
-- **Linear**: Returns rate limits as HTTP 400 with GraphQL `RATELIMITED` error code (not 429). The source checks for this and raises `SourceRateLimitError` with `retry_after` computed from `X-RateLimit-Requests-Reset` header.
+- **Linear**: Returns rate limits as HTTP 400 with GraphQL `RATELIMITED` error code (not 429). The source checks `errors[].extensions.code == "RATELIMITED"` and raises `SourceRateLimitError` with `retry_after` from `X-RateLimit-Requests-Reset` header.
 - **Asana**: Returns 400 "result too large" when a paginated response exceeds internal limits. The source catches this via a private `_ResultTooLarge` exception and retries with smaller page sizes recursively.
 - **Zoho**: Returns 400 with `"too many requests"` in the body for rate limits. Handled generically by `raise_for_status`'s `_is_rate_limit_disguised_as_400()`.
+- **Bitbucket**: Standard 429 with `X-RateLimit-Limit` / `X-RateLimit-NearLimit` headers. 1,000–10,000 req/hr depending on endpoint + workspace size. Uses Basic Auth (email + API token), not Bearer.
+- **Box**: Standard 429 with `retry-after` header. 1,000 req/min per user. Returns 403 for no-access and 404 for deleted items — the source returns `{}` for both (graceful skip).
+- **Cal.com**: Standard 429. 120 req/min per API key (v2). Rate limit headers: `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`.
+- **ClickUp**: Standard 429. 100 req/min per token. No API quirks — standard Bearer auth with `raise_for_status`.
+- **Coda**: Standard 429. 100 read/6s, 4 list docs/6s. Removed homebrew in-process rate limiter (sliding window); now handled by `AirweaveHttpClient`.
+- **Confluence**: Standard 429 via Atlassian Cloud. OAuth with rotating refresh. Requires accessible-resources lookup for `cloud_id` before API calls. Pages saved as HTML via `files.save_bytes()`.
 
 ### File downloads: FileService with raw exceptions
 
@@ -149,7 +156,48 @@ async def _download_attachment(self, entity, files):
 
 ### Entity construction: `from_api()` classmethods
 
-Entity construction logic (field mapping, datetime parsing, breadcrumb building) moves from the source to the entity class:
+Entity construction logic (field mapping, datetime parsing, breadcrumb building) moves from the source to the entity class.
+
+#### When to add `from_api()`
+
+Add it when the source has **>5 lines of field extraction** per entity constructor call. Skip it for entities where the source just passes API fields through 1:1 with no parsing (e.g. Box file entities with 30+ direct `.get()` calls that map to identically-named Pydantic fields — `from_api()` would just be `cls(**data)` with `extra="ignore"`).
+
+#### Signature pattern
+
+```python
+@classmethod
+def from_api(
+    cls,
+    data: Dict[str, Any],             # raw API response dict
+    *,                                  # keyword-only after this
+    breadcrumbs: List[Breadcrumb],      # parent context from caller
+    project_gid: Optional[str] = None,  # any extra context the API doesn't provide
+) -> MyEntity:
+```
+
+- First positional arg is always the raw API dict
+- Parent context (breadcrumbs, IDs, names from parent entities) as keyword-only args
+- Returns the entity instance (or `Optional[...]` if construction can fail, e.g. attachments without URLs)
+
+#### What goes in `from_api()`
+
+- **Datetime parsing**: `_parse_dt(data.get("createdAt"))` — put the helper at module level in the entities file
+- **Field renaming**: camelCase → snake_case (`displayName` → `display_name`, `createdAt` → `created_time`)
+- **Nested extraction**: `(data.get("team") or {}).get("name")` for nested API objects
+- **Breadcrumb construction**: when the entity itself determines its breadcrumbs (e.g. `LinearTeamEntity` builds a self-referencing breadcrumb, `LinearProjectEntity` builds team breadcrumbs from `teams.nodes`)
+- **Defaults and fallbacks**: `data.get("name") or data.get("slug") or entity_id`
+- **URL construction**: `f"https://linear.app/team/{team_key}"`
+- **Utility helpers**: `_find_primary_field(fields)` for Airtable tables, `_extract_record_name(record_id, fields)` for Airtable records — these live as module-level functions in the entities file
+
+#### What stays in the source
+
+- Orchestration (pagination, iteration, yielding)
+- Error handling (try/except around API calls)
+- Logging (`self.logger.debug(...)`)
+- Conditional logic (skip archived issues, filter by file extensions)
+- File downloads (these mutate the entity in place via `files.download_from_url`)
+
+#### Example: before and after
 
 **Before** — 25 lines per entity in the source:
 ```python
@@ -167,20 +215,31 @@ self.logger.debug(f"Processing team: {team.get('name')}")
 yield LinearTeamEntity.from_api(team)
 ```
 
-`from_api()` is a `@classmethod` that takes the raw API dict (+ any parent context as kwargs) and returns the entity. This:
-- Eliminates duplicated parsing logic across sources
-- Makes entity construction independently testable
-- Keeps the source focused on orchestration (pagination, error handling, yielding)
+#### Entities with `from_api()` so far
+
+| Entity file | Entities with `from_api()` | Module-level helpers |
+|---|---|---|
+| `entities/linear.py` | Team, Project, User, Issue, Comment (5) | `_parse_dt()`, `_team_breadcrumbs()` |
+| `entities/asana.py` | Workspace, Project, Section, Task, Comment (5) | — (uses Pydantic `extra="ignore"` + `**data`) |
+| `entities/airtable.py` | User, Base, Table, Record, Comment, Attachment (6) | `_find_primary_field()`, `_extract_record_name()` |
+| `entities/box.py` | User, Folder, Comment, Collaboration (4) | — |
+| `entities/calcom.py` | Booking, EventType, Schedule (3) | `_parse_iso8601()` |
 
 ## Sources migrated so far
 
-| Source | Lines before | Lines after | Key changes |
-|---|---|---|---|
-| **Asana** | ~600 | 464 | Pilot migration. Recursive `_paginate` for "too large" 400s. `from_api()` on all entity models. |
-| **Linear** | 1,148 | 701 | Removed homebrew rate limiter. GraphQL `RATELIMITED` detection. `from_api()` on all 6 entity models. |
-| **Airtable** | 603 | 378 | Removed manual 429 sleep-and-retry. `from_api()` on all 6 entity models. |
-| **Apollo** | 338 | ~338 | Contract migration (earlier commit). |
-| **Attio** | 553 | ~553 | Contract migration (earlier commit). |
+| Source | Lines before | Lines after | `from_api()` | Key changes |
+|---|---|---|---|---|
+| **Asana** | ~600 | 464 | 5 entities | Pilot migration. Recursive `_paginate` for "too large" 400s. |
+| **Linear** | 1,148 | 701 | 5 entities | Removed homebrew rate limiter. GraphQL `RATELIMITED` detection. |
+| **Airtable** | 603 | 378 | 6 entities | Removed manual 429 sleep-and-retry. |
+| **Apollo** | 338 | ~338 | — | Contract migration (earlier commit). |
+| **Attio** | 553 | ~553 | — | Contract migration (earlier commit). |
+| **Bitbucket** | 649 | 496 | — | Basic Auth via `DirectCredentialProvider`. `files.save_bytes()` for code content. |
+| **Box** | 704 | 440 | 4 entities | Removed homebrew rate limiter. 403/404 → graceful `{}` return. |
+| **Cal.com** | 421 | 281 | 3 entities | Cursor-based incremental sync via param. Self-hosted `_base_url`. |
+| **ClickUp** | 736 | ~560 | — | Removed debug file-reading. `files` param threaded to attachment downloads. |
+| **Coda** | 383 | ~320 | — | Removed homebrew sliding-window rate limiter. `_parse_datetime` to module-level. |
+| **Confluence** | 603 | ~470 | — | Fixed hardcoded `your-domain` URLs → `self._base_url`. `files` param for page HTML saves. |
 
 ## Infrastructure changes (in this branch)
 

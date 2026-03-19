@@ -209,22 +209,25 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
         typed_config = self._build_typed_config(entry, config or {})
 
         try:
-            source = await source_class.create(
-                auth=auth,
-                logger=validation_logger,
-                http_client=validation_client,
-                config=typed_config,
-            )
-        except Exception as exc:
-            raise SourceCreationError(short_name, str(exc)) from exc
+            try:
+                source = await source_class.create(
+                    auth=auth,
+                    logger=validation_logger,
+                    http_client=validation_client,
+                    config=typed_config,
+                )
+            except Exception as exc:
+                raise SourceCreationError(short_name, str(exc)) from exc
 
-        try:
-            is_valid = await source.validate()
-        except Exception as exc:
-            raise SourceValidationError(short_name, f"validation raised: {exc}") from exc
+            try:
+                is_valid = await source.validate()
+            except Exception as exc:
+                raise SourceValidationError(short_name, f"validation raised: {exc}") from exc
 
-        if not is_valid:
-            raise SourceValidationError(short_name, "validate() returned False")
+            if not is_valid:
+                raise SourceValidationError(short_name, "validate() returned False")
+        finally:
+            await validation_client.aclose()
 
     # ------------------------------------------------------------------
     # Private: data loading

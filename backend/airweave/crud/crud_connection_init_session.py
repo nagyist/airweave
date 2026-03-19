@@ -126,12 +126,8 @@ class CRUDConnectionInitSession(CRUDBaseOrganization[ConnectionInitSession, Base
                 f"Session {session.id}: has_oauth_token={has_token}, "
                 f"override_keys={list(session.overrides.keys()) if session.overrides else []}"
             )
-            stored = (
-                session.overrides.get("oauth_token")
-                if session.overrides
-                else None
-            )
-            if stored is not None and hmac.compare_digest(stored, oauth_token):
+            stored = session.overrides.get("oauth_token") if session.overrides else None
+            if isinstance(stored, str) and hmac.compare_digest(stored, oauth_token):
                 logger.debug(f"Found matching session: {session.id}")
                 return session
 

@@ -138,7 +138,8 @@ class CRUDAPIKey(CRUDBaseOrganization[APIKey, APIKeyCreate, APIKeyUpdate]):
             except (InvalidToken, ValueError):
                 continue
 
-            if hmac.compare_digest(decrypted_data.get("key", ""), key):
+            stored_key = decrypted_data.get("key") if isinstance(decrypted_data, dict) else None
+            if isinstance(stored_key, str) and hmac.compare_digest(stored_key, key):
                 if api_key.expiration_date < utc_now_naive():
                     raise PermissionException("API key has expired")
                 return api_key

@@ -137,6 +137,23 @@ async def test_malformed_payload_missing_key_field(mock_creds, _mock_now, crud):
 @pytest.mark.asyncio
 @patch("airweave.crud.crud_api_key.utc_now_naive", return_value=NOW)
 @patch("airweave.crud.crud_api_key.credentials")
+async def test_non_dict_payload_is_skipped(mock_creds, _mock_now, crud):
+    """Decrypted payload that is not a dict (e.g. a list) is skipped."""
+    bad_key = _make_api_key()
+    good_key = _make_api_key(expiration_date=datetime(2099, 1, 1))
+
+    mock_creds.decrypt.side_effect = [["not", "a", "dict"], {"key": "the-secret"}]
+    db = _mock_db([bad_key, good_key])
+
+    result = await crud.get_by_key(db, key="the-secret")
+
+    assert result is good_key
+    assert mock_creds.decrypt.call_count == 2
+
+
+@pytest.mark.asyncio
+@patch("airweave.crud.crud_api_key.utc_now_naive", return_value=NOW)
+@patch("airweave.crud.crud_api_key.credentials")
 async def test_no_keys_in_db_raises_not_found(mock_creds, _mock_now, crud):
     """Empty DB table raises NotFoundException immediately."""
     db = _mock_db([])

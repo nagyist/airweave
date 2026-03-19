@@ -103,6 +103,17 @@ async def test_session_missing_oauth_token_key_is_skipped(crud):
 
 
 @pytest.mark.asyncio
+async def test_non_string_token_is_skipped(crud):
+    """Session whose oauth_token is a non-string (e.g. int) is skipped."""
+    session_bad = _make_session(overrides={"oauth_token": 12345})
+    db = _mock_db([session_bad])
+
+    result = await crud.get_by_oauth_token_no_auth(db, oauth_token="12345")
+
+    assert result is None
+
+
+@pytest.mark.asyncio
 @patch("airweave.crud.crud_connection_init_session.logger")
 async def test_logs_redact_token_values(mock_logger, crud):
     """Logger.debug receives truncated token, not the full value."""

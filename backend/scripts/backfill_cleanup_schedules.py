@@ -17,6 +17,7 @@ Usage:
 import argparse
 import asyncio
 from datetime import datetime, timedelta, timezone
+from uuid import uuid4
 
 from sqlalchemy import select
 from temporalio.client import (
@@ -47,14 +48,15 @@ async def check_schedule_exists(client, schedule_id: str) -> bool:
         raise
 
 
-async def _gather_sync_data(sync) -> tuple[dict, dict, dict] | None:
-    """Load source connection, collection, and connection for a sync.
+async def _gather_sync_data(sync) -> tuple[dict, dict, dict, dict] | None:
+    """Load source connection, collection, connection, and organization for a sync.
 
-    Returns (sync_dict, collection_dict, connection_dict) or None if
+    Returns (sync_dict, collection_dict, connection_dict, org_dict) or None if
     any required record is missing.
     """
     from airweave.models.collection import Collection
     from airweave.models.connection import Connection
+    from airweave.models.organization import Organization
     from airweave.models.source_connection import SourceConnection
 
     async with AsyncSessionLocal() as db:
@@ -81,20 +83,30 @@ async def _gather_sync_data(sync) -> tuple[dict, dict, dict] | None:
         if not connection:
             return None
 
+        org_result = await db.execute(
+            select(Organization).where(Organization.id == sync.organization_id)
+        )
+        organization = org_result.scalar_one_or_none()
+        if not organization:
+            return None
+
         sync_result = await db.execute(select(SyncModel).where(SyncModel.id == sync.id))
         sync_obj = sync_result.scalar_one()
 
-        sync_dict = schemas.Sync.model_validate(
-            sync_obj, from_attributes=True
-        ).model_dump(mode="json")
+        sync_dict = schemas.Sync.model_validate(sync_obj, from_attributes=True).model_dump(
+            mode="json"
+        )
         collection_dict = schemas.CollectionRecord.model_validate(
             collection, from_attributes=True
         ).model_dump(mode="json")
         connection_dict = schemas.Connection.model_validate(
             connection, from_attributes=True
         ).model_dump(mode="json")
+        org_dict = schemas.Organization.model_validate(
+            organization, from_attributes=True
+        ).model_dump(mode="json")
 
-        return sync_dict, collection_dict, connection_dict
+        return sync_dict, collection_dict, connection_dict, org_dict
 
 
 async def main(apply: bool) -> None:
@@ -103,9 +115,7 @@ async def main(apply: bool) -> None:
 
     async with AsyncSessionLocal() as db:
         # Find all incremental syncs
-        result = await db.execute(
-            select(SyncModel).where(SyncModel.sync_type == "incremental")
-        )
+        result = await db.execute(select(SyncModel).where(SyncModel.sync_type == "incremental"))
         incremental_syncs = result.scalars().all()
 
     print(f"Found {len(incremental_syncs)} incremental sync(s)")
@@ -145,7 +155,7 @@ async def main(apply: bool) -> None:
             skipped += 1
             continue
 
-        sync_dict, collection_dict, connection_dict = data
+        sync_dict, collection_dict, connection_dict, org_dict = data
 
         # Build cleanup cron: daily, offset 12 hours from now
         now = datetime.now(timezone.utc)
@@ -159,7 +169,15 @@ async def main(apply: bool) -> None:
                 None,  # no pre-created sync job
                 collection_dict,
                 connection_dict,
-                {},  # empty ctx dict for system-initiated schedules
+                {
+                    "request_id": str(uuid4()),
+                    "organization_id": str(sync.organization_id),
+                    "organization": org_dict,
+                    "user": None,
+                    "auth_method": "system",
+                    "auth_metadata": {},
+                    "local_development": settings.LOCAL_DEVELOPMENT,
+                },
                 None,  # no access token
                 True,  # force_full_sync
             ]

@@ -91,7 +91,15 @@ class StripeSource(BaseSource):
         config: StripeConfig,
     ) -> StripeSource:
         """Create a new Stripe source instance."""
-        return cls(auth=auth, logger=logger, http_client=http_client)
+        from airweave.domains.sources.token_providers.credential import DirectCredentialProvider
+
+        instance = cls(auth=auth, logger=logger, http_client=http_client)
+        if isinstance(auth, DirectCredentialProvider):
+            creds = auth.credentials
+            instance._api_key = creds.api_key if hasattr(creds, "api_key") else str(creds)
+        else:
+            instance._api_key = await auth.get_token()
+        return instance
 
     @retry(
         stop=stop_after_attempt(5),
@@ -105,8 +113,7 @@ class StripeSource(BaseSource):
         Stripe uses Basic authentication with the API key as the username and no password.
         See: https://docs.stripe.com/api/authentication
         """
-        token = await self.auth.get_token()
-        auth_str = base64.b64encode(f"{token}:".encode()).decode()
+        auth_str = base64.b64encode(f"{self._api_key}:".encode()).decode()
         headers = {"Authorization": f"Basic {auth_str}"}
         response = await self.http_client.get(url, headers=headers, timeout=20.0)
         raise_for_status(

@@ -85,7 +85,14 @@ class CalSource(BaseSource):
         config: CalComConfig,
     ) -> CalSource:
         """Create and configure the Cal.com source."""
+        from airweave.domains.sources.token_providers.credential import DirectCredentialProvider
+
         instance = cls(auth=auth, logger=logger, http_client=http_client)
+        if isinstance(auth, DirectCredentialProvider):
+            creds = auth.credentials
+            instance._api_key = creds.api_key if hasattr(creds, "api_key") else str(creds)
+        else:
+            instance._api_key = await auth.get_token()
         host = config.host.strip() or DEFAULT_CAL_API_BASE
         if not host.startswith(("http://", "https://")):
             host = f"https://{host}"
@@ -104,10 +111,9 @@ class CalSource(BaseSource):
         headers: Optional[Dict[str, str]] = None,
     ) -> Dict[str, Any]:
         """Make an authenticated GET request to the Cal.com API."""
-        token = await self.auth.get_token()
         url = f"{self._base_url}{path}" if path.startswith("/") else f"{self._base_url}/{path}"
         request_headers = {
-            "Authorization": f"Bearer {token}",
+            "Authorization": f"Bearer {self._api_key}",
             "Accept": "application/json",
         }
         if headers:

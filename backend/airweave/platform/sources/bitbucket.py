@@ -82,6 +82,7 @@ class BitbucketSource(BaseSource):
         instance._email = creds.email
         instance._workspace = creds.workspace
         instance._repo_slug = creds.repo_slug
+        instance._access_token = creds.access_token
         instance._branch = config.branch
         instance._file_extensions = config.file_extensions
         return instance
@@ -97,8 +98,7 @@ class BitbucketSource(BaseSource):
 
         Retries on 429 rate limits and timeout errors.
         """
-        token = await self.auth.get_token()
-        auth = httpx.BasicAuth(username=self._email, password=token)
+        auth = httpx.BasicAuth(username=self._email, password=self._access_token)
         headers = {"Accept": "application/json"}
         response = await self.http_client.get(url, auth=auth, headers=headers, params=params)
         raise_for_status(
@@ -117,8 +117,7 @@ class BitbucketSource(BaseSource):
 
         all_results = []
         next_url = url
-        token = await self.auth.get_token()
-        auth = httpx.BasicAuth(username=self._email, password=token)
+        auth = httpx.BasicAuth(username=self._email, password=self._access_token)
         headers = {"Accept": "application/json"}
 
         while next_url:
@@ -339,8 +338,7 @@ class BitbucketSource(BaseSource):
                 f"{self.BASE_URL}/repositories/{workspace_slug}/{repo_slug}"
                 f"/src/{branch}/{item_path}"
             )
-            token = await self.auth.get_token()
-            auth = httpx.BasicAuth(username=self._email, password=token)
+            auth = httpx.BasicAuth(username=self._email, password=self._access_token)
             headers = {"Accept": "text/plain"}
 
             file_response = await self.http_client.get(
@@ -472,8 +470,7 @@ class BitbucketSource(BaseSource):
     async def validate(self) -> bool:
         """Verify Bitbucket Basic Auth and (if provided) workspace access."""
         try:
-            token = await self.auth.get_token()
-            auth = httpx.BasicAuth(username=self._email, password=token)
+            auth = httpx.BasicAuth(username=self._email, password=self._access_token)
             async with httpx.AsyncClient(timeout=10.0) as client:
                 resp = await client.get(
                     f"{self.BASE_URL}/user",

@@ -224,6 +224,22 @@ yield LinearTeamEntity.from_api(team)
 | `entities/airtable.py` | User, Base, Table, Record, Comment, Attachment (6) | `_find_primary_field()`, `_extract_record_name()` |
 | `entities/box.py` | User, Folder, Comment, Collaboration (4) | — |
 | `entities/calcom.py` | Booking, EventType, Schedule (3) | `_parse_iso8601()` |
+| `entities/clickup.py` | Task, Comment, Subtask (3) | `_parse_clickup_ts()`, `_extract_comment_text()` |
+| `entities/coda.py` | Doc, Page (2) | `_parse_dt()` |
+| `entities/confluence.py` | Comment (1) | `_strip_html()` |
+| `entities/google_docs.py` | Document (1) | `_parse_dt()` |
+| `entities/google_slides.py` | Presentation (1) | `_parse_dt()` |
+| `entities/google_drive.py` | FileEntity, FileDeletionEntity (2) | `_parse_drive_dt()`, `_GOOGLE_EXPORT_MAP` |
+| `entities/hubspot.py` | Contact, Company, Deal, Ticket (4) | `_safe_float()` |
+| `entities/intercom.py` | Conversation, ConversationMessage, Ticket (3) | `_parse_intercom_ts()`, `_strip_html()`, `_unwrap_list()` |
+| `entities/jira.py` | Issue, ZephyrTestCase, ZephyrTestCycle, ZephyrTestPlan (4) | `_parse_datetime()`, `_extract_text_from_adf()` |
+| `entities/monday.py` | Board, Item, Subitem, Update (4) | `_parse_monday_datetime()` |
+| `entities/notion.py` | Database, Page, File (3) | `_extract_rich_text_plain()`, `_parse_notion_datetime()`, `_extract_page_title()`, `_format_database_schema()`, `_MIME_TYPE_MAP` |
+| `entities/shopify.py` | ProductVariant, Customer, Order, DraftOrder, Collection, Fulfillment, GiftCard, File (8) | `_parse_shopify_ts()`, `_build_customer_breadcrumb()` |
+| `entities/slab.py` | Topic, Post, Comment (3) | `_parse_dt()`, `_quill_delta_to_plain_text()`, `_json_description_to_string()`, `_build_topic_url()`, `_build_post_url()` |
+| `entities/slack.py` | Message (1) | `_parse_slack_ts()` |
+| `entities/slite.py` | Note (1) | `_parse_iso()` |
+| `entities/stripe.py` | Charge, Invoice, PaymentIntent, PaymentMethod, Payout, Subscription (6) | `_parse_stripe_ts()` |
 
 ## Sources migrated so far
 
@@ -237,9 +253,24 @@ yield LinearTeamEntity.from_api(team)
 | **Bitbucket** | 649 | 496 | — | Basic Auth via `DirectCredentialProvider`. `files.save_bytes()` for code content. |
 | **Box** | 704 | 440 | 4 entities | Removed homebrew rate limiter. 403/404 → graceful `{}` return. |
 | **Cal.com** | 421 | 281 | 3 entities | Cursor-based incremental sync via param. Self-hosted `_base_url`. |
-| **ClickUp** | 736 | ~560 | — | Removed debug file-reading. `files` param threaded to attachment downloads. |
-| **Coda** | 383 | ~320 | — | Removed homebrew sliding-window rate limiter. `_parse_datetime` to module-level. |
-| **Confluence** | 603 | ~470 | — | Fixed hardcoded `your-domain` URLs → `self._base_url`. `files` param for page HTML saves. |
+| **ClickUp** | 736 | ~540 | 3 entities | Removed debug file-reading. `files` param threaded to attachment downloads. Task/subtask/comment `from_api()`. |
+| **Coda** | 383 | ~300 | 2 entities | Removed homebrew sliding-window rate limiter. Doc/page `from_api()` with `_parse_dt()`. |
+| **Confluence** | 603 | ~500 | 1 entity | Fixed hardcoded `your-domain` URLs → `self._base_url`. Comment `from_api()` with `_strip_html()`. |
+| **Google Docs** | 509 | 372 | 1 entity | `from_api()` on Presentation entity. Cursor via param. `_download_document()` extracted. |
+| **Google Drive** | 1,628 | 1,448 | 2 entities | `_download_file()` helper. Cursor via `self._cursor`. File+Deletion `from_api()`. |
+| **Google Slides** | 326 | 267 | 1 entity | `from_api()` on Presentation entity. `_download_presentation()` extracted. |
+| **HubSpot** | 673 | 549 | 4 entities | All 4 object entities with `from_api()`. `_safe_float()` for deal amounts. |
+| **Intercom** | 501 | 490 | 3 entities | Conversation+Message+Ticket `from_api()`. `_strip_html()`, `_unwrap_list()` in entities. |
+| **Jira** | 1,015 | 689 | 4 entities | Atlassian OAuth (like Confluence). `_get_accessible_resources()` with 401 refresh. Zephyr API support preserved. |
+| **Monday** | 729 | 707 | 4 entities | Board+Item+Subitem+Update `from_api()`. `_parse_monday_datetime()`. |
+| **Notion** | 1,812 | 1,553 | 3 entities | Database+Page+File `from_api()`. 5 module-level helpers extracted. Removed homebrew rate limiter. |
+| **Shopify** | 1,353 | 1,199 | 8 entities | `DirectCredentialProvider` for client_id/secret. `config.shop_domain` typed. `_build_customer_breadcrumb()` shared helper. |
+| **Slab** | 662 | 336 | 3 entities | Removed homebrew rate limiter. GraphQL `_post()`. Topic+Post+Comment `from_api()`. |
+| **Slack** | 358 | 303 | 1 entity | Message `from_api()` with `_parse_slack_ts()`. |
+| **Slite** | 232 | 194 | 1 entity | Note `from_api()` with `_parse_iso()`. `config.include_archived` typed. |
+| **Snapshot** | 541 | 538 | — | Internal replay source. `config.path` typed. No HTTP calls. |
+| **Stripe** | 860 | 800 | 6 entities | Charge+Invoice+PaymentIntent+PaymentMethod+Payout+Subscription `from_api()`. Basic Auth via `base64`. |
+| **Stub** | 934 | 933 | — | Internal test source. All `config.get()` → typed attrs. No HTTP calls. |
 
 ## Infrastructure changes (in this branch)
 

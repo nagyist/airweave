@@ -15,7 +15,13 @@ from typing import Any, Dict, List, Optional
 from pydantic import computed_field
 
 from airweave.platform.entities._airweave_field import AirweaveField
-from airweave.platform.entities._base import BaseEntity, Breadcrumb, DeletionEntity, EmailEntity, FileEntity
+from airweave.platform.entities._base import (
+    BaseEntity,
+    Breadcrumb,
+    DeletionEntity,
+    EmailEntity,
+    FileEntity,
+)
 
 
 def _parse_header(headers: List[Dict[str, str]], name: str) -> Optional[str]:

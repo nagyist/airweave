@@ -12,12 +12,18 @@ from airweave.platform.entities.intercom import (
     IntercomConversationMessageEntity,
     IntercomTicketEntity,
 )
-from airweave.platform.sources.intercom import (
-    IntercomSource,
-    _now,
-    _parse_timestamp,
+from airweave.platform.entities.intercom import (
+    _parse_intercom_ts as _parse_timestamp,
     _strip_html,
 )
+from airweave.platform.sources.intercom import IntercomSource
+
+
+def _now():
+    """Replacement for removed helper — UTC now."""
+    from datetime import datetime, timezone
+
+    return datetime.now(timezone.utc)
 
 
 # ---------------------------------------------------------------------------

@@ -9,10 +9,10 @@ from airweave.platform.entities.document360 import (
     Document360CategoryEntity,
     Document360ProjectVersionEntity,
 )
+from airweave.platform.entities.document360 import _parse_dt as _parse_iso_datetime
 from airweave.platform.sources.document360 import (
     DEFAULT_BASE_URL,
     Document360Source,
-    _parse_iso_datetime,
 )
 
 # Document360AuthConfig requires api_token min length 10

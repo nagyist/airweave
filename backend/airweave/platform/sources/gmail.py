@@ -487,8 +487,9 @@ class GmailSource(BaseSource):
 
         try:
             if files:
+                subject = message_entity.subject or message_entity.name or "message"
                 if body_html:
-                    filename = safe_filename(subject_value, ".html")
+                    filename = safe_filename(subject, ".html")
                     await files.save_bytes(
                         entity=message_entity,
                         content=body_html.encode("utf-8"),
@@ -496,7 +497,7 @@ class GmailSource(BaseSource):
                         logger=self.logger,
                     )
                 elif body_plain:
-                    filename = safe_filename(subject_value, ".txt")
+                    filename = safe_filename(subject, ".txt")
                     await files.save_bytes(
                         entity=message_entity,
                         content=body_plain.encode("utf-8"),

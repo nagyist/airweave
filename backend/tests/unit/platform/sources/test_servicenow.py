@@ -15,12 +15,14 @@ from airweave.platform.entities.servicenow import (
     ServiceNowKnowledgeArticleEntity,
     ServiceNowProblemEntity,
 )
-from airweave.platform.sources.servicenow import (
-    PAGE_LIMIT,
+from airweave.platform.entities.servicenow import (
     _display_value,
     _parse_bool,
     _parse_datetime,
     _raw_value,
+)
+from airweave.platform.sources.servicenow import (
+    PAGE_LIMIT,
     ServiceNowSource,
 )
 

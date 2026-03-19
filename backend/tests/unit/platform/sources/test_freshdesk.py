@@ -15,10 +15,9 @@ from airweave.platform.entities.freshdesk import (
     FreshdeskSolutionArticleEntity,
     FreshdeskTicketEntity,
 )
+from airweave.platform.entities.freshdesk import _now, _parse_datetime
 from airweave.platform.sources.freshdesk import (
     FreshdeskSource,
-    _parse_datetime,
-    _now,
 )
 
 

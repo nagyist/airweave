@@ -1,10 +1,8 @@
 """Refactored CRUD operations for source connections with optimized queries."""
 
-from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 from uuid import UUID
 
-from croniter import croniter
 from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
@@ -351,18 +349,8 @@ class CRUDSourceConnection(
         if not sync:
             return None
 
-        # Compute next run dynamically from cron expression to avoid stale values.
-        # The stored next_scheduled_run field becomes stale after each sync run,
-        # so we always recompute from the cron expression instead.
-        next_run_at = None
-        if sync.cron_schedule:
-            base = datetime.now(timezone.utc)
-            cron = croniter(sync.cron_schedule, base)
-            next_run_at = cron.get_next(datetime)
-
         return {
             "cron_expression": sync.cron_schedule,
-            "next_run_at": next_run_at,
             "is_continuous": getattr(sync, "is_continuous", False),
             "cursor_field": getattr(sync, "cursor_field", None),
             "cursor_value": getattr(sync, "cursor_value", None),

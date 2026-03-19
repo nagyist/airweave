@@ -14,7 +14,7 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 from airweave.core.logging import ContextualLogger
 from airweave.domains.browse_tree.types import NodeSelectionData
 from airweave.domains.sources.exceptions import SourceAuthError
-from airweave.domains.sources.token_providers.protocol import SourceAuthProvider
+from airweave.domains.sources.token_providers.protocol import AuthProviderKind, SourceAuthProvider
 from airweave.domains.storage.file_service import FileService
 from airweave.domains.syncs.cursors.cursor import SyncCursor
 from airweave.platform.configs.auth import Document360AuthConfig
@@ -66,7 +66,10 @@ class Document360Source(BaseSource):
     ) -> Document360Source:
         """Create and configure the source."""
         instance = cls(auth=auth, logger=logger, http_client=http_client)
-        instance._api_token = await auth.get_token()
+        if auth.provider_kind == AuthProviderKind.CREDENTIAL:
+            instance._api_token = auth.credentials.api_token
+        else:
+            instance._api_token = await auth.get_token()
         instance._base_url = (config.base_url or DEFAULT_BASE_URL).rstrip("/")
         instance._lang_code = config.lang_code or "en"
         return instance

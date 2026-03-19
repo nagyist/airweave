@@ -267,7 +267,11 @@ class ConfluenceSource(BaseSource):
             url = f"{self._base_url}{next_link}" if next_link else None
 
     async def _generate_blog_post_entities(
-        self, space_id: str, space_breadcrumb: Breadcrumb
+        self,
+        space_id: str,
+        space_breadcrumb: Breadcrumb,
+        space_key: str,
+        site_url: str,
     ) -> AsyncGenerator[BaseEntity, None]:
         """Generate ConfluenceBlogPostEntity objects."""
         limit = 50
@@ -275,7 +279,12 @@ class ConfluenceSource(BaseSource):
         while url:
             data = await self._get(url)
             for blog in data.get("results", []):
-                yield ConfluenceBlogPostEntity.from_api(blog, breadcrumbs=[space_breadcrumb])
+                yield ConfluenceBlogPostEntity.from_api(
+                    blog,
+                    breadcrumbs=[space_breadcrumb],
+                    space_key=space_key,
+                    site_url=site_url,
+                )
 
             next_link = data.get("_links", {}).get("next")
             url = f"{self._base_url}{next_link}" if next_link else None
@@ -300,7 +309,12 @@ class ConfluenceSource(BaseSource):
                 return
 
             for comment in data.get("results", []):
-                yield ConfluenceCommentEntity.from_api(comment, breadcrumbs=parent_breadcrumbs)
+                yield ConfluenceCommentEntity.from_api(
+                    comment,
+                    breadcrumbs=parent_breadcrumbs,
+                    parent_space_key=parent_space_key,
+                    site_url=site_url,
+                )
             next_link = data.get("_links", {}).get("next")
             url = f"{self._base_url}{next_link}" if next_link else None
 
@@ -418,6 +432,9 @@ class ConfluenceSource(BaseSource):
                     yield comment_entity
 
             async for blog_entity in self._generate_blog_post_entities(
-                space_id=space_entity.entity_id, space_breadcrumb=space_breadcrumb
+                space_id=space_entity.entity_id,
+                space_breadcrumb=space_breadcrumb,
+                space_key=space_entity.space_key,
+                site_url=site_url,
             ):
                 yield blog_entity

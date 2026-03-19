@@ -11,13 +11,15 @@ import redis.asyncio as aioredis
 from airweave.core.logging import logger
 from airweave.crud.crud_source_rate_limit import source_rate_limit as rate_limit_crud
 from airweave.db.session import get_db_context
+from airweave.domains.sources.rate_limiting.protocols import RateLimitConfigProvider
 from airweave.domains.sources.rate_limiting.types import RateLimitConfig
 
 _CACHE_PREFIX = "source_rate_limit_config"
 _CACHE_TTL = 300
+_NEGATIVE_CACHE = object()
 
 
-class DatabaseRateLimitConfigProvider:
+class DatabaseRateLimitConfigProvider(RateLimitConfigProvider):
     """Fetches rate limit config from the DB, caches in Redis for 5 minutes.
 
     Negative results (no limit configured) are also cached to avoid
@@ -33,6 +35,8 @@ class DatabaseRateLimitConfigProvider:
         cache_key = f"{_CACHE_PREFIX}:{org_id}:{source_short_name}"
 
         cached = await self._read_cache(cache_key)
+        if cached is _NEGATIVE_CACHE:
+            return None
         if cached is not None:
             return cached
 
@@ -40,15 +44,15 @@ class DatabaseRateLimitConfigProvider:
         await self._write_cache(cache_key, config)
         return config
 
-    async def _read_cache(self, cache_key: str) -> RateLimitConfig | bool | None:
-        """Read from Redis. Returns config, False (negative cache), or None (miss)."""
+    async def _read_cache(self, cache_key: str) -> Optional[RateLimitConfig | object]:
+        """Read from Redis. Returns config, _NEGATIVE_CACHE sentinel, or None (miss)."""
         try:
             raw = await self._redis.get(cache_key)
             if raw is None:
                 return None
             parsed = json.loads(raw)
             if not parsed:
-                return False
+                return _NEGATIVE_CACHE
             return RateLimitConfig(limit=parsed["limit"], window_seconds=parsed["window_seconds"])
         except Exception:
             return None

@@ -10,7 +10,7 @@ from airweave.core.logging import ContextualLogger
 from airweave.core.shared_models import RateLimitLevel
 from airweave.domains.browse_tree.types import NodeSelectionData
 from airweave.domains.sources.exceptions import SourceAuthError
-from airweave.domains.sources.token_providers.protocol import SourceAuthProvider
+from airweave.domains.sources.token_providers.protocol import AuthProviderKind, SourceAuthProvider
 from airweave.domains.storage.file_service import FileService
 from airweave.domains.syncs.cursors.cursor import SyncCursor
 from airweave.platform.configs.auth import PipedriveAuthConfig
@@ -70,7 +70,10 @@ class PipedriveSource(BaseSource):
         """Create a new Pipedrive source instance."""
         instance = cls(auth=auth, logger=logger, http_client=http_client)
         instance._company_domain: Optional[str] = None
-        instance._api_token = await auth.get_token()
+        if auth.provider_kind == AuthProviderKind.CREDENTIAL:
+            instance._api_token = auth.credentials.api_token
+        else:
+            instance._api_token = await auth.get_token()
         return instance
 
     @retry(

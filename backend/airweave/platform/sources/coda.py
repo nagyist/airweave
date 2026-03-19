@@ -14,7 +14,10 @@ from tenacity import retry, stop_after_attempt
 from airweave.core.logging import ContextualLogger
 from airweave.domains.browse_tree.types import NodeSelectionData
 from airweave.domains.sources.exceptions import SourceAuthError
-from airweave.domains.sources.token_providers.protocol import TokenProviderProtocol
+from airweave.domains.sources.token_providers.protocol import (
+    AuthProviderKind,
+    TokenProviderProtocol,
+)
 from airweave.domains.storage.file_service import FileService
 from airweave.domains.syncs.cursors.cursor import SyncCursor
 from airweave.platform.configs.auth import CodaAuthConfig
@@ -100,7 +103,10 @@ class CodaSource(BaseSource):
         params: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """Make an authenticated GET request to the Coda API."""
-        token = await self.auth.get_token()
+        if self.auth.provider_kind == AuthProviderKind.CREDENTIAL:
+            token = self.auth.credentials.api_key
+        else:
+            token = await self.auth.get_token()
         url = f"{CODA_API_BASE}{path}" if path.startswith("/") else f"{CODA_API_BASE}/{path}"
         headers = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
         response = await self.http_client.get(

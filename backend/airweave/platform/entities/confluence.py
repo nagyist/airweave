@@ -246,6 +246,8 @@ class ConfluenceBlogPostEntity(BaseEntity):
         data: Dict[str, Any],
         *,
         breadcrumbs: List[Breadcrumb],
+        space_key: Optional[str] = None,
+        site_url: Optional[str] = None,
     ) -> ConfluenceBlogPostEntity:
         """Build from a Confluence API blog-post JSON object."""
         return cls(
@@ -257,9 +259,11 @@ class ConfluenceBlogPostEntity(BaseEntity):
             content_id=data["id"],
             title=data.get("title"),
             space_id=data.get("spaceId"),
+            space_key=space_key,
             body=data.get("body", {}).get("storage", {}).get("value"),
             version=data.get("version", {}).get("number"),
             status=data.get("status"),
+            site_url=site_url,
         )
 
     @computed_field(return_type=str)
@@ -313,6 +317,8 @@ class ConfluenceCommentEntity(BaseEntity):
         data: Dict[str, Any],
         *,
         breadcrumbs: List[Breadcrumb],
+        parent_space_key: Optional[str] = None,
+        site_url: Optional[str] = None,
     ) -> ConfluenceCommentEntity:
         """Build from a Confluence API inline-comment JSON object."""
         comment_text = data.get("body", {}).get("storage", {}).get("value", "")
@@ -329,9 +335,11 @@ class ConfluenceCommentEntity(BaseEntity):
             updated_at=data.get("updatedAt"),
             comment_id=data["id"],
             parent_content_id=data.get("container", {}).get("id"),
+            parent_space_key=parent_space_key,
             text=comment_text,
             created_by=data.get("createdBy"),
             status=data.get("status"),
+            site_url=site_url,
         )
 
     @computed_field(return_type=str)

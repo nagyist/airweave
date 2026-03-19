@@ -158,6 +158,7 @@ class AsanaSource(BaseSource):
         opt_fields: str,
         limit: int = 100,
         _min_limit: int = 10,
+        _offset: str | None = None,
     ) -> AsyncGenerator[Dict, None]:
         """Paginate through Asana list endpoints, yielding each item.
 
@@ -165,7 +166,7 @@ class AsanaSource(BaseSource):
         limits despite pagination), halves the page size and retries
         recursively down to ``_min_limit``.
         """
-        offset: str | None = None
+        offset: str | None = _offset
 
         while True:
             params: Dict[str, Any] = {"opt_fields": opt_fields, "limit": limit}
@@ -181,7 +182,7 @@ class AsanaSource(BaseSource):
                         f"Result too large at limit={limit}, retrying at limit={smaller}"
                     )
                     async for item in self._paginate(
-                        url, opt_fields, limit=smaller, _min_limit=_min_limit
+                        url, opt_fields, limit=smaller, _min_limit=_min_limit, _offset=offset
                     ):
                         yield item
                     return

@@ -362,7 +362,7 @@ class Document360ArticleEntity(BaseEntity):
             project_version_id=project_version_id,
             project_version_name=project_version_name,
             slug=data.get("slug") or d.get("slug"),
-            status=data.get("status") or d.get("status"),
+            status=data.get("status") if data.get("status") is not None else d.get("status"),
             language_code=data.get("language_code") or lang_code,
             public_version=data.get("public_version"),
             latest_version=data.get("latest_version"),

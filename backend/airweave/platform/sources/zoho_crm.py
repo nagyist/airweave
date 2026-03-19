@@ -17,7 +17,10 @@ from tenacity import retry, stop_after_attempt
 from airweave.core.logging import ContextualLogger
 from airweave.core.shared_models import RateLimitLevel
 from airweave.domains.browse_tree.types import NodeSelectionData
-from airweave.domains.sources.token_providers.protocol import TokenProviderProtocol
+from airweave.domains.sources.token_providers.protocol import (
+    AuthProviderKind,
+    TokenProviderProtocol,
+)
 from airweave.domains.storage.file_service import FileService
 from airweave.domains.syncs.cursors.cursor import SyncCursor
 from airweave.platform.configs.auth import ZohoCRMAuthConfig
@@ -97,11 +100,16 @@ class ZohoCRMSource(BaseSource):
 
     async def _authed_headers(self) -> Dict[str, str]:
         """Build Zoho-oauthtoken Authorization header with a fresh token."""
-        token = await self.auth.get_token()
+        if self.auth.provider_kind == AuthProviderKind.CREDENTIAL:
+            token = self.auth.credentials.access_token
+        else:
+            token = await self.auth.get_token()
         return {"Authorization": f"Zoho-oauthtoken {token}"}
 
     async def _refresh_and_get_headers(self) -> Dict[str, str]:
         """Force-refresh the token and return updated headers."""
+        if self.auth.provider_kind == AuthProviderKind.CREDENTIAL:
+            return await self._authed_headers()
         new_token = await self.auth.force_refresh()
         return {"Authorization": f"Zoho-oauthtoken {new_token}"}
 
@@ -444,7 +452,10 @@ class ZohoCRMSource(BaseSource):
 
         Note: Zoho uses 'Zoho-oauthtoken' header format, not standard 'Bearer'.
         """
-        token = await self.auth.get_token()
+        if self.auth.provider_kind == AuthProviderKind.CREDENTIAL:
+            token = self.auth.credentials.access_token
+        else:
+            token = await self.auth.get_token()
         if not token:
             self.logger.error("OAuth2 validation failed: no access token available.")
             return False

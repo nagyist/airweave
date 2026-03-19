@@ -22,7 +22,7 @@ from airweave.core.logging import ContextualLogger
 from airweave.core.shared_models import RateLimitLevel
 from airweave.domains.browse_tree.types import NodeSelectionData
 from airweave.domains.sources.exceptions import SourceAuthError
-from airweave.domains.sources.token_providers.protocol import SourceAuthProvider
+from airweave.domains.sources.token_providers.protocol import AuthProviderKind, SourceAuthProvider
 from airweave.domains.storage.file_service import FileService
 from airweave.domains.syncs.cursors.cursor import SyncCursor
 from airweave.platform.configs.auth import SlabAuthConfig
@@ -71,7 +71,10 @@ class SlabSource(BaseSource):
     ) -> SlabSource:
         """Create a new Slab source."""
         instance = cls(auth=auth, logger=logger, http_client=http_client)
-        instance._api_key = await auth.get_token()
+        if auth.provider_kind == AuthProviderKind.CREDENTIAL:
+            instance._api_key = auth.credentials.api_key
+        else:
+            instance._api_key = await auth.get_token()
         instance._host = config.host
         return instance
 

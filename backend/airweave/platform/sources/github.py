@@ -14,7 +14,10 @@ from airweave.core.logging import ContextualLogger
 from airweave.core.shared_models import RateLimitLevel
 from airweave.domains.browse_tree.types import NodeSelectionData
 from airweave.domains.sources.exceptions import SourceAuthError
-from airweave.domains.sources.token_providers.protocol import TokenProviderProtocol
+from airweave.domains.sources.token_providers.protocol import (
+    AuthProviderKind,
+    TokenProviderProtocol,
+)
 from airweave.domains.storage import FileSkippedException
 from airweave.domains.storage.file_service import FileService
 from airweave.domains.syncs.cursors.cursor import SyncCursor
@@ -80,7 +83,10 @@ class GitHubSource(BaseSource):
     ) -> GitHubSource:
         """Create a new source instance with authentication."""
         instance = cls(auth=auth, logger=logger, http_client=http_client)
-        instance._personal_access_token = await auth.get_token()
+        if auth.provider_kind == AuthProviderKind.CREDENTIAL:
+            instance._personal_access_token = auth.credentials.personal_access_token
+        else:
+            instance._personal_access_token = await auth.get_token()
         instance._repo_name = config.repo_name
         instance._branch = config.branch or None
         instance._sync_pull_requests = config.sync_pull_requests

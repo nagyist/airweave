@@ -22,7 +22,7 @@ from airweave.domains.sources.exceptions import (
     SourceEntityNotFoundError,
     SourceError,
 )
-from airweave.domains.sources.token_providers.protocol import SourceAuthProvider
+from airweave.domains.sources.token_providers.protocol import AuthProviderKind, SourceAuthProvider
 from airweave.domains.storage.file_service import FileService
 from airweave.domains.syncs.cursors.cursor import SyncCursor
 from airweave.platform.configs.auth import AttioAuthConfig
@@ -72,7 +72,10 @@ class AttioSource(BaseSource):
     ) -> AttioSource:
         """Create a new Attio source instance."""
         instance = cls(auth=auth, logger=logger, http_client=http_client)
-        instance._api_key = await auth.get_token()
+        if auth.provider_kind == AuthProviderKind.CREDENTIAL:
+            instance._api_key = auth.credentials.api_key
+        else:
+            instance._api_key = await auth.get_token()
         return instance
 
     # ------------------------------------------------------------------

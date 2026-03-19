@@ -23,7 +23,7 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 from airweave.core.logging import ContextualLogger
 from airweave.core.shared_models import RateLimitLevel
 from airweave.domains.browse_tree.types import NodeSelectionData
-from airweave.domains.sources.token_providers.protocol import SourceAuthProvider
+from airweave.domains.sources.token_providers.protocol import AuthProviderKind, SourceAuthProvider
 from airweave.domains.storage.file_service import FileService
 from airweave.domains.syncs.cursors.cursor import SyncCursor
 from airweave.platform.configs.auth import CalComAuthConfig
@@ -85,12 +85,9 @@ class CalSource(BaseSource):
         config: CalComConfig,
     ) -> CalSource:
         """Create and configure the Cal.com source."""
-        from airweave.domains.sources.token_providers.credential import DirectCredentialProvider
-
         instance = cls(auth=auth, logger=logger, http_client=http_client)
-        if isinstance(auth, DirectCredentialProvider):
-            creds = auth.credentials
-            instance._api_key = creds.api_key if hasattr(creds, "api_key") else str(creds)
+        if auth.provider_kind == AuthProviderKind.CREDENTIAL:
+            instance._api_key = auth.credentials.api_key
         else:
             instance._api_key = await auth.get_token()
         host = config.host.strip() or DEFAULT_CAL_API_BASE

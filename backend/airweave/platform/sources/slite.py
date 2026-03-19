@@ -14,7 +14,7 @@ from tenacity import retry, stop_after_attempt
 from airweave.core.logging import ContextualLogger
 from airweave.domains.browse_tree.types import NodeSelectionData
 from airweave.domains.sources.exceptions import SourceAuthError
-from airweave.domains.sources.token_providers.protocol import SourceAuthProvider
+from airweave.domains.sources.token_providers.protocol import AuthProviderKind, SourceAuthProvider
 from airweave.domains.storage.file_service import FileService
 from airweave.domains.syncs.cursors.cursor import SyncCursor
 from airweave.platform.configs.auth import SliteAuthConfig
@@ -65,7 +65,10 @@ class SliteSource(BaseSource):
     ) -> SliteSource:
         """Create and configure the Slite source."""
         instance = cls(auth=auth, logger=logger, http_client=http_client)
-        instance._api_key = await auth.get_token()
+        if auth.provider_kind == AuthProviderKind.CREDENTIAL:
+            instance._api_key = auth.credentials.api_key
+        else:
+            instance._api_key = await auth.get_token()
         instance._include_archived = config.include_archived
         return instance
 

@@ -267,6 +267,7 @@ class ClickUpSource(BaseSource):
             raise
         except Exception as e:
             self.logger.error(f"Error fetching comments for task {task_id}: {e}")
+            raise
 
     async def _generate_file_entities(  # noqa: C901
         self,

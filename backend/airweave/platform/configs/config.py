@@ -835,8 +835,8 @@ class StubConfig(SourceConfig):
     fail_after: int = Field(
         default=-1,
         title="Fail After",
-        description="Number of entities to generate before failing the sync",
-        ge=0,
+        description="Number of entities to generate before failing the sync (-1 to disable)",
+        ge=-1,
         le=100000,
     )
 

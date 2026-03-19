@@ -327,9 +327,7 @@ class TemporalScheduleService(TemporalScheduleServiceProtocol):
         Regular crons do full traversals each run — cleanup happens naturally.
         """
         match = _MINUTE_LEVEL_RE.match(cron_schedule)
-        is_minute = match and (
-            (match.group(2) and int(match.group(2)) < 60) or match.group(3)
-        )
+        is_minute = match and ((match.group(2) and int(match.group(2)) < 60) or match.group(3))
 
         if is_minute:
             now = datetime.now(timezone.utc)
@@ -399,9 +397,9 @@ class TemporalScheduleService(TemporalScheduleServiceProtocol):
         )
 
         specs = self._schedule_specs_for_cron(cron_schedule)
-        primary_schedule_id = None
+        primary_schedule_id: str = ""
 
-        for spec in specs:
+        for i, spec in enumerate(specs):
             sid = await self._create_schedule(
                 sync_id=sync_id,
                 cron_expression=spec.cron_override or cron_schedule,
@@ -414,7 +412,7 @@ class TemporalScheduleService(TemporalScheduleServiceProtocol):
                 force_full_sync=spec.force_full_sync,
                 uow=uow,
             )
-            if primary_schedule_id is None:
+            if i == 0:
                 primary_schedule_id = sid
 
         logger.info(

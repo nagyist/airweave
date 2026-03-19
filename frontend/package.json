@@ -45,6 +45,7 @@
     "ajv-formats": "^3.0.1",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "cronstrue": "^2.59.0",
     "dagre": "^0.8.5",
     "date-fns": "^3.6.0",
     "framer-motion": "^12.5.0",
@@ -65,7 +66,6 @@
     "tailwindcss-animate": "^1.0.7",
     "uuid": "^11.1.0",
     "zod": "^3.23.8",
-    "cronstrue": "^2.52.0",
     "zustand": "^5.0.4"
   },
   "devDependencies": {
@@ -85,7 +85,7 @@
     "tailwindcss": "^3.4.11",
     "typescript": "^5.5.3",
     "typescript-eslint": "^8.0.1",
-    "vitest": "^3.1.4",
-    "vite": "^6.3.2"
+    "vite": "^6.3.2",
+    "vitest": "^3.1.4"
   }
 }

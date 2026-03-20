@@ -354,7 +354,7 @@ class GmailSource(BaseSource):
             except SourceAuthError:
                 raise
             except Exception as e:
-                self.logger.error(f"Error processing thread {thread_id}: {e}", exc_info=True)
+                self.logger.warning(f"Error processing thread {thread_id}: {e}", exc_info=True)
 
         async for ent in self.process_entities_concurrent(
             items=self._list_threads(),
@@ -546,7 +546,7 @@ class GmailSource(BaseSource):
                         elif mime_type == "text/html" and not p_html:
                             p_html = decoded
                     except Exception as e:
-                        self.logger.error(f"Error decoding body content: {str(e)}")
+                        self.logger.warning(f"Error decoding body content: {str(e)}")
 
                 elif part.get("parts"):
                     sub_txt, sub_html = extract_from_parts(part.get("parts", []), depth + 1)
@@ -572,7 +572,7 @@ class GmailSource(BaseSource):
                     elif mime_type == "text/html":
                         body_html = decoded
                 except Exception as e:
-                    self.logger.error(f"Error decoding single part body: {str(e)}")
+                    self.logger.warning(f"Error decoding single part body: {str(e)}")
 
         self.logger.debug(
             f"Body extraction complete: found_text={bool(body_plain)}, found_html={bool(body_html)}"
@@ -693,13 +693,13 @@ class GmailSource(BaseSource):
                     raise
 
                 except Exception as e:
-                    self.logger.error(f"Failed to save attachment {filename}: {e}")
+                    self.logger.warning(f"Failed to save attachment {filename}: {e}")
                     return
 
             except SourceAuthError:
                 raise
             except Exception as e:
-                self.logger.error(
+                self.logger.warning(
                     f"Error processing attachment {attachment_id} on message {message_id}: {e}"
                 )
 
@@ -830,7 +830,7 @@ class GmailSource(BaseSource):
             except SourceAuthError:
                 raise
             except Exception as e:
-                self.logger.error(f"Failed to fetch/process message {msg_id}: {e}")
+                self.logger.warning(f"Failed to fetch/process message {msg_id}: {e}")
 
         async for ent in self.process_entities_concurrent(
             items=items,
@@ -885,18 +885,15 @@ class GmailSource(BaseSource):
                 except SourceAuthError:
                     raise
                 except Exception as e:
-                    self.logger.error(f"Failed to capture starting Gmail historyId: {e}")
+                    self.logger.warning(f"Failed to capture starting Gmail historyId: {e}")
 
         except SourceAuthError:
             raise
         except Exception as e:
-            self.logger.error(f"Error in entity generation: {str(e)}", exc_info=True)
+            self.logger.warning(f"Error in entity generation: {str(e)}", exc_info=True)
             raise
 
     async def validate(self) -> bool:
-        """Verify Gmail OAuth2 token by pinging the users.getProfile endpoint."""
-        return await self._validate_oauth2(
-            ping_url="https://gmail.googleapis.com/gmail/v1/users/me/profile",
-            headers={"Accept": "application/json"},
-            timeout=10.0,
-        )
+        """Validate credentials by pinging the Gmail user profile."""
+        await self._get("https://gmail.googleapis.com/gmail/v1/users/me/profile")
+        return True

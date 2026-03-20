@@ -362,16 +362,13 @@ class AirtableSource(BaseSource):
             except SourceAuthError:
                 raise
             except SourceError as exc:
-                self.logger.error(f"Failed to process base {base_entity.base_id}: {exc}")
+                self.logger.warning(f"Failed to process base {base_entity.base_id}: {exc}")
 
     # ------------------------------------------------------------------
     # Validation
     # ------------------------------------------------------------------
 
     async def validate(self) -> bool:
-        """Verify OAuth2 token by pinging Airtable's bases endpoint."""
-        return await self._validate_oauth2(
-            ping_url=f"{_API}/meta/bases",
-            headers={"Accept": "application/json"},
-            timeout=10.0,
-        )
+        """Validate credentials by pinging Airtable's bases metadata endpoint."""
+        await self._get(f"{_API}/meta/bases")
+        return True

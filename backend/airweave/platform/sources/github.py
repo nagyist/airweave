@@ -114,7 +114,7 @@ class GitHubSource(BaseSource):
                 f"GitHub tracks repository changes using push timestamps, not entity fields. "
                 f"Please use the default cursor field or omit it entirely."
             )
-            self.logger.error(error_msg)
+            self.logger.warning(error_msg)
             raise ValueError(error_msg)
 
     @retry(
@@ -341,7 +341,7 @@ class GitHubSource(BaseSource):
                 except SourceAuthError:
                     raise
                 except Exception as e:
-                    self.logger.error(f"Error processing changed file {file_path}: {e}")
+                    self.logger.warning(f"Error processing changed file {file_path}: {e}")
 
     async def _get_commits_since(
         self, repo_name: str, since_timestamp: str, branch: str
@@ -370,7 +370,7 @@ class GitHubSource(BaseSource):
         except SourceAuthError:
             raise
         except Exception as e:
-            self.logger.error(f"Error getting files for commit {commit_sha}: {e}")
+            self.logger.warning(f"Error getting files for commit {commit_sha}: {e}")
             return []
 
     async def _process_changed_file(
@@ -462,7 +462,7 @@ class GitHubSource(BaseSource):
             raise
 
         except Exception as e:
-            self.logger.error(f"Error processing changed file {file_path}: {e}")
+            self.logger.warning(f"Error processing changed file {file_path}: {e}")
 
     def _is_text_content(self, content: str) -> bool:
         """Check if content appears to be text."""
@@ -555,7 +555,7 @@ class GitHubSource(BaseSource):
         except SourceAuthError:
             raise
         except Exception as e:
-            self.logger.error(f"Error traversing path {path}: {str(e)}")
+            self.logger.warning(f"Error traversing path {path}: {str(e)}")
 
     async def _process_file(  # noqa: C901
         self,
@@ -593,7 +593,7 @@ class GitHubSource(BaseSource):
                     try:
                         line_count = content_text.count("\n") + 1
                     except Exception as e:
-                        self.logger.error(f"Error counting lines for {item_path}: {str(e)}")
+                        self.logger.warning(f"Error counting lines for {item_path}: {str(e)}")
 
                 mime_type = mimetypes.guess_type(item_path)[0] or "text/plain"
                 file_type = mime_type.split("/")[0] if "/" in mime_type else "file"
@@ -638,7 +638,7 @@ class GitHubSource(BaseSource):
             raise
 
         except Exception as e:
-            self.logger.error(f"Error processing file {item_path}: {str(e)}")
+            self.logger.warning(f"Error processing file {item_path}: {str(e)}")
 
     def _get_cursor_timestamp(self, cursor: SyncCursor | None) -> str:
         """Get last repository pushed timestamp from cursor."""
@@ -740,7 +740,7 @@ class GitHubSource(BaseSource):
         except SourceAuthError:
             raise
         except Exception as e:
-            self.logger.error(f"Error fetching review comments for PR #{pr_number}: {e}")
+            self.logger.warning(f"Error fetching review comments for PR #{pr_number}: {e}")
             return
 
         for comment in comments:
@@ -827,7 +827,7 @@ class GitHubSource(BaseSource):
     async def validate(self) -> bool:
         """Verify GitHub PAT and repo/branch access with lightweight pings."""
         if not getattr(self, "_personal_access_token", None):
-            self.logger.error("GitHub validation failed: missing personal_access_token.")
+            self.logger.warning("GitHub validation failed: missing personal_access_token.")
             return False
 
         try:
@@ -870,8 +870,8 @@ class GitHubSource(BaseSource):
         except SourceAuthError:
             raise
         except httpx.RequestError as e:
-            self.logger.error(f"GitHub validation request error: {e}")
+            self.logger.warning(f"GitHub validation request error: {e}")
             return False
         except Exception as e:
-            self.logger.error(f"Unexpected error during GitHub validation: {e}")
+            self.logger.warning(f"Unexpected error during GitHub validation: {e}")
             return False

@@ -28,6 +28,7 @@ from typing import Any, AsyncGenerator, Callable, Dict, List, Optional
 from urllib.parse import urlparse
 
 import httpx
+from tenacity import retry, stop_after_attempt
 
 from airweave.core.logging import ContextualLogger
 from airweave.domains.browse_tree.types import BrowseNode, NodeSelectionData
@@ -46,13 +47,18 @@ from airweave.platform.entities.sharepoint_online import (
 )
 from airweave.platform.http_client.airweave_client import AirweaveHttpClient
 from airweave.platform.sources._base import BaseSource
+from airweave.platform.sources.http_helpers import raise_for_status
+from airweave.platform.sources.retry_helpers import (
+    retry_if_rate_limit_or_timeout,
+    wait_rate_limit_with_backoff,
+)
 from airweave.platform.sources.sharepoint_online.builders import (
     build_drive_entity,
     build_file_entity,
     build_page_entity,
     build_site_entity,
 )
-from airweave.platform.sources.sharepoint_online.client import GraphClient
+from airweave.platform.sources.sharepoint_online.client import GRAPH_BASE_URL, GraphClient
 from airweave.platform.sources.sharepoint_online.graph_groups import EntraGroupExpander
 from airweave.platform.sync.exceptions import EntityProcessingError
 from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
@@ -119,6 +125,31 @@ class SharePointOnlineSource(BaseSource):
             http_client=self.http_client,
             logger=self.logger,
         )
+
+    @retry(
+        stop=stop_after_attempt(5),
+        retry=retry_if_rate_limit_or_timeout,
+        wait=wait_rate_limit_with_backoff,
+        reraise=True,
+    )
+    async def _get(self, url: str, params: Optional[Dict] = None) -> Dict[str, Any]:
+        """Make an authenticated GET request to Microsoft Graph API."""
+        token = await self.auth.get_token()
+        headers = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
+        response = await self.http_client.get(url, headers=headers, params=params)
+
+        if response.status_code == 401 and self.auth.supports_refresh:
+            self.logger.warning("Received 401 from Microsoft Graph API — refreshing token")
+            new_token = await self.auth.force_refresh()
+            headers = {"Authorization": f"Bearer {new_token}", "Accept": "application/json"}
+            response = await self.http_client.get(url, headers=headers, params=params)
+
+        raise_for_status(
+            response,
+            source_short_name=self.short_name,
+            token_provider_kind=self.auth.provider_kind,
+        )
+        return response.json()
 
     def _create_group_expander(self) -> EntraGroupExpander:
         return EntraGroupExpander(
@@ -362,7 +393,7 @@ class SharePointOnlineSource(BaseSource):
         except httpx.HTTPStatusError as e:
             if e.response.status_code == 401:
                 raise
-            self.logger.error(f"Failed to download file {entity.file_name}: {e}")
+            self.logger.warning(f"Failed to download file {entity.file_name}: {e}")
             raise EntityProcessingError(f"Failed to download file {entity.file_name}: {e}") from e
 
     async def _download_files_parallel(
@@ -460,7 +491,7 @@ class SharePointOnlineSource(BaseSource):
                 except SourceAuthError:
                     raise
                 except Exception as e:
-                    self.logger.error(f"Could not resolve site URL {url}: {e}")
+                    self.logger.warning(f"Could not resolve site URL {url}: {e}")
                     raise
         else:
             async for site in graph_client.search_sites("*"):
@@ -716,7 +747,7 @@ class SharePointOnlineSource(BaseSource):
             except SourceAuthError:
                 raise
             except Exception as e:
-                self.logger.error(f"Delta query failed for drive {drive_id}: {e}")
+                self.logger.warning(f"Delta query failed for drive {drive_id}: {e}")
                 if cursor:
                     cursor.update(full_sync_required=True)
                 return
@@ -996,15 +1027,9 @@ class SharePointOnlineSource(BaseSource):
     # -- Validation --
 
     async def validate(self) -> bool:
-        """Validate the SharePoint Online connection by pinging the root site."""
-        try:
-            return await self._validate_oauth2(
-                ping_url="https://graph.microsoft.com/v1.0/sites/root",
-                headers={"Accept": "application/json"},
-            )
-        except Exception as e:
-            self.logger.error(f"Validation failed: {e}")
-            return False
+        """Validate credentials by pinging the root site endpoint."""
+        await self._get(f"{GRAPH_BASE_URL}/sites/root")
+        return True
 
     # -- Access Control Memberships --
 

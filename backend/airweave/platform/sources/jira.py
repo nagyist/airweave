@@ -308,7 +308,7 @@ class JiraSource(BaseSource):
                         f"{sorted(missing_keys)}"
                     )
                 if matched_count == 0:
-                    self.logger.error(
+                    self.logger.warning(
                         f"No projects matched the filter! Requested: {project_keys_filter}, "
                         f"but none were found."
                     )
@@ -672,12 +672,12 @@ class JiraSource(BaseSource):
         try:
             resources = await self._get_accessible_resources()
             if not resources:
-                self.logger.error("Jira validation failed: no accessible resources found")
+                self.logger.warning("Jira validation failed: no accessible resources found")
                 return False
             self.logger.debug("Jira OAuth validation successful")
             return True
         except SourceAuthError:
             raise
         except Exception as e:
-            self.logger.error(f"Jira validation failed: {e}")
+            self.logger.warning(f"Jira validation failed: {e}")
             return False

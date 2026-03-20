@@ -312,7 +312,7 @@ class GitLabSource(BaseSource):
         except SourceAuthError:
             raise
         except Exception as e:
-            self.logger.error(f"Error traversing path {path}: {str(e)}")
+            self.logger.warning(f"Error traversing path {path}: {str(e)}")
 
     async def _process_file(  # noqa: C901
         self,
@@ -352,7 +352,7 @@ class GitLabSource(BaseSource):
                     try:
                         line_count = content_text.count("\n") + 1
                     except Exception as e:
-                        self.logger.error(f"Error counting lines for {file_path}: {str(e)}")
+                        self.logger.warning(f"Error counting lines for {file_path}: {str(e)}")
 
                 mime_type = mimetypes.guess_type(file_path)[0] or "text/plain"
                 file_type = mime_type.split("/")[0] if "/" in mime_type else "file"
@@ -399,7 +399,7 @@ class GitLabSource(BaseSource):
             raise
 
         except Exception as e:
-            self.logger.error(f"Error processing file {file_path}: {str(e)}")
+            self.logger.warning(f"Error processing file {file_path}: {str(e)}")
 
     async def _get_projects(self) -> List[GitLabProjectEntity]:
         """Get accessible projects based on configuration."""
@@ -497,9 +497,6 @@ class GitLabSource(BaseSource):
                 yield entity
 
     async def validate(self) -> bool:
-        """Verify GitLab OAuth token by pinging the /user endpoint."""
-        return await self._validate_oauth2(
-            ping_url=f"{self.BASE_URL}/user",
-            headers={"Accept": "application/json"},
-            timeout=10.0,
-        )
+        """Validate credentials by pinging GitLab's /user endpoint."""
+        await self._get(f"{self.BASE_URL}/user")
+        return True

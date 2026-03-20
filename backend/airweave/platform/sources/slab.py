@@ -124,7 +124,7 @@ class SlabSource(BaseSource):
                     self._host,
                 )
                 return {"organization": None}
-            self.logger.error(f"GraphQL errors: {error_messages}")
+            self.logger.warning(f"GraphQL errors: {error_messages}")
             raise ValueError(f"GraphQL errors: {', '.join(error_messages)}")
 
         return result.get("data", {})
@@ -333,5 +333,5 @@ class SlabSource(BaseSource):
         except SourceAuthError:
             raise
         except Exception as e:
-            self.logger.error(f"Validation failed: {e}")
+            self.logger.warning(f"Validation failed: {e}")
             return False

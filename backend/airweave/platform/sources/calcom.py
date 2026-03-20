@@ -268,12 +268,10 @@ class CalSource(BaseSource):
                         cursor.update(last_updated_at=latest_watermark)
 
     async def validate(self) -> bool:
-        """Verify Cal.com API key by pinging the bookings endpoint."""
-        return await self._validate_oauth2(
-            ping_url=f"{self._base_url}/v2/bookings?take=1&skip=0",
-            headers={
-                "Accept": "application/json",
-                "cal-api-version": CAL_BOOKINGS_API_VERSION,
-            },
-            timeout=10.0,
+        """Validate credentials by pinging the Cal.com bookings endpoint."""
+        await self._get(
+            "/v2/bookings",
+            params={"take": 1, "skip": 0},
+            headers={"cal-api-version": CAL_BOOKINGS_API_VERSION},
         )
+        return True

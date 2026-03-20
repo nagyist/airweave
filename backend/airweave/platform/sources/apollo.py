@@ -331,5 +331,5 @@ class ApolloSource(BaseSource):
             )
             return "accounts" in data
         except Exception as e:
-            self.logger.error(f"Apollo validation failed: {e}")
+            self.logger.warning(f"Apollo validation failed: {e}")
             return False

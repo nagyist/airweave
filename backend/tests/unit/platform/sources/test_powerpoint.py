@@ -385,11 +385,19 @@ async def test_validate_returns_true_on_success():
 
 
 @pytest.mark.asyncio
-async def test_validate_returns_false_on_failure():
-    """validate() returns False when _validate_oauth2 fails."""
+async def test_validate_raises_on_auth_failure():
+    """validate() raises SourceAuthError when _get returns 401."""
+    from airweave.domains.sources.exceptions import SourceAuthError
+
     source = await _make_source("token")
-    source._validate_oauth2 = AsyncMock(return_value=False)
-    assert await source.validate() is False
+    source._get = AsyncMock(side_effect=SourceAuthError(
+        "Unauthorized",
+        status_code=401,
+        source_short_name="powerpoint",
+        token_provider_kind="oauth",
+    ))
+    with pytest.raises(SourceAuthError):
+        await source.validate()
 
 
 # ------------------------------------------------------------------

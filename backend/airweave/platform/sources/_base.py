@@ -2,10 +2,7 @@
 
 from __future__ import annotations
 
-import base64
-import json
 import re
-import time
 from abc import abstractmethod
 from typing import (
     TYPE_CHECKING,
@@ -23,7 +20,6 @@ from typing import (
 if TYPE_CHECKING:
     from airweave.platform.access_control.schemas import MembershipTuple
 
-import httpx
 from pydantic import BaseModel
 
 from airweave.core.logging import ContextualLogger
@@ -124,19 +120,6 @@ class BaseSource:
             f"{self.__class__.__name__}: auth provider {type(self._auth).__name__} "
             f"does not support get_token(). Use DirectCredentialProvider.credentials instead."
         )
-
-    async def refresh_on_unauthorized(self) -> str:
-        """Force-refresh the token after a 401 error."""
-        if not hasattr(self._auth, "force_refresh"):
-            from airweave.domains.sources.exceptions import SourceAuthError
-
-            raise SourceAuthError(
-                f"{self.__class__.__name__}: auth provider does not support refresh",
-                source_short_name=self.short_name,
-                status_code=401,
-                token_provider_kind=self.auth.provider_kind,
-            )
-        return await self._auth.force_refresh()
 
     async def get_token_for_resource(self, resource_scope: str) -> Optional[str]:
         """Get a token for a different resource scope (SharePoint Online only)."""
@@ -310,129 +293,6 @@ class BaseSource:
 
         return content
 
-    async def _validate_oauth2(  # noqa: C901
-        self,
-        *,
-        introspection_url: Optional[str] = None,
-        client_id: Optional[str] = None,
-        client_secret: Optional[str] = None,
-        ping_url: Optional[str] = None,
-        access_token: Optional[str] = None,
-        headers: Optional[Dict[str, str]] = None,
-        timeout: float = 10.0,
-    ) -> bool:
-        """Generic OAuth2 validation: introspection and/or a bearer ping."""
-        token = access_token or await self.get_access_token()
-        if not token:
-            self.logger.error("OAuth2 validation failed: no access token available.")
-            return False
-
-        def _is_jwt_unexpired(tok: str) -> Optional[bool]:
-            try:
-                parts = tok.split(".")
-                if len(parts) != 3:
-                    return None
-                pad = "=" * (-len(parts[1]) % 4)
-                payload_bytes = base64.urlsafe_b64decode(parts[1] + pad)
-                payload = json.loads(payload_bytes.decode("utf-8"))
-                exp = payload.get("exp")
-                if exp is None:
-                    return None
-                return time.time() < float(exp)
-            except Exception:
-                return None
-
-        async def _do_ping(bearer: str) -> bool:
-            try:
-                async with httpx.AsyncClient(timeout=timeout) as client:
-                    hdrs = {"Authorization": f"Bearer {bearer}"}
-                    if headers:
-                        hdrs.update(headers)
-                    resp = await client.get(ping_url, headers=hdrs)
-                    if 200 <= resp.status_code < 300:
-                        return True
-                    if resp.status_code == 401:
-                        self.logger.info("Ping unauthorized (401); attempting token refresh.")
-                        new_token = await self.refresh_on_unauthorized()
-                        if new_token:
-                            hdrs["Authorization"] = f"Bearer {new_token}"
-                            resp = await client.get(ping_url, headers=hdrs)
-                            return 200 <= resp.status_code < 300
-                    self.logger.warning(f"Ping failed: HTTP {resp.status_code} - {resp.text[:200]}")
-                    return False
-            except httpx.RequestError as e:
-                self.logger.error(f"Ping request error: {e}")
-                return False
-
-        if introspection_url:
-            try:
-                async with httpx.AsyncClient(timeout=timeout) as client:
-                    auth = (client_id, client_secret) if client_id and client_secret else None
-                    data = {"token": token, "token_type_hint": "access_token"}
-                    resp = await client.post(
-                        introspection_url,
-                        data=data,
-                        auth=auth,
-                        headers={"Accept": "application/json", **(headers or {})},
-                    )
-                    if resp.status_code == 401:
-                        self.logger.info(
-                            "Introspection unauthorized (401); attempting token refresh."
-                        )
-                        new_token = await self.refresh_on_unauthorized()
-                        if new_token:
-                            data["token"] = new_token
-                            resp = await client.post(
-                                introspection_url,
-                                data=data,
-                                auth=auth,
-                                headers={"Accept": "application/json", **(headers or {})},
-                            )
-
-                    resp.raise_for_status()
-                    body = resp.json()
-                    active = bool(body.get("active", False))
-
-                    exp = body.get("exp")
-                    if exp is not None:
-                        try:
-                            if time.time() >= float(exp):
-                                active = False
-                        except Exception:
-                            pass
-
-                    if active:
-                        return True
-
-                    peek = _is_jwt_unexpired(token)
-                    if peek is True:
-                        self.logger.debug(
-                            "Token appears unexpired by JWT payload, "
-                            "but introspection returned inactive."
-                        )
-                    else:
-                        self.logger.warning("Token reported inactive by introspection.")
-            except httpx.HTTPStatusError as e:
-                status = e.response.status_code if getattr(e, "response", None) else "N/A"
-                self.logger.error(f"Introspection HTTP error {status}: {e}")
-            except httpx.RequestError as e:
-                self.logger.error(f"Introspection request error: {e}")
-            except Exception as e:
-                self.logger.error(f"Unexpected introspection error: {e}")
-
-        if ping_url:
-            return await _do_ping(token)
-
-        peek = _is_jwt_unexpired(token)
-        if peek is not None:
-            self.logger.debug("Validated via JWT 'exp' claim peek.")
-            return peek
-
-        self.logger.warning(
-            "OAuth2 validation inconclusive: no endpoints provided and token format is opaque."
-        )
-        return False
-
     # ------------------------------------------------------------------
     # Concurrency / batching helpers
     # ------------------------------------------------------------------
@@ -581,7 +441,7 @@ class BaseSource:
                 done_items += 1
                 continue
             if err:
-                self.logger.error(f"Worker {i} error: {err}", exc_info=True)
+                self.logger.warning(f"Worker {i} error: {err}", exc_info=True)
                 if stop_on_error:
                     for t in tasks:
                         t.cancel()
@@ -615,7 +475,7 @@ class BaseSource:
                 finished.add(i)
                 done_items += 1
             elif err:
-                self.logger.error(f"Worker {i} error: {err}", exc_info=True)
+                self.logger.warning(f"Worker {i} error: {err}", exc_info=True)
                 if stop_on_error:
                     for t in tasks:
                         t.cancel()

@@ -131,7 +131,7 @@ class PipedriveSource(BaseSource):
             data = await self._get(url)
 
             if not data.get("success"):
-                self.logger.error(f"Pipedrive API returned unsuccessful response: {data}")
+                self.logger.warning(f"Pipedrive API returned unsuccessful response: {data}")
                 break
 
             items = data.get("data") or []
@@ -252,5 +252,5 @@ class PipedriveSource(BaseSource):
         except SourceAuthError:
             raise
         except Exception as e:
-            self.logger.error(f"Pipedrive API token validation failed: {e}")
+            self.logger.warning(f"Pipedrive API token validation failed: {e}")
             return False

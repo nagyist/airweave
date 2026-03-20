@@ -189,7 +189,7 @@ class TrelloSource(BaseSource):
         except SourceAuthError:
             raise
         except Exception as e:
-            self.logger.error(f"Unexpected error accessing Trello API: {url}, {str(e)}")
+            self.logger.warning(f"Unexpected error accessing Trello API: {url}, {str(e)}")
             raise
 
     @staticmethod
@@ -507,5 +507,5 @@ class TrelloSource(BaseSource):
         except SourceAuthError:
             raise
         except Exception as e:
-            self.logger.error(f"OAuth1 validation failed: {str(e)}")
+            self.logger.warning(f"OAuth1 validation failed: {str(e)}")
             return False

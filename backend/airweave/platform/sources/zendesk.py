@@ -241,7 +241,7 @@ class ZendeskSource(BaseSource):
                             raise
 
                         except Exception as e:
-                            self.logger.error(
+                            self.logger.warning(
                                 f"Failed to download attachment {attachment_entity.name}: {e}"
                             )
                             continue
@@ -291,9 +291,6 @@ class ZendeskSource(BaseSource):
                 yield attachment_entity
 
     async def validate(self) -> bool:
-        """Verify OAuth2 token by pinging Zendesk's /users/me endpoint."""
-        return await self._validate_oauth2(
-            ping_url=f"https://{self.subdomain}.zendesk.com/api/v2/users/me.json",
-            headers={"Accept": "application/json"},
-            timeout=10.0,
-        )
+        """Validate credentials by pinging Zendesk's /users/me endpoint."""
+        await self._get(f"https://{self.subdomain}.zendesk.com/api/v2/users/me.json")
+        return True

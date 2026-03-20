@@ -28,12 +28,12 @@ class SyncRuntime:
 
     # Required — always set by factory
     source: "BaseSource"
-    cursor: "SyncCursor"
     entity_tracker: "EntityTracker"
     event_bus: "EventBus"
     usage_checker: "UsageLimitCheckerProtocol"
 
     # Optional / defaulted
+    cursor: Optional["SyncCursor"] = None
     dense_embedder: Optional["DenseEmbedderProtocol"] = None
     sparse_embedder: Optional["SparseEmbedderProtocol"] = None
     destinations: List["BaseDestination"] = field(default_factory=list)

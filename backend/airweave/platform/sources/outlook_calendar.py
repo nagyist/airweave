@@ -187,7 +187,7 @@ class OutlookCalendarSource(BaseSource):
         except SourceAuthError:
             raise
         except Exception as e:
-            self.logger.error(f"Error generating calendar entities: {str(e)}")
+            self.logger.warning(f"Error generating calendar entities: {str(e)}")
             raise
 
     async def _generate_event_entities(
@@ -239,7 +239,7 @@ class OutlookCalendarSource(BaseSource):
                     except SourceAuthError:
                         raise
                     except Exception as e:
-                        self.logger.error(f"Error processing event {event_id}: {str(e)}")
+                        self.logger.warning(f"Error processing event {event_id}: {str(e)}")
 
                 url = data.get("@odata.nextLink")
                 if url:
@@ -254,7 +254,7 @@ class OutlookCalendarSource(BaseSource):
         except SourceAuthError:
             raise
         except Exception as e:
-            self.logger.error(f"Error generating events for calendar {calendar_name}: {str(e)}")
+            self.logger.warning(f"Error generating events for calendar {calendar_name}: {str(e)}")
             raise
 
     async def _process_event(
@@ -302,7 +302,7 @@ class OutlookCalendarSource(BaseSource):
             except SourceAuthError:
                 raise
             except Exception as e:
-                self.logger.error(f"Error processing attachments for event {event_id}: {str(e)}")
+                self.logger.warning(f"Error processing attachments for event {event_id}: {str(e)}")
 
     async def _process_event_attachments(
         self,
@@ -343,7 +343,7 @@ class OutlookCalendarSource(BaseSource):
         except SourceAuthError:
             raise
         except Exception as e:
-            self.logger.error(f"Error processing attachments for event {event_id}: {str(e)}")
+            self.logger.warning(f"Error processing attachments for event {event_id}: {str(e)}")
 
     async def _process_single_attachment(  # noqa: C901
         self,
@@ -391,7 +391,7 @@ class OutlookCalendarSource(BaseSource):
             try:
                 binary_data = base64.b64decode(content_bytes)
             except Exception as e:
-                self.logger.error(f"Error decoding attachment content: {str(e)}")
+                self.logger.warning(f"Error decoding attachment content: {str(e)}")
                 return None
 
             if files:
@@ -417,7 +417,7 @@ class OutlookCalendarSource(BaseSource):
                     raise
 
                 except Exception as e:
-                    self.logger.error(f"Failed to save attachment {attachment_name}: {e}")
+                    self.logger.warning(f"Failed to save attachment {attachment_name}: {e}")
                     return None
             else:
                 return file_entity
@@ -425,7 +425,7 @@ class OutlookCalendarSource(BaseSource):
         except SourceAuthError:
             raise
         except Exception as e:
-            self.logger.error(f"Error processing attachment {attachment_id}: {str(e)}")
+            self.logger.warning(f"Error processing attachment {attachment_id}: {str(e)}")
             return None
 
     # ------------------------------------------------------------------
@@ -465,7 +465,7 @@ class OutlookCalendarSource(BaseSource):
         except SourceAuthError:
             raise
         except Exception as e:
-            self.logger.error(f"Error in entity generation: {str(e)}", exc_info=True)
+            self.logger.warning(f"Error in entity generation: {str(e)}", exc_info=True)
             raise
         finally:
             self.logger.info(
@@ -473,9 +473,9 @@ class OutlookCalendarSource(BaseSource):
             )
 
     async def validate(self) -> bool:
-        """Verify Outlook Calendar OAuth2 token by pinging the calendars endpoint."""
-        return await self._validate_oauth2(
-            ping_url=f"{self.GRAPH_BASE_URL}/me/calendars?$top=1",
-            headers={"Accept": "application/json"},
-            timeout=10.0,
+        """Validate credentials by pinging the calendars endpoint."""
+        await self._get(
+            f"{self.GRAPH_BASE_URL}/me/calendars",
+            params={"$top": "1"},
         )
+        return True

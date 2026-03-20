@@ -142,7 +142,7 @@ class MondaySource(BaseSource):
                 error_messages.append(message)
 
             error_string = "; ".join(error_messages)
-            self.logger.error(f"GraphQL error in Monday.com API: {error_string}")
+            self.logger.warning(f"GraphQL error in Monday.com API: {error_string}")
 
         return data.get("data", {})
 
@@ -583,7 +583,7 @@ class MondaySource(BaseSource):
         try:
             token = await self.auth.get_token()
             if not token:
-                self.logger.error("Monday validation failed: no access token available.")
+                self.logger.warning("Monday validation failed: no access token available.")
                 return False
 
             payload = {"query": "query { me { id } }"}
@@ -620,5 +620,5 @@ class MondaySource(BaseSource):
         except SourceAuthError:
             raise
         except Exception as e:
-            self.logger.error(f"Unexpected error during Monday validation: {e}")
+            self.logger.warning(f"Unexpected error during Monday validation: {e}")
             return False

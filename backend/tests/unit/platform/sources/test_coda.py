@@ -106,23 +106,22 @@ async def test_create_with_coda_auth_config():
 async def test_validate_success(coda_source):
     """validate() should return True when whoami returns 200."""
     with patch.object(
-        coda_source, "_validate_oauth2", new_callable=AsyncMock, return_value=True
-    ) as mock_validate:
+        coda_source, "_get", new_callable=AsyncMock, return_value={}
+    ) as mock_get:
         result = await coda_source.validate()
         assert result is True
-        mock_validate.assert_called_once()
-        call_kw = mock_validate.call_args[1]
-        assert call_kw["ping_url"] == f"{CODA_API_BASE}/whoami"
+        mock_get.assert_awaited_once()
+        assert mock_get.call_args[0][0] == "/whoami"
 
 
 @pytest.mark.asyncio
 async def test_validate_failure(coda_source):
-    """validate() should return False when whoami fails."""
+    """validate() should propagate when whoami fails."""
     with patch.object(
-        coda_source, "_validate_oauth2", new_callable=AsyncMock, return_value=False
+        coda_source, "_get", new_callable=AsyncMock, side_effect=RuntimeError("nope")
     ):
-        result = await coda_source.validate()
-        assert result is False
+        with pytest.raises(RuntimeError, match="nope"):
+            await coda_source.validate()
 
 
 @pytest.mark.asyncio

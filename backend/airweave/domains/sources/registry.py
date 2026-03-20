@@ -139,6 +139,7 @@ class SourceRegistry(SourceRegistryProtocol):
             oauth_type=_enum_to_str(source_cls.oauth_type),
             requires_byoc=source_cls.requires_byoc,
             supports_continuous=source_cls.supports_continuous,
+            supports_cursor=source_cls.cursor_class is not None,
             federated_search=source_cls.federated_search,
             supports_temporal_relevance=source_cls.supports_temporal_relevance,
             supports_access_control=source_cls.supports_access_control,

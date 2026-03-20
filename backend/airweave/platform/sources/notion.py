@@ -94,11 +94,9 @@ class NotionSource(BaseSource):
         return cls(auth=auth, logger=logger, http_client=http_client)
 
     async def validate(self) -> bool:
-        """Validate the Notion source."""
-        return await self._validate_oauth2(
-            ping_url="https://api.notion.com/v1/users/me",
-            headers={"Notion-Version": "2022-06-28"},
-        )
+        """Validate credentials by pinging the Notion current-user endpoint."""
+        await self._get("https://api.notion.com/v1/users/me")
+        return True
 
     # ------------------------------------------------------------------
     # HTTP helpers
@@ -251,7 +249,7 @@ class NotionSource(BaseSource):
             except SourceAuthError:
                 raise
             except Exception as e:
-                self.logger.error(f"Error searching for {object_type}: {e}")
+                self.logger.warning(f"Error searching for {object_type}: {e}")
                 raise
 
         yielded_count = total_found - total_filtered
@@ -306,7 +304,7 @@ class NotionSource(BaseSource):
             except SourceAuthError:
                 raise
             except Exception as e:
-                self.logger.error(f"Error querying database {database_id}: {e}")
+                self.logger.warning(f"Error querying database {database_id}: {e}")
                 raise
 
         yielded_count = total_found - total_filtered
@@ -385,7 +383,7 @@ class NotionSource(BaseSource):
                         except SourceAuthError:
                             raise
                         except Exception as e:
-                            self.logger.error(
+                            self.logger.warning(
                                 f"Error processing child database page {page_id}: {e}"
                             )
                             continue
@@ -399,7 +397,7 @@ class NotionSource(BaseSource):
                 except SourceAuthError:
                     raise
                 except Exception as e:
-                    self.logger.error(f"Error processing child database {database_id}: {e}")
+                    self.logger.warning(f"Error processing child database {database_id}: {e}")
                     self._processed_databases.add(database_id)
                     continue
 
@@ -563,7 +561,7 @@ class NotionSource(BaseSource):
             except SourceAuthError:
                 raise
             except Exception as e:
-                self.logger.error(
+                self.logger.warning(
                     f"Error extracting blocks from {block_id}: {type(e).__name__}: {e}"
                 )
                 break
@@ -1098,7 +1096,7 @@ class NotionSource(BaseSource):
         except SourceAuthError:
             raise
         except Exception as e:
-            self.logger.error(f"Error processing file {file_entity.name}: {e}")
+            self.logger.warning(f"Error processing file {file_entity.name}: {e}")
             return None
 
     # ------------------------------------------------------------------
@@ -1159,7 +1157,7 @@ class NotionSource(BaseSource):
         except SourceAuthError:
             raise
         except Exception as e:
-            self.logger.error(
+            self.logger.warning(
                 f"Error during streaming Notion entity generation: {e}", exc_info=True
             )
             raise
@@ -1222,7 +1220,7 @@ class NotionSource(BaseSource):
                 except SourceAuthError:
                     raise
                 except Exception as e:
-                    self.logger.error(f"Error processing database page {page_id}: {e}")
+                    self.logger.warning(f"Error processing database page {page_id}: {e}")
                     continue
         except NotionSource.NotionAccessError as e:
             self.logger.warning(f"Access issue processing database {database_id}: {e}")
@@ -1230,7 +1228,7 @@ class NotionSource(BaseSource):
         except SourceAuthError:
             raise
         except Exception as e:
-            self.logger.error(f"Error processing database {database_id}: {e}")
+            self.logger.warning(f"Error processing database {database_id}: {e}")
             return
 
     async def _stream_page_discovery(
@@ -1278,5 +1276,5 @@ class NotionSource(BaseSource):
             except SourceAuthError:
                 raise
             except Exception as e:
-                self.logger.error(f"Error processing standalone page {page_id}: {e}")
+                self.logger.warning(f"Error processing standalone page {page_id}: {e}")
                 continue

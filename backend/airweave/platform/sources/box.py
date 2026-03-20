@@ -109,7 +109,7 @@ class BoxSource(BaseSource):
         except SourceAuthError:
             raise
         except Exception as e:
-            self.logger.error(f"Failed to get current user: {e}")
+            self.logger.warning(f"Failed to get current user: {e}")
             return None
 
     async def _generate_user_entity(self, user_id: str) -> Optional[BoxUserEntity]:
@@ -426,13 +426,6 @@ class BoxSource(BaseSource):
         self.logger.debug("Box sync completed")
 
     async def validate(self) -> bool:
-        """Verify OAuth2 token by pinging Box's /users/me endpoint.
-
-        Returns:
-            True if credentials are valid, False otherwise
-        """
-        return await self._validate_oauth2(
-            ping_url=f"{self.API_BASE}/users/me",
-            headers={"Accept": "application/json"},
-            timeout=10.0,
-        )
+        """Validate credentials by pinging Box's /users/me endpoint."""
+        await self._get(f"{self.API_BASE}/users/me")
+        return True

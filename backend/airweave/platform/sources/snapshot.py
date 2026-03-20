@@ -496,30 +496,34 @@ class SnapshotSource(BaseSource):
         self.logger.info(f"Validating snapshot source with path: {self.path}")
 
         if not self.path:
-            self.logger.error("Snapshot validation failed: path is empty")
+            self.logger.warning("Snapshot validation failed: path is empty")
             return False
 
         # Check path exists based on storage type
         if self._is_local_path:
             if not self._local_path().exists():
-                self.logger.error(f"Snapshot validation failed: path does not exist: {self.path}")
+                self.logger.warning(f"Snapshot validation failed: path does not exist: {self.path}")
                 return False
         elif self._is_azure_url:
             # Direct Azure URL access
             if not await self._azure_blob_exists("manifest.json"):
-                self.logger.error(f"Snapshot validation failed: manifest not found at {self.path}")
+                self.logger.warning(
+                    f"Snapshot validation failed: manifest not found at {self.path}"
+                )
                 return False
         else:
             # Storage-relative path
             if not await self.storage.exists(f"{self.path}/manifest.json"):
-                self.logger.error(f"Snapshot validation failed: manifest not found at {self.path}")
+                self.logger.warning(
+                    f"Snapshot validation failed: manifest not found at {self.path}"
+                )
                 return False
 
         try:
             manifest = await self._read_json("manifest.json")
             return "sync_id" in manifest
         except Exception as e:
-            self.logger.error(f"Snapshot validation failed: {e}")
+            self.logger.warning(f"Snapshot validation failed: {e}")
             return False
 
     def cleanup(self) -> None:

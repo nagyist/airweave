@@ -23,7 +23,7 @@ from tenacity import retry, stop_after_attempt
 from airweave.core.logging import ContextualLogger
 from airweave.core.shared_models import RateLimitLevel
 from airweave.domains.browse_tree.types import NodeSelectionData
-from airweave.domains.sources.exceptions import SourceAuthError
+from airweave.domains.sources.exceptions import SourceAuthError, SourceEntityForbiddenError
 from airweave.domains.sources.token_providers.protocol import TokenProviderProtocol
 from airweave.domains.storage import FileSkippedException
 from airweave.domains.storage.file_service import FileService
@@ -267,7 +267,7 @@ class OneDriveSource(BaseSource):
             except SourceAuthError:
                 raise
             except Exception as e:
-                self.logger.error(f"Error processing folder {current_folder_id}: {e}")
+                self.logger.warning(f"Error processing folder {current_folder_id}: {e}")
                 continue
 
     async def _generate_drive_item_entities(  # noqa: C901
@@ -328,7 +328,7 @@ class OneDriveSource(BaseSource):
             except SourceAuthError:
                 raise
             except Exception as e:
-                self.logger.error(f"Failed to process item {item.get('name', 'unknown')}: {e}")
+                self.logger.warning(f"Failed to process item {item.get('name', 'unknown')}: {e}")
                 continue
 
         self.logger.debug(f"Total files processed: {file_count}")
@@ -353,7 +353,7 @@ class OneDriveSource(BaseSource):
             break
 
         if not drive_entity:
-            self.logger.error("No drive found for user")
+            self.logger.warning("No drive found for user")
             return
 
         drive_id = drive_entity.id
@@ -367,31 +367,13 @@ class OneDriveSource(BaseSource):
             yield file_entity
 
     async def validate(self) -> bool:
-        """Verify OneDrive OAuth2 token and access with sensible fallbacks.
-
-        Tries default drive (/me/drive), then list drives (/me/drives),
-        then app-folder-only access (/me/drive/special/approot).
-        """
-        headers = {"Accept": "application/json"}
-
-        ok = await self._validate_oauth2(
-            ping_url="https://graph.microsoft.com/v1.0/me/drive",
-            headers=headers,
-            timeout=10.0,
-        )
-        if ok:
+        """Validate OneDrive credentials with drive access fallback."""
+        try:
+            await self._get("https://graph.microsoft.com/v1.0/me/drive")
             return True
-
-        ok = await self._validate_oauth2(
-            ping_url="https://graph.microsoft.com/v1.0/me/drives?$top=1",
-            headers=headers,
-            timeout=10.0,
-        )
-        if ok:
+        except SourceEntityForbiddenError:
+            await self._get(
+                "https://graph.microsoft.com/v1.0/me/drives",
+                params={"$top": "1"},
+            )
             return True
-
-        return await self._validate_oauth2(
-            ping_url="https://graph.microsoft.com/v1.0/me/drive/special/approot",
-            headers=headers,
-            timeout=10.0,
-        )

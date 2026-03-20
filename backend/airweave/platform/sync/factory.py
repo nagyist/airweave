@@ -132,13 +132,13 @@ class SyncFactory:
         # Step 4: Assemble SyncRuntime (live services)
         runtime = SyncRuntime(
             source=source,
+            entity_tracker=entity_tracker_result,
+            event_bus=container_mod.container.event_bus,
+            usage_checker=container_mod.container.usage_checker,
             cursor=cursor,
             dense_embedder=dense_embedder,
             sparse_embedder=sparse_embedder,
             destinations=destinations,
-            entity_tracker=entity_tracker_result,
-            event_bus=container_mod.container.event_bus,
-            usage_checker=container_mod.container.usage_checker,
         )
 
         logger.debug(f"Context + runtime built in {time.time() - init_start:.2f}s")
@@ -326,12 +326,19 @@ class SyncFactory:
     @classmethod
     async def _create_cursor(
         cls, db, sync, source_class, ctx, logger, force_full_sync, execution_config
-    ):
-        """Create sync cursor with optional data loading."""
-        cursor_schema = None
-        if hasattr(source_class, "cursor_class") and source_class.cursor_class:
-            cursor_schema = source_class.cursor_class
-            logger.debug(f"Source has typed cursor: {cursor_schema.__name__}")
+    ) -> Optional[SyncCursor]:
+        """Create sync cursor, or None if source doesn't support cursors.
+
+        Returns:
+            None — source has no cursor support (every sync is full).
+            SyncCursor(cursor_data=None) — supports cursors, but first run or force full.
+            SyncCursor(cursor_data={...}) — incremental sync with loaded cursor.
+        """
+        registry_entry = container_mod.container.source_registry.get(source_class.short_name)
+        if not registry_entry.supports_cursor:
+            return None
+
+        cursor_schema = source_class.cursor_class
 
         if force_full_sync:
             logger.info(

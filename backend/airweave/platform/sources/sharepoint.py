@@ -183,7 +183,7 @@ class SharePointSource(BaseSource):
         except SourceAuthError:
             raise
         except Exception as e:
-            self.logger.error(f"Error generating user entities: {str(e)}")
+            self.logger.warning(f"Error generating user entities: {str(e)}")
             raise
 
     async def _generate_group_entities(self) -> AsyncGenerator[SharePointGroupEntity, None]:
@@ -224,7 +224,7 @@ class SharePointSource(BaseSource):
         except SourceAuthError:
             raise
         except Exception as e:
-            self.logger.error(f"Error generating group entities: {str(e)}")
+            self.logger.warning(f"Error generating group entities: {str(e)}")
             raise
 
     async def _generate_site_entities(self) -> AsyncGenerator[SharePointSiteEntity, None]:
@@ -258,7 +258,7 @@ class SharePointSource(BaseSource):
         except SourceAuthError:
             raise
         except Exception as e:
-            self.logger.error(f"Error generating site entities: {str(e)}")
+            self.logger.warning(f"Error generating site entities: {str(e)}")
             raise
 
     async def _generate_drive_entities(
@@ -299,7 +299,7 @@ class SharePointSource(BaseSource):
         except SourceAuthError:
             raise
         except Exception as e:
-            self.logger.error(f"Error generating drive entities for site {site_name}: {str(e)}")
+            self.logger.warning(f"Error generating drive entities for site {site_name}: {str(e)}")
             raise
 
     async def _list_drive_items(
@@ -347,7 +347,7 @@ class SharePointSource(BaseSource):
         try:
             return f"{self.GRAPH_BASE_URL}/drives/{drive_id}/items/{item_id}/content"
         except Exception as e:
-            self.logger.error(f"Failed to get download URL for item {item_id}: {e}")
+            self.logger.warning(f"Failed to get download URL for item {item_id}: {e}")
             return None
 
     async def _list_all_drive_items_recursively(
@@ -377,7 +377,7 @@ class SharePointSource(BaseSource):
             except SourceAuthError:
                 raise
             except Exception as e:
-                self.logger.error(f"Error processing folder {current_folder_id}: {e}")
+                self.logger.warning(f"Error processing folder {current_folder_id}: {e}")
                 continue
 
     async def _generate_drive_item_entities(  # noqa: C901
@@ -451,7 +451,9 @@ class SharePointSource(BaseSource):
             except SourceAuthError:
                 raise
             except Exception as e:
-                self.logger.error(f"Failed to process item {item.get('name', 'unknown')}: {str(e)}")
+                self.logger.warning(
+                    f"Failed to process item {item.get('name', 'unknown')}: {str(e)}"
+                )
                 continue
 
         self.logger.debug(f"Total files processed in drive {drive_name}: {file_count}")
@@ -499,7 +501,7 @@ class SharePointSource(BaseSource):
         except SourceAuthError:
             raise
         except Exception as e:
-            self.logger.error(f"Error generating list entities for site {site_name}: {str(e)}")
+            self.logger.warning(f"Error generating list entities for site {site_name}: {str(e)}")
 
     async def _generate_list_item_entities(
         self,
@@ -550,7 +552,7 @@ class SharePointSource(BaseSource):
         except SourceAuthError:
             raise
         except Exception as e:
-            self.logger.error(f"Error generating list items for list {list_name}: {str(e)}")
+            self.logger.warning(f"Error generating list items for list {list_name}: {str(e)}")
 
     # ------------------------------------------------------------------
     # Page content extraction utilities
@@ -651,7 +653,7 @@ class SharePointSource(BaseSource):
         except SourceAuthError:
             raise
         except Exception as e:
-            self.logger.error(f"Error generating page entities for site {site_name}: {str(e)}")
+            self.logger.warning(f"Error generating page entities for site {site_name}: {str(e)}")
 
     # ------------------------------------------------------------------
     # Composite generators
@@ -766,7 +768,7 @@ class SharePointSource(BaseSource):
                 break
 
             if not site_entity:
-                self.logger.error("No site found")
+                self.logger.warning("No site found")
                 return
 
             site_id = site_entity.id
@@ -798,7 +800,7 @@ class SharePointSource(BaseSource):
         except SourceAuthError:
             raise
         except Exception as e:
-            self.logger.error(f"Error in entity generation: {str(e)}", exc_info=True)
+            self.logger.warning(f"Error in entity generation: {str(e)}", exc_info=True)
             raise
         finally:
             self.logger.debug(
@@ -806,9 +808,6 @@ class SharePointSource(BaseSource):
             )
 
     async def validate(self) -> bool:
-        """Verify SharePoint OAuth2 token by pinging the sites endpoint."""
-        return await self._validate_oauth2(
-            ping_url=f"{self.GRAPH_BASE_URL}/sites/root",
-            headers={"Accept": "application/json"},
-            timeout=10.0,
-        )
+        """Validate credentials by pinging the root site endpoint."""
+        await self._get(f"{self.GRAPH_BASE_URL}/sites/root")
+        return True

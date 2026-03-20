@@ -176,12 +176,9 @@ class IntercomSource(BaseSource):
         return (entity, conv_id, entity.subject, web_url, breadcrumb)
 
     async def validate(self) -> bool:
-        """Verify credentials by calling Intercom /me."""
-        return await self._validate_oauth2(
-            ping_url=f"{API_BASE}/me",
-            headers={"Intercom-Version": INTERCOM_VERSION},
-            timeout=10.0,
-        )
+        """Validate credentials by pinging Intercom's /me endpoint."""
+        await self._get(f"{API_BASE}/me")
+        return True
 
     async def generate_entities(
         self,

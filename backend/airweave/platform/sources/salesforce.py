@@ -357,23 +357,13 @@ class SalesforceSource(BaseSource):
             yield opportunity_entity
 
     async def validate(self) -> bool:
-        """Verify Salesforce access token by pinging the identity endpoint."""
+        """Validate credentials by pinging the Salesforce OAuth2 userinfo endpoint."""
         if getattr(self, "_is_validation_mode", False):
-            try:
-                token = await self.auth.get_token()
-                return bool(token)
-            except Exception:
-                return False
-
-        if not getattr(self, "instance_url", None):
-            self.logger.error("Salesforce validation failed: missing instance URL.")
-            return False
-
-        try:
-            return await self._validate_oauth2(
-                ping_url=f"https://{self.instance_url}/services/oauth2/userinfo",
-                timeout=10.0,
+            token = await self.auth.get_token()
+            return bool(token)
+        if not self.instance_url:
+            raise ValueError(
+                f"Salesforce instance_url is not set. instance_url={self.instance_url}"
             )
-        except Exception as e:
-            self.logger.error(f"Unexpected error during Salesforce validation: {e}")
-            return False
+        await self._get(f"https://{self.instance_url}/services/oauth2/userinfo")
+        return True

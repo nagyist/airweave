@@ -184,7 +184,7 @@ class FirefliesSource(BaseSource):
             except SourceError:
                 raise
             except Exception as e:
-                self.logger.error(f"Error fetching transcripts at skip={skip}: {e}")
+                self.logger.warning(f"Error fetching transcripts at skip={skip}: {e}")
                 break
             transcripts = (data.get("data") or {}).get("transcripts") or []
             if not transcripts:

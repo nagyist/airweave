@@ -80,9 +80,11 @@ class GraphClient:
         if response.status_code >= 400:
             try:
                 error_body = response.json()
-                self.logger.error(f"Graph API error {response.status_code}: {error_body}")
+                self.logger.warning(f"Graph API error {response.status_code}: {error_body}")
             except Exception:
-                self.logger.error(f"Graph API error {response.status_code}: {response.text[:500]}")
+                self.logger.warning(
+                    f"Graph API error {response.status_code}: {response.text[:500]}"
+                )
 
         response.raise_for_status()
         return response.json()

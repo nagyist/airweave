@@ -182,7 +182,7 @@ class TeamsSource(BaseSource):
         except SourceAuthError:
             raise
         except Exception as e:
-            self.logger.error(f"Error generating user entities: {e}")
+            self.logger.warning(f"Error generating user entities: {e}")
 
     async def _generate_team_entities(self) -> AsyncGenerator[TeamsTeamEntity, None]:
         """Generate TeamsTeamEntity objects for teams the user has joined."""
@@ -225,7 +225,7 @@ class TeamsSource(BaseSource):
         except SourceAuthError:
             raise
         except Exception as e:
-            self.logger.error(f"Error generating team entities: {e}")
+            self.logger.warning(f"Error generating team entities: {e}")
             raise
 
     async def _generate_channel_entities(
@@ -279,7 +279,7 @@ class TeamsSource(BaseSource):
         except SourceAuthError:
             raise
         except Exception as e:
-            self.logger.error(f"Error generating channel entities for team {team_name}: {e}")
+            self.logger.warning(f"Error generating channel entities for team {team_name}: {e}")
 
     async def _generate_channel_message_entities(
         self,
@@ -323,7 +323,7 @@ class TeamsSource(BaseSource):
         except SourceAuthError:
             raise
         except Exception as e:
-            self.logger.error(f"Error generating messages for channel {channel_name}: {e}")
+            self.logger.warning(f"Error generating messages for channel {channel_name}: {e}")
 
     async def _generate_chat_entities(self) -> AsyncGenerator[TeamsChatEntity, None]:
         """Generate TeamsChatEntity objects for user's chats."""
@@ -366,7 +366,7 @@ class TeamsSource(BaseSource):
         except SourceAuthError:
             raise
         except Exception as e:
-            self.logger.error(f"Error generating chat entities: {e}")
+            self.logger.warning(f"Error generating chat entities: {e}")
 
     async def _generate_chat_message_entities(
         self,
@@ -407,7 +407,7 @@ class TeamsSource(BaseSource):
         except SourceAuthError:
             raise
         except Exception as e:
-            self.logger.error(f"Error generating messages for chat {display_chat}: {e}")
+            self.logger.warning(f"Error generating messages for chat {display_chat}: {e}")
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -492,9 +492,6 @@ class TeamsSource(BaseSource):
         self.logger.info(f"Microsoft Teams entity generation complete: {entity_count} entities")
 
     async def validate(self) -> bool:
-        """Verify Microsoft Teams OAuth2 token by pinging the joinedTeams endpoint."""
-        return await self._validate_oauth2(
-            ping_url=f"{self.GRAPH_BASE_URL}/me/joinedTeams",
-            headers={"Accept": "application/json"},
-            timeout=10.0,
-        )
+        """Validate credentials by pinging the joinedTeams endpoint."""
+        await self._get(f"{self.GRAPH_BASE_URL}/me/joinedTeams")
+        return True

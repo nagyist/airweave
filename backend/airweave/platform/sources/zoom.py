@@ -299,7 +299,7 @@ class ZoomSource(BaseSource):
         except SourceEntityNotFoundError:
             self.logger.debug(f"No participant data available for meeting {meeting_id}")
         except Exception as e:
-            self.logger.error(f"Error generating participant entities for {meeting_topic}: {e}")
+            self.logger.warning(f"Error generating participant entities for {meeting_topic}: {e}")
 
     async def _generate_recording_entities(
         self, user_id: str
@@ -442,9 +442,6 @@ class ZoomSource(BaseSource):
         self.logger.info(f"Zoom entity generation complete: {entity_count} entities")
 
     async def validate(self) -> bool:
-        """Validate the Zoom OAuth2 credentials."""
-        return await self._validate_oauth2(
-            ping_url=f"{self.ZOOM_BASE_URL}/users/me",
-            headers={"Accept": "application/json"},
-            timeout=10.0,
-        )
+        """Validate credentials by pinging the Zoom current-user endpoint."""
+        await self._get(f"{self.ZOOM_BASE_URL}/users/me")
+        return True

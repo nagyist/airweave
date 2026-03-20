@@ -148,7 +148,7 @@ class AsanaSource(BaseSource):
                 token_provider_kind=self.auth.provider_kind,
             )
         except SourceAuthError as e:
-            self.logger.error(f"Failed to fetch data from {url}: {e}")
+            self.logger.warning(f"Failed to fetch data from {url}: {e}")
             raise
         return response.json()
 
@@ -456,9 +456,6 @@ class AsanaSource(BaseSource):
                         yield entity
 
     async def validate(self) -> bool:
-        """Verify OAuth2 token by pinging Asana's /users/me endpoint."""
-        return await self._validate_oauth2(
-            ping_url=f"{_API}/users/me",
-            headers={"Accept": "application/json"},
-            timeout=10.0,
-        )
+        """Validate credentials by pinging Asana's /users/me endpoint."""
+        await self._get(f"{_API}/users/me")
+        return True

@@ -365,14 +365,14 @@ class ConfluenceSource(BaseSource):
         try:
             resources = await self._get_accessible_resources()
             if not resources:
-                self.logger.error("Confluence validation failed: no accessible resources found")
+                self.logger.warning("Confluence validation failed: no accessible resources found")
                 return False
             self.logger.debug("Confluence validation successful")
             return True
         except SourceAuthError:
             raise
         except Exception as e:
-            self.logger.error(f"Confluence validation failed: {e}")
+            self.logger.warning(f"Confluence validation failed: {e}")
             return False
 
     async def generate_entities(  # noqa: C901

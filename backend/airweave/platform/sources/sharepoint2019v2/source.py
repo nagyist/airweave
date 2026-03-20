@@ -369,7 +369,7 @@ class SharePoint2019V2Source(BaseSource):
         except FileSkippedException:
             raise
         except Exception as e:
-            self.logger.error(f"Failed to download file {entity.file_name}: {e}")
+            self.logger.warning(f"Failed to download file {entity.file_name}: {e}")
             raise EntityProcessingError(f"Failed to download file {entity.file_name}: {e}") from e
 
     # -------------------------------------------------------------------------
@@ -574,7 +574,7 @@ class SharePoint2019V2Source(BaseSource):
                     )
                     current_site_breadcrumbs = parent_breadcrumbs + [site_breadcrumb]
                 except Exception as e:
-                    self.logger.error(f"Skipping site {current_site_url}: {e}")
+                    self.logger.warning(f"Skipping site {current_site_url}: {e}")
                     continue
 
                 async for list_meta in sp_client.discover_lists(self.http_client, current_site_url):
@@ -707,7 +707,7 @@ class SharePoint2019V2Source(BaseSource):
                     self.http_client, self._site_url, change_token
                 )
             except Exception as e:
-                self.logger.error(f"GetChanges failed: {e}. Marking full sync required.")
+                self.logger.warning(f"GetChanges failed: {e}. Marking full sync required.")
                 if cursor:
                     cursor.update(full_sync_required=True)
                 return
@@ -865,7 +865,7 @@ class SharePoint2019V2Source(BaseSource):
                                     entity_count += 1
 
                 except Exception as e:
-                    self.logger.error(f"Error processing targeted selection {selection}: {e}")
+                    self.logger.warning(f"Error processing targeted selection {selection}: {e}")
                     raise
 
             self.logger.info(f"Targeted sync complete: {entity_count} entities")
@@ -1028,7 +1028,7 @@ class SharePoint2019V2Source(BaseSource):
             await sp_client.get(self.http_client, f"{self._site_url}/_api/web")
             self.logger.info("SharePoint connection validated successfully")
         except Exception as e:
-            self.logger.error(f"SharePoint validation failed: {e}")
+            self.logger.warning(f"SharePoint validation failed: {e}")
             return False
 
         try:
@@ -1046,7 +1046,7 @@ class SharePoint2019V2Source(BaseSource):
             ldap_client.close()
             self.logger.info("Active Directory connection validated successfully")
         except Exception as e:
-            self.logger.error(f"Active Directory validation failed: {e}")
+            self.logger.warning(f"Active Directory validation failed: {e}")
             return False
 
         return True
@@ -1160,7 +1160,7 @@ class SharePoint2019V2Source(BaseSource):
             self.logger.info(f"Access control extraction complete: {membership_count} memberships")
 
         except Exception as e:
-            self.logger.error(f"Error generating access control memberships: {e}", exc_info=True)
+            self.logger.warning(f"Error generating access control memberships: {e}", exc_info=True)
             raise
         finally:
             if ldap_client:

@@ -558,5 +558,5 @@ class StripeSource(BaseSource):
         except SourceAuthError:
             raise
         except Exception as e:
-            self.logger.error(f"Unexpected error during Stripe validation: {e}")
+            self.logger.warning(f"Unexpected error during Stripe validation: {e}")
             return False

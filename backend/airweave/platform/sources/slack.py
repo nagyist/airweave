@@ -163,7 +163,7 @@ class SlackSource(BaseSource):
 
         if not response_data.get("ok"):
             error = response_data.get("error", "unknown_error")
-            self.logger.error(f"Slack search API error: {error}")
+            self.logger.warning(f"Slack search API error: {error}")
 
             if error == "missing_scope":
                 raise ValueError(
@@ -196,7 +196,7 @@ class SlackSource(BaseSource):
             except SourceAuthError:
                 raise
             except Exception as e:
-                self.logger.error(f"Error creating message entity: {e}")
+                self.logger.warning(f"Error creating message entity: {e}")
                 continue
 
         return entities
@@ -246,15 +246,12 @@ class SlackSource(BaseSource):
 
         Raises NotImplementedError; use search() instead.
         """
-        self.logger.error("generate_entities() called on federated search source")
+        self.logger.warning("generate_entities() called on federated search source")
         raise NotImplementedError(
             "Slack uses federated search. Use the search() method instead of generate_entities()."
         )
 
     async def validate(self) -> bool:
-        """Verify OAuth2 token by testing Slack API access."""
-        return await self._validate_oauth2(
-            ping_url="https://slack.com/api/auth.test",
-            headers={"Content-Type": "application/x-www-form-urlencoded"},
-            timeout=10.0,
-        )
+        """Validate credentials by calling Slack auth.test."""
+        await self._get("https://slack.com/api/auth.test")
+        return True

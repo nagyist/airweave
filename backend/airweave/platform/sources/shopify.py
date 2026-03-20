@@ -882,5 +882,5 @@ class ShopifySource(BaseSource):
         except SourceAuthError:
             raise
         except Exception as e:
-            self.logger.error(f"Unexpected error during Shopify validation: {e}")
+            self.logger.warning(f"Unexpected error during Shopify validation: {e}")
             return False

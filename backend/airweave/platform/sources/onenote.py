@@ -182,7 +182,7 @@ class OneNoteSource(BaseSource):
         except SourceAuthError:
             raise
         except Exception as e:
-            self.logger.error(f"Error generating notebook entities: {str(e)}")
+            self.logger.warning(f"Error generating notebook entities: {str(e)}")
             raise
 
     async def _generate_section_entities(
@@ -231,7 +231,7 @@ class OneNoteSource(BaseSource):
         except SourceAuthError:
             raise
         except Exception as e:
-            self.logger.error(
+            self.logger.warning(
                 f"Error generating section entities for notebook {notebook_name}: {str(e)}"
             )
 
@@ -338,7 +338,7 @@ class OneNoteSource(BaseSource):
         except SourceAuthError:
             raise
         except Exception as e:
-            self.logger.error(f"Error generating pages for section {section_name}: {str(e)}")
+            self.logger.warning(f"Error generating pages for section {section_name}: {str(e)}")
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -440,7 +440,7 @@ class OneNoteSource(BaseSource):
         except SourceAuthError:
             raise
         except Exception as e:
-            self.logger.error(f"Error in entity generation: {str(e)}", exc_info=True)
+            self.logger.warning(f"Error in entity generation: {str(e)}", exc_info=True)
             raise
         finally:
             self.logger.debug(
@@ -448,9 +448,9 @@ class OneNoteSource(BaseSource):
             )
 
     async def validate(self) -> bool:
-        """Verify Microsoft OneNote OAuth2 token by pinging the notebooks endpoint."""
-        return await self._validate_oauth2(
-            ping_url=f"{self.GRAPH_BASE_URL}/me/onenote/notebooks?$top=1",
-            headers={"Accept": "application/json"},
-            timeout=10.0,
+        """Validate credentials by pinging the OneNote notebooks endpoint."""
+        await self._get(
+            f"{self.GRAPH_BASE_URL}/me/onenote/notebooks",
+            params={"$top": "1"},
         )
+        return True

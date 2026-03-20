@@ -416,8 +416,8 @@ class DropboxSource(BaseSource):
             )
             return True
         except SourceAuthError:
-            self.logger.error("Dropbox validation failed: authentication error")
+            self.logger.warning("Dropbox validation failed: authentication error")
             return False
         except Exception as e:
-            self.logger.error(f"Unexpected error during Dropbox validation: {e}")
+            self.logger.warning(f"Unexpected error during Dropbox validation: {e}")
             return False

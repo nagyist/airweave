@@ -152,7 +152,7 @@ class EntraGroupExpander:
             if e.response.status_code == 404:
                 self.logger.warning(f"Group not found: {group_id}")
             else:
-                self.logger.error(f"Error expanding group {group_id}: {e}")
+                self.logger.warning(f"Error expanding group {group_id}: {e}")
                 raise
         finally:
             self._expanding.discard(cache_key)

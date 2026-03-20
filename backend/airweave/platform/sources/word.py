@@ -211,9 +211,9 @@ class WordSource(BaseSource):
             yield entity
 
     async def validate(self) -> bool:
-        """Verify Microsoft Word OAuth2 token by pinging the drive endpoint."""
-        return await self._validate_oauth2(
-            ping_url=f"{self.GRAPH_BASE_URL}/me/drive?$select=id",
-            headers={"Accept": "application/json"},
-            timeout=10.0,
+        """Validate credentials by pinging the drive endpoint."""
+        await self._get(
+            f"{self.GRAPH_BASE_URL}/me/drive",
+            params={"$select": "id"},
         )
+        return True

@@ -98,7 +98,7 @@ class CTTISource(BaseSource):
                         ValueError,
                     ),
                 ):
-                    self.logger.error(f"Non-retryable database error: {error_type}: {error_msg}")
+                    self.logger.warning(f"Non-retryable database error: {error_type}: {error_msg}")
                     raise e
 
                 if attempt < max_retries:
@@ -112,7 +112,7 @@ class CTTISource(BaseSource):
                     )
                     await asyncio.sleep(delay)
                 else:
-                    self.logger.error(
+                    self.logger.warning(
                         f"All {max_retries + 1} database operation attempts failed. "
                         f"Final error {error_type}: {error_msg}"
                     )
@@ -253,7 +253,7 @@ class CTTISource(BaseSource):
             )
 
         except Exception as e:
-            self.logger.error(f"Error in CTTI generate_entities: {e}")
+            self.logger.warning(f"Error in CTTI generate_entities: {e}")
             raise
         finally:
             await self._close_pool()
@@ -273,10 +273,10 @@ class CTTISource(BaseSource):
             return True
 
         except (asyncpg.InvalidPasswordError, asyncpg.InvalidCatalogNameError, ValueError) as e:
-            self.logger.error(f"CTTI validation failed (credentials/config): {e}")
+            self.logger.warning(f"CTTI validation failed (credentials/config): {e}")
             return False
         except Exception as e:
-            self.logger.error(f"CTTI validation encountered an error: {e}")
+            self.logger.warning(f"CTTI validation encountered an error: {e}")
             return False
         finally:
             await self._close_pool()

@@ -237,7 +237,7 @@ class OutlookMailSource(BaseSource):
         except SourceAuthError:
             raise
         except Exception as e:
-            self.logger.error(
+            self.logger.warning(
                 f"Error processing messages in folder {folder_entity.display_name}: {str(e)}"
             )
 
@@ -266,7 +266,7 @@ class OutlookMailSource(BaseSource):
             except SourceAuthError:
                 raise
             except Exception as e:
-                self.logger.error(
+                self.logger.warning(
                     f"Error processing child folders of {folder_entity.display_name}: {str(e)}"
                 )
 
@@ -406,7 +406,7 @@ class OutlookMailSource(BaseSource):
         except SourceAuthError:
             raise
         except Exception as e:
-            self.logger.error(f"Error fetching folders: {str(e)}")
+            self.logger.warning(f"Error fetching folders: {str(e)}")
             raise
 
     # ------------------------------------------------------------------
@@ -480,7 +480,7 @@ class OutlookMailSource(BaseSource):
                     except SourceAuthError:
                         raise
                     except Exception as e:
-                        self.logger.error(f"Error processing message {message_id}: {str(e)}")
+                        self.logger.warning(f"Error processing message {message_id}: {str(e)}")
 
                 url = data.get("@odata.nextLink")
                 if url:
@@ -496,7 +496,7 @@ class OutlookMailSource(BaseSource):
         except SourceAuthError:
             raise
         except Exception as e:
-            self.logger.error(
+            self.logger.warning(
                 f"Error processing messages in folder {folder_entity.display_name}: {str(e)}"
             )
             raise
@@ -564,7 +564,7 @@ class OutlookMailSource(BaseSource):
             except SourceAuthError:
                 raise
             except Exception as e:
-                self.logger.error(
+                self.logger.warning(
                     f"Error processing attachments for message {message_id}: {str(e)}"
                 )
 
@@ -644,7 +644,7 @@ class OutlookMailSource(BaseSource):
             try:
                 binary_data = base64.b64decode(content_bytes)
             except Exception as e:
-                self.logger.error(f"Error decoding attachment content: {str(e)}")
+                self.logger.warning(f"Error decoding attachment content: {str(e)}")
                 return None
 
             if files:
@@ -671,7 +671,7 @@ class OutlookMailSource(BaseSource):
             raise
 
         except Exception as e:
-            self.logger.error(f"Error processing attachment {attachment_id}: {str(e)}")
+            self.logger.warning(f"Error processing attachment {attachment_id}: {str(e)}")
             return None
 
     async def _process_attachments(
@@ -715,7 +715,7 @@ class OutlookMailSource(BaseSource):
         except SourceAuthError:
             raise
         except Exception as e:
-            self.logger.error(f"Error processing attachments for message {message_id}: {str(e)}")
+            self.logger.warning(f"Error processing attachments for message {message_id}: {str(e)}")
 
     # ------------------------------------------------------------------
     # Delta / incremental sync
@@ -772,7 +772,9 @@ class OutlookMailSource(BaseSource):
         except SourceAuthError:
             raise
         except Exception as e:
-            self.logger.error(f"Error processing delta changes for folder {folder_name}: {str(e)}")
+            self.logger.warning(
+                f"Error processing delta changes for folder {folder_name}: {str(e)}"
+            )
             raise
 
     async def _yield_message_change_entities(
@@ -865,7 +867,7 @@ class OutlookMailSource(BaseSource):
         except SourceAuthError:
             raise
         except Exception as e:
-            self.logger.error(f"Error processing folders delta changes: {e}")
+            self.logger.warning(f"Error processing folders delta changes: {e}")
 
     async def _iterate_delta_pages(self, start_url: str) -> AsyncGenerator[Dict[str, Any], None]:
         """Iterate delta/next pages starting from a delta or nextLink URL."""
@@ -1080,7 +1082,7 @@ class OutlookMailSource(BaseSource):
         except SourceAuthError:
             raise
         except Exception as e:
-            self.logger.error(
+            self.logger.warning(
                 f"Error processing delta changes (URL) for folder {folder_name}: {str(e)}"
             )
             raise
@@ -1179,7 +1181,7 @@ class OutlookMailSource(BaseSource):
         except SourceAuthError:
             raise
         except Exception as e:
-            self.logger.error(f"Error in entity generation: {str(e)}", exc_info=True)
+            self.logger.warning(f"Error in entity generation: {str(e)}", exc_info=True)
             raise
         finally:
             self.logger.debug(
@@ -1187,9 +1189,9 @@ class OutlookMailSource(BaseSource):
             )
 
     async def validate(self) -> bool:
-        """Verify Outlook Mail OAuth2 token by pinging the mailFolders endpoint."""
-        return await self._validate_oauth2(
-            ping_url=f"{self.GRAPH_BASE_URL}/me/mailFolders?$top=1",
-            headers={"Accept": "application/json"},
-            timeout=10.0,
+        """Validate credentials by pinging the mailFolders endpoint."""
+        await self._get(
+            f"{self.GRAPH_BASE_URL}/me/mailFolders",
+            params={"$top": "1"},
         )
+        return True

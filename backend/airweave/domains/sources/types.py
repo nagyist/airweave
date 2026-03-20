@@ -37,6 +37,7 @@ class SourceRegistryEntry(BaseRegistryEntry):
 
     # Capabilities
     supports_continuous: bool
+    supports_cursor: bool
     federated_search: bool
     supports_temporal_relevance: bool
     supports_access_control: bool

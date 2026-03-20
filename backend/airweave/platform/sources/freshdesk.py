@@ -352,10 +352,10 @@ class FreshdeskSource(BaseSource):
     async def validate(self) -> bool:
         """Validate Freshdesk credentials by calling GET /api/v2/agents/me."""
         if not getattr(self, "_api_key", None):
-            self.logger.error("Freshdesk validation failed: missing API key.")
+            self.logger.warning("Freshdesk validation failed: missing API key.")
             return False
         if not getattr(self, "_domain", None):
-            self.logger.error("Freshdesk validation failed: missing domain.")
+            self.logger.warning("Freshdesk validation failed: missing domain.")
             return False
         try:
             await self._get(f"{self._base_url()}/agents/me")
@@ -364,10 +364,10 @@ class FreshdeskSource(BaseSource):
             raise
         except httpx.HTTPStatusError as e:
             text_preview = (e.response.text or "")[:200]
-            self.logger.error(
+            self.logger.warning(
                 f"Freshdesk validation failed: HTTP {e.response.status_code} - {text_preview}"
             )
             return False
         except Exception as e:
-            self.logger.error(f"Unexpected error during Freshdesk validation: {e}")
+            self.logger.warning(f"Unexpected error during Freshdesk validation: {e}")
             return False

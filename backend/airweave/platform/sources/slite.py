@@ -193,5 +193,5 @@ class SliteSource(BaseSource):
         except SourceAuthError:
             raise
         except Exception as e:
-            self.logger.error(f"Slite validation failed: {e}")
+            self.logger.warning(f"Slite validation failed: {e}")
             return False

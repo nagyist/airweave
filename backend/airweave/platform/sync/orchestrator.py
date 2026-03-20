@@ -427,53 +427,38 @@ class SyncOrchestrator:
         await self._wait_for_remaining_tasks(pending_tasks)
 
     async def _cleanup_orphaned_entities_if_needed(self) -> None:
-        """Cleanup orphaned entities based on sync type."""
-        has_cursor_data = bool(self.runtime.cursor and self.runtime.cursor.loaded_from_db)
+        """Cleanup orphaned entities based on sync type.
 
-        # Check if source supports continuous/incremental sync (class attribute)
-        source_class = type(self.runtime.source)
-        source_supports_continuous = getattr(source_class, "supports_continuous", False)
+        Cursor semantics drive the decision:
+          - cursor is None        → source has no cursor support, every sync is full → cleanup
+          - cursor.loaded_from_db → incremental sync with existing cursor → skip cleanup
+          - not loaded_from_db    → first run or force_full_sync → cleanup
+        """
+        cursor = self.runtime.cursor
+        is_incremental = cursor is not None and cursor.loaded_from_db
 
         self.sync_context.logger.debug(
-            f"Orphan cleanup check: has_cursor_data={has_cursor_data}, "
-            f"supports_continuous={source_supports_continuous}, "
+            f"Orphan cleanup check: cursor={'present' if cursor else 'None'}, "
+            f"loaded_from_db={cursor.loaded_from_db if cursor else 'N/A'}, "
             f"force_full_sync={self.sync_context.force_full_sync}"
         )
 
-        # Cleanup should run if:
-        # 1. Forced full sync (daily cleanup schedule), OR
-        # 2. First sync (no cursor data), OR
-        # 3. Source doesn't support incremental sync (every sync is a full sync)
-        should_cleanup = (
-            self.sync_context.force_full_sync
-            or not has_cursor_data
-            or not source_supports_continuous
-        )
-
-        if should_cleanup:
-            if self.sync_context.force_full_sync:
-                self.sync_context.logger.info(
-                    "🧹 Starting orphaned entity cleanup phase (FORCED FULL SYNC - "
-                    "daily cleanup schedule)."
-                )
-            elif not source_supports_continuous:
-                self.sync_context.logger.info(
-                    "🧹 Starting orphaned entity cleanup phase (full sync - "
-                    "source doesn't support incremental sync)"
-                )
-            else:
-                self.sync_context.logger.info(
-                    "🧹 Starting orphaned entity cleanup phase (first sync - no cursor data)"
-                )
-            # Dispatcher handles ALL handlers: Destination, ARF, and Postgres
-            await self.entity_pipeline.cleanup_orphaned_entities(self.sync_context, self.runtime)
-        elif (
-            has_cursor_data and not self.sync_context.force_full_sync and source_supports_continuous
-        ):
+        if is_incremental:
             self.sync_context.logger.info(
                 "⏩ Skipping orphaned entity cleanup for INCREMENTAL sync "
                 "(cursor data exists, only changed entities are processed)"
             )
+            return
+
+        if cursor is None:
+            reason = "source doesn't support incremental sync"
+        elif self.sync_context.force_full_sync:
+            reason = "FORCED FULL SYNC - daily cleanup schedule"
+        else:
+            reason = "first sync - no cursor data"
+
+        self.sync_context.logger.info(f"🧹 Starting orphaned entity cleanup phase ({reason}).")
+        await self.entity_pipeline.cleanup_orphaned_entities(self.sync_context, self.runtime)
 
     def _source_supports_access_control(self) -> bool:
         """Check if the source supports access control membership syncing."""
@@ -637,8 +622,10 @@ class SyncOrchestrator:
             self.sync_context.logger.warning(f"[Snapshot] Failed to update short_name: {e}")
 
     async def _save_cursor_data(self) -> None:
-        """Save cursor data to database if it exists."""
-        # Check if cursor updates are disabled
+        """Save cursor data to database if the source supports cursors."""
+        if self.runtime.cursor is None:
+            return
+
         if (
             self.sync_context.execution_config
             and self.sync_context.execution_config.cursor.skip_updates
@@ -646,12 +633,10 @@ class SyncOrchestrator:
             self.sync_context.logger.info("⏭️ Skipping cursor update (disabled by execution_config)")
             return
 
-        if not self.runtime.cursor or not self.runtime.cursor.cursor_data:
-            if self.sync_context.force_full_sync:
-                self.sync_context.logger.info(
-                    "📝 No cursor data to save from forced "
-                    "full sync (source may not support cursor tracking)"
-                )
+        if not self.runtime.cursor.cursor_data:
+            self.sync_context.logger.info(
+                "📝 No cursor data to save (source didn't update cursor during sync)"
+            )
             return
 
         try:
@@ -663,15 +648,9 @@ class SyncOrchestrator:
                     ctx=self.sync_context,
                     cursor_field=self.runtime.cursor.cursor_field,
                 )
-                if self.sync_context.force_full_sync:
-                    self.sync_context.logger.info(
-                        f"💾 Saved cursor data from"
-                        f"forced full sync for sync {self.sync_context.sync.id}"
-                    )
-                else:
-                    self.sync_context.logger.info(
-                        f"💾 Saved cursor data for sync {self.sync_context.sync.id}"
-                    )
+                self.sync_context.logger.info(
+                    f"💾 Saved cursor data for sync {self.sync_context.sync.id}"
+                )
         except Exception as e:
             self.sync_context.logger.error(
                 f"Failed to save cursor data for sync {self.sync_context.sync.id}: {e}",

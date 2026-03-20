@@ -157,14 +157,11 @@ async def test_validate_success():
     """validate() should return True when GET /me returns 200."""
     source = await _make_intercom_source()
 
-    with patch.object(source, "_validate_oauth2", new_callable=AsyncMock) as mock_validate:
-        mock_validate.return_value = True
+    with patch.object(source, "_get", new_callable=AsyncMock, return_value={}) as mock_get:
         result = await source.validate()
     assert result is True
-    mock_validate.assert_called_once()
-    call_kw = mock_validate.call_args[1]
-    assert call_kw["ping_url"] == "https://api.intercom.io/me"
-    assert "Intercom-Version" in (call_kw.get("headers") or {})
+    mock_get.assert_awaited_once()
+    assert mock_get.call_args[0][0] == "https://api.intercom.io/me"
 
 
 # ---------------------------------------------------------------------------

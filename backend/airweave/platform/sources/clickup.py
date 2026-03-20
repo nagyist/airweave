@@ -266,7 +266,7 @@ class ClickUpSource(BaseSource):
         except SourceAuthError:
             raise
         except Exception as e:
-            self.logger.error(f"Error fetching comments for task {task_id}: {e}")
+            self.logger.warning(f"Error fetching comments for task {task_id}: {e}")
             raise
 
     async def _generate_file_entities(  # noqa: C901
@@ -379,7 +379,7 @@ class ClickUpSource(BaseSource):
         except SourceAuthError:
             raise
         except Exception as e:
-            self.logger.error(f"Error processing attachments for task {task_id}: {e}")
+            self.logger.warning(f"Error processing attachments for task {task_id}: {e}")
 
     # ------------------------------------------------------------------
     # Orchestration
@@ -505,9 +505,6 @@ class ClickUpSource(BaseSource):
                 yield file_entity
 
     async def validate(self) -> bool:
-        """Validate credentials by calling ClickUp's /user endpoint."""
-        return await self._validate_oauth2(
-            ping_url=f"{self.BASE_URL}/user",
-            headers={"Accept": "application/json"},
-            timeout=10.0,
-        )
+        """Validate credentials by pinging ClickUp's /user endpoint."""
+        await self._get(f"{self.BASE_URL}/user")
+        return True

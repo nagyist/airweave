@@ -241,12 +241,13 @@ async def test_list_event_types_single_page_when_no_pagination():
 async def test_validate_uses_configured_host_in_ping_url():
     source = await _cal_source(config=CalComConfig(host="https://cal.example.com"))
 
-    with patch.object(source, "_validate_oauth2", new=AsyncMock(return_value=True)) as m:
+    with patch.object(source, "_get", new=AsyncMock(return_value={"data": []})) as m:
         ok = await source.validate()
         assert ok is True
         m.assert_awaited_once()
-        ping_url = m.call_args.kwargs["ping_url"]
-        assert ping_url.startswith("https://cal.example.com/")
+        assert m.call_args[0][0] == "/v2/bookings"
+        assert m.call_args.kwargs["params"] == {"take": 1, "skip": 0}
+        assert m.call_args.kwargs["headers"]["cal-api-version"] == CAL_BOOKINGS_API_VERSION
 
 
 # ---------------------------------------------------------------------------

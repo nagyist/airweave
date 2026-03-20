@@ -457,7 +457,7 @@ class ZohoCRMSource(BaseSource):
         else:
             token = await self.auth.get_token()
         if not token:
-            self.logger.error("OAuth2 validation failed: no access token available.")
+            self.logger.warning("OAuth2 validation failed: no access token available.")
             return False
 
         headers = {
@@ -471,5 +471,5 @@ class ZohoCRMSource(BaseSource):
             )
             return 200 <= resp.status_code < 300
         except Exception as e:
-            self.logger.error(f"Zoho validation request error: {e}")
+            self.logger.warning(f"Zoho validation request error: {e}")
             return False

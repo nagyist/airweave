@@ -231,7 +231,7 @@ class PowerPointSource(BaseSource):
         except SourceAuthError:
             raise
         except Exception as e:
-            self.logger.error(
+            self.logger.warning(
                 f"Error generating PowerPoint presentation entities: {str(e)}",
                 exc_info=True,
             )
@@ -307,7 +307,7 @@ class PowerPointSource(BaseSource):
         except SourceAuthError:
             raise
         except Exception as e:
-            self.logger.error(f"Error in entity generation: {str(e)}", exc_info=True)
+            self.logger.warning(f"Error in entity generation: {str(e)}", exc_info=True)
             raise
         finally:
             self.logger.debug(
@@ -316,9 +316,9 @@ class PowerPointSource(BaseSource):
             )
 
     async def validate(self) -> bool:
-        """Verify Microsoft PowerPoint OAuth2 token by pinging the drive endpoint."""
-        return await self._validate_oauth2(
-            ping_url=f"{self.GRAPH_BASE_URL}/me/drive?$select=id",
-            headers={"Accept": "application/json"},
-            timeout=10.0,
+        """Validate credentials by pinging the drive endpoint."""
+        await self._get(
+            f"{self.GRAPH_BASE_URL}/me/drive",
+            params={"$select": "id"},
         )
+        return True

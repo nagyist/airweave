@@ -91,18 +91,12 @@ class GoogleDocsSource(BaseSource):
         return instance
 
     async def validate(self) -> bool:
-        """Validate the Google Docs source connection.
-
-        Tests the connection by making a simple API call to list drives.
-
-        Returns:
-            True if connection is valid, False otherwise
-        """
-        return await self._validate_oauth2(
-            ping_url="https://www.googleapis.com/drive/v3/about?fields=user",
-            headers={"Accept": "application/json"},
-            timeout=10.0,
+        """Validate credentials by pinging Drive API about (user)."""
+        await self._get(
+            "https://www.googleapis.com/drive/v3/about",
+            params={"fields": "user"},
         )
+        return True
 
     # --- HTTP helpers ---
 
@@ -146,7 +140,7 @@ class GoogleDocsSource(BaseSource):
                 entity=entity, client=self.http_client, auth=self.auth, logger=self.logger
             )
             if not entity.local_path:
-                self.logger.error(f"Download failed - no local path set for {entity.name}")
+                self.logger.warning(f"Download failed - no local path set for {entity.name}")
                 return False
             self.logger.debug(f"Successfully downloaded document: {entity.name}")
             return True
@@ -158,10 +152,10 @@ class GoogleDocsSource(BaseSource):
         except httpx.HTTPStatusError as e:
             if e.response.status_code == 401:
                 raise
-            self.logger.error(f"Failed to download document {entity.name}: {e}")
+            self.logger.warning(f"Failed to download document {entity.name}: {e}")
             return False
         except Exception as e:
-            self.logger.error(f"Failed to download document {entity.name}: {e}")
+            self.logger.warning(f"Failed to download document {entity.name}: {e}")
             return False
 
     # --- Incremental sync helpers ---
@@ -174,7 +168,7 @@ class GoogleDocsSource(BaseSource):
         except SourceAuthError:
             raise
         except Exception as e:
-            self.logger.error(f"Failed to get start page token: {e}")
+            self.logger.warning(f"Failed to get start page token: {e}")
             return None
 
     # --- Main sync method ---
@@ -257,7 +251,7 @@ class GoogleDocsSource(BaseSource):
                         try:
                             entity = GoogleDocsDocumentEntity.from_api(file_data)
                         except Exception as e:
-                            self.logger.error(
+                            self.logger.warning(
                                 f"Failed to create entity for document {file_data.get('id')}: {e}",
                                 exc_info=True,
                             )
@@ -331,7 +325,7 @@ class GoogleDocsSource(BaseSource):
                     try:
                         entity = GoogleDocsDocumentEntity.from_api(file_data)
                     except Exception as e:
-                        self.logger.error(
+                        self.logger.warning(
                             f"Failed to create entity for document {file_data.get('id')}: {e}",
                             exc_info=True,
                         )

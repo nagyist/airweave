@@ -82,28 +82,26 @@ async def test_create_with_config():
 
 @pytest.mark.asyncio
 async def test_validate_success():
-    """validate() should return True when _validate_oauth2 succeeds."""
+    """validate() should return True when _get succeeds."""
     source = await _make_zoom_source("token")
     with patch.object(
-        source, "_validate_oauth2", new_callable=AsyncMock, return_value=True
-    ) as mock_validate:
+        source, "_get", new_callable=AsyncMock, return_value={"id": "u1"}
+    ) as mock_get:
         result = await source.validate()
         assert result is True
-        mock_validate.assert_called_once()
-        call_kw = mock_validate.call_args[1]
-        assert call_kw["ping_url"] == "https://api.zoom.us/v2/users/me"
-        assert "Accept" in call_kw["headers"]
+        mock_get.assert_awaited_once()
+        assert mock_get.call_args[0][0] == "https://api.zoom.us/v2/users/me"
 
 
 @pytest.mark.asyncio
 async def test_validate_failure():
-    """validate() should return False when _validate_oauth2 fails."""
+    """validate() should propagate when _get raises."""
     source = await _make_zoom_source("token")
     with patch.object(
-        source, "_validate_oauth2", new_callable=AsyncMock, return_value=False
+        source, "_get", new_callable=AsyncMock, side_effect=RuntimeError("boom")
     ):
-        result = await source.validate()
-        assert result is False
+        with pytest.raises(RuntimeError, match="boom"):
+            await source.validate()
 
 
 # ---------------------------------------------------------------------------

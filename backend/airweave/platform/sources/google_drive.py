@@ -102,12 +102,12 @@ class GoogleDriveSource(BaseSource):
         return _parse_drive_dt(value)
 
     async def validate(self) -> bool:
-        """Validate the Google Drive source connection."""
-        return await self._validate_oauth2(
-            ping_url="https://www.googleapis.com/drive/v3/drives?pageSize=1",
-            headers={"Accept": "application/json"},
-            timeout=10.0,
+        """Validate credentials by pinging the shared drives list."""
+        await self._get(
+            "https://www.googleapis.com/drive/v3/drives",
+            params={"pageSize": "1"},
         )
+        return True
 
     @retry(
         stop=stop_after_attempt(5),
@@ -340,7 +340,7 @@ class GoogleDriveSource(BaseSource):
                         if fresh_token:
                             self._cursor.update(start_page_token=fresh_token)
                     except Exception as token_error:
-                        self.logger.error(
+                        self.logger.warning(
                             f"Failed to refresh startPageToken after 410: {token_error}"
                         )
             else:
@@ -418,7 +418,7 @@ class GoogleDriveSource(BaseSource):
             try:
                 next_token = await self._get_start_page_token()
             except Exception as exc:
-                self.logger.error(f"Failed to fetch startPageToken: {exc}")
+                self.logger.warning(f"Failed to fetch startPageToken: {exc}")
                 return
 
         if next_token:
@@ -469,7 +469,7 @@ class GoogleDriveSource(BaseSource):
             except SourceAuthError:
                 raise
             except Exception as e:
-                self.logger.error(f"Error fetching files: {str(e)}")
+                self.logger.warning(f"Error fetching files: {str(e)}")
                 break
 
             files_in_page = data.get("files", [])
@@ -880,7 +880,9 @@ class GoogleDriveSource(BaseSource):
         except SourceAuthError:
             raise
         except Exception as e:
-            self.logger.error(f"Failed to process file {file_obj.get('name', 'unknown')}: {str(e)}")
+            self.logger.warning(
+                f"Failed to process file {file_obj.get('name', 'unknown')}: {str(e)}"
+            )
             return None
 
     async def _process_changed_file(
@@ -980,7 +982,7 @@ class GoogleDriveSource(BaseSource):
                         raise
                     except Exception as e:
                         error_context = f"in drive {drive_id}" if drive_id else "in MY DRIVE"
-                        self.logger.error(
+                        self.logger.warning(
                             f"Failed to process file {file_obj.get('name', 'unknown')} "
                             f"{error_context}: {str(e)}"
                         )
@@ -989,7 +991,7 @@ class GoogleDriveSource(BaseSource):
         except SourceAuthError:
             raise
         except Exception as e:
-            self.logger.error(f"Critical exception in _generate_file_entities: {str(e)}")
+            self.logger.warning(f"Critical exception in _generate_file_entities: {str(e)}")
 
     async def generate_entities(  # noqa: C901
         self,
@@ -1026,7 +1028,7 @@ class GoogleDriveSource(BaseSource):
             except SourceAuthError:
                 raise
             except Exception as e:
-                self.logger.error(f"Error generating drive entities: {str(e)}")
+                self.logger.warning(f"Error generating drive entities: {str(e)}")
 
             self._setup_breadcrumbs(drive_objs)
             drive_breadcrumbs = self._drive_breadcrumbs
@@ -1064,7 +1066,9 @@ class GoogleDriveSource(BaseSource):
                         except SourceAuthError:
                             raise
                         except Exception as e:
-                            self.logger.error(f"Error processing shared drive {drive_id}: {str(e)}")
+                            self.logger.warning(
+                                f"Error processing shared drive {drive_id}: {str(e)}"
+                            )
                             continue
 
                     try:
@@ -1079,7 +1083,7 @@ class GoogleDriveSource(BaseSource):
                     except SourceAuthError:
                         raise
                     except Exception as e:
-                        self.logger.error(f"Error processing My Drive files: {str(e)}")
+                        self.logger.warning(f"Error processing My Drive files: {str(e)}")
 
                 # INCLUDE MODE: Resolve patterns and traverse only matched subtrees
                 # Shared drives first
@@ -1144,7 +1148,7 @@ class GoogleDriveSource(BaseSource):
                                         except SourceAuthError:
                                             raise
                                         except Exception as e:
-                                            self.logger.error(
+                                            self.logger.warning(
                                                 f"Download failed {file_entity.name}: {e}"
                                             )
                                             continue
@@ -1203,7 +1207,7 @@ class GoogleDriveSource(BaseSource):
                                         except SourceAuthError:
                                             raise
                                         except Exception as e:
-                                            self.logger.error(
+                                            self.logger.warning(
                                                 f"Download failed {file_entity.name}: {e}"
                                             )
                                             continue
@@ -1211,7 +1215,7 @@ class GoogleDriveSource(BaseSource):
                     except SourceAuthError:
                         raise
                     except Exception as e:
-                        self.logger.error(f"Include mode error for drive {drive_id}: {str(e)}")
+                        self.logger.warning(f"Include mode error for drive {drive_id}: {str(e)}")
 
                 # My Drive include patterns
                 try:
@@ -1273,7 +1277,7 @@ class GoogleDriveSource(BaseSource):
                                     except SourceAuthError:
                                         raise
                                     except Exception as e:
-                                        self.logger.error(
+                                        self.logger.warning(
                                             f"Failed to download file {file_entity.name}: {e}"
                                         )
                                         continue
@@ -1332,7 +1336,7 @@ class GoogleDriveSource(BaseSource):
                                     except SourceAuthError:
                                         raise
                                     except Exception as e:
-                                        self.logger.error(
+                                        self.logger.warning(
                                             f"Failed to download file {file_entity.name}: {e}"
                                         )
                                         continue
@@ -1340,7 +1344,7 @@ class GoogleDriveSource(BaseSource):
                 except SourceAuthError:
                     raise
                 except Exception as e:
-                    self.logger.error(f"Include mode error for My Drive: {str(e)}")
+                    self.logger.warning(f"Include mode error for My Drive: {str(e)}")
 
             # Store the next start page token for future incremental syncs
             await self._store_next_start_page_token()
@@ -1348,7 +1352,7 @@ class GoogleDriveSource(BaseSource):
         except SourceAuthError:
             raise
         except Exception as e:
-            self.logger.error(f"Critical error in generate_entities: {str(e)}")
+            self.logger.warning(f"Critical error in generate_entities: {str(e)}")
             from airweave.platform.sync.exceptions import SyncFailureError
 
             raise SyncFailureError(f"Google Drive sync failed: {str(e)}") from e

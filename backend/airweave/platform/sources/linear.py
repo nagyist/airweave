@@ -181,7 +181,7 @@ class LinearSource(BaseSource):
             collection_key = next(iter(data.keys()), None)
 
             if not collection_key:
-                self.logger.error(f"Unexpected response structure: {response}")
+                self.logger.warning(f"Unexpected response structure: {response}")
                 break
 
             collection_data = data[collection_key]
@@ -602,9 +602,9 @@ class LinearSource(BaseSource):
         except SourceAuthError:
             raise
         except SourceError as exc:
-            self.logger.error(f"Failed to generate {entity_type} entities: {exc}")
+            self.logger.warning(f"Failed to generate {entity_type} entities: {exc}")
         except Exception as exc:
-            self.logger.error(f"Unexpected error generating {entity_type} entities: {exc}")
+            self.logger.warning(f"Unexpected error generating {entity_type} entities: {exc}")
 
     # ------------------------------------------------------------------
     # Main entry point
@@ -664,7 +664,7 @@ class LinearSource(BaseSource):
         try:
             token = await self.auth.get_token()
             if not token:
-                self.logger.error("Linear validation failed: no access token available.")
+                self.logger.warning("Linear validation failed: no access token available.")
                 return False
 
             query = {"query": "query { viewer { id } }"}
@@ -696,5 +696,5 @@ class LinearSource(BaseSource):
                 return bool(viewer.get("id"))
 
         except httpx.RequestError as e:
-            self.logger.error(f"Linear validation request error: {e}")
+            self.logger.warning(f"Linear validation request error: {e}")
             return False

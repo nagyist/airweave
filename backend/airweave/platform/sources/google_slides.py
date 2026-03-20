@@ -134,15 +134,15 @@ class GoogleSlidesSource(BaseSource):
     # -----------------------
 
     async def validate(self) -> bool:
-        """Validate the Google Slides source connection."""
-        return await self._validate_oauth2(
-            ping_url=(
-                "https://www.googleapis.com/drive/v3/files"
-                "?pageSize=1&q=mimeType='application/vnd.google-apps.presentation'"
-            ),
-            headers={"Accept": "application/json"},
-            timeout=10.0,
+        """Validate credentials by pinging Drive files (presentation MIME type)."""
+        await self._get(
+            "https://www.googleapis.com/drive/v3/files",
+            params={
+                "pageSize": "1",
+                "q": "mimeType='application/vnd.google-apps.presentation'",
+            },
         )
+        return True
 
     # -----------------------
     # File downloads
@@ -162,7 +162,7 @@ class GoogleSlidesSource(BaseSource):
                 entity=entity, client=self.http_client, auth=self.auth, logger=self.logger
             )
             if not entity.local_path:
-                self.logger.error(f"Download failed - no local path set for {entity.name}")
+                self.logger.warning(f"Download failed - no local path set for {entity.name}")
                 return False
             self.logger.debug(f"Successfully downloaded presentation: {entity.name}")
             return True
@@ -174,10 +174,10 @@ class GoogleSlidesSource(BaseSource):
         except httpx.HTTPStatusError as e:
             if e.response.status_code == 401:
                 raise
-            self.logger.error(f"Failed to download presentation {entity.name}: {e}")
+            self.logger.warning(f"Failed to download presentation {entity.name}: {e}")
             return False
         except Exception as e:
-            self.logger.error(f"Failed to download presentation {entity.name}: {e}")
+            self.logger.warning(f"Failed to download presentation {entity.name}: {e}")
             return False
 
     # -----------------------
@@ -213,7 +213,7 @@ class GoogleSlidesSource(BaseSource):
             except SourceAuthError:
                 raise
             except Exception as e:
-                self.logger.error(f"Failed to fetch presentations: {e}")
+                self.logger.warning(f"Failed to fetch presentations: {e}")
                 return
 
             presentation_files = data.get("files", [])
@@ -226,7 +226,7 @@ class GoogleSlidesSource(BaseSource):
                 except SourceAuthError:
                     raise
                 except Exception as e:
-                    self.logger.error(f"Failed to create presentation entity: {e}")
+                    self.logger.warning(f"Failed to create presentation entity: {e}")
                     continue
 
             page_token = data.get("nextPageToken")

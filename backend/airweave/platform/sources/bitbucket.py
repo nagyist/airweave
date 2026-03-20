@@ -320,7 +320,7 @@ class BitbucketSource(BaseSource):
         except SourceAuthError:
             raise
         except Exception as e:
-            self.logger.error(f"Error traversing path {path}: {str(e)}")
+            self.logger.warning(f"Error traversing path {path}: {str(e)}")
 
     async def _process_file(
         self,
@@ -366,7 +366,7 @@ class BitbucketSource(BaseSource):
                     try:
                         line_count = content_text.count("\n") + 1
                     except Exception as e:
-                        self.logger.error(f"Error counting lines for {item_path}: {str(e)}")
+                        self.logger.warning(f"Error counting lines for {item_path}: {str(e)}")
 
                 mime_type = mimetypes.guess_type(item_path)[0] or "text/plain"
                 file_type = mime_type.split("/")[0] if "/" in mime_type else "file"
@@ -411,7 +411,7 @@ class BitbucketSource(BaseSource):
         except SourceAuthError:
             raise
         except Exception as e:
-            self.logger.error(f"Error processing file {item_path}: {str(e)}")
+            self.logger.warning(f"Error processing file {item_path}: {str(e)}")
 
     async def generate_entities(
         self,

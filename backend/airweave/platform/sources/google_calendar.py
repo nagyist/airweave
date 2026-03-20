@@ -368,9 +368,9 @@ class GoogleCalendarSource(BaseSource):
                 yield entity
 
     async def validate(self) -> bool:
-        """Verify Google Calendar OAuth2 token by pinging the calendarList endpoint."""
-        return await self._validate_oauth2(
-            ping_url="https://www.googleapis.com/calendar/v3/users/me/calendarList?maxResults=1",
-            headers={"Accept": "application/json"},
-            timeout=10.0,
+        """Validate credentials by pinging the Calendar API calendarList endpoint."""
+        await self._get(
+            "https://www.googleapis.com/calendar/v3/users/me/calendarList",
+            params={"maxResults": "1"},
         )
+        return True

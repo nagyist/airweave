@@ -41,6 +41,18 @@ class AttioConfig(SourceConfig):
 class BitbucketConfig(SourceConfig):
     """Bitbucket configuration schema."""
 
+    workspace: str = Field(
+        default="",
+        title="Workspace",
+        description="Bitbucket workspace slug (e.g., 'my-workspace'). "
+        "Required when using OAuth; for API-token auth this can also be set in credentials.",
+    )
+    repo_slug: str = Field(
+        default="",
+        title="Repository Slug",
+        description="Specific repository to sync (e.g., 'my-repo'). "
+        "If empty, syncs all repositories in the workspace.",
+    )
     branch: str = Field(
         default="",
         title="Branch name",

@@ -74,18 +74,34 @@ class BitbucketSource(BaseSource):
     ) -> "BitbucketSource":
         """Create a new source instance with authentication.
 
-        Bitbucket uses Basic Auth (email:token), so we access the credential
-        object directly for email/workspace/repo_slug.
+        Supports two auth modes:
+        - Direct (API token): Basic Auth with email:token. Workspace/repo from creds.
+        - OAuth (auth provider): Bearer token. Workspace/repo from config.
         """
         instance = cls(auth=auth, logger=logger, http_client=http_client)
         creds: BitbucketAuthConfig = auth.credentials
-        instance._email = creds.email
-        instance._workspace = creds.workspace
-        instance._repo_slug = creds.repo_slug
         instance._access_token = creds.access_token
+        instance._email = getattr(creds, "email", None) or None
+
+        instance._workspace = config.workspace or getattr(creds, "workspace", None) or ""
+        instance._repo_slug = config.repo_slug or getattr(creds, "repo_slug", None) or ""
         instance._branch = config.branch
         instance._file_extensions = config.file_extensions
         return instance
+
+    def _auth_kwargs(self, accept: str = "application/json") -> Dict[str, Any]:
+        """Build auth kwargs for httpx requests.
+
+        Uses Basic Auth when email is available (direct API token),
+        Bearer token otherwise (OAuth).
+        """
+        headers: Dict[str, str] = {"Accept": accept}
+        kwargs: Dict[str, Any] = {"headers": headers}
+        if self._email:
+            kwargs["auth"] = httpx.BasicAuth(username=self._email, password=self._access_token)
+        else:
+            headers["Authorization"] = f"Bearer {self._access_token}"
+        return kwargs
 
     @retry(
         stop=stop_after_attempt(5),
@@ -94,13 +110,11 @@ class BitbucketSource(BaseSource):
         reraise=True,
     )
     async def _get(self, url: str, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-        """Make authenticated API request using Basic authentication.
+        """Make authenticated API request.
 
         Retries on 429 rate limits and timeout errors.
         """
-        auth = httpx.BasicAuth(username=self._email, password=self._access_token)
-        headers = {"Accept": "application/json"}
-        response = await self.http_client.get(url, auth=auth, headers=headers, params=params)
+        response = await self.http_client.get(url, params=params, **self._auth_kwargs())
         raise_for_status(
             response,
             source_short_name=self.short_name,
@@ -117,12 +131,11 @@ class BitbucketSource(BaseSource):
 
         all_results = []
         next_url = url
-        auth = httpx.BasicAuth(username=self._email, password=self._access_token)
-        headers = {"Accept": "application/json"}
+        auth_kwargs = self._auth_kwargs()
 
         while next_url:
             response = await self.http_client.get(
-                next_url, auth=auth, headers=headers, params=params if next_url == url else None
+                next_url, params=params if next_url == url else None, **auth_kwargs
             )
             raise_for_status(
                 response,
@@ -338,14 +351,11 @@ class BitbucketSource(BaseSource):
                 f"{self.BASE_URL}/repositories/{workspace_slug}/{repo_slug}"
                 f"/src/{branch}/{item_path}"
             )
-            auth = httpx.BasicAuth(username=self._email, password=self._access_token)
-            headers = {"Accept": "text/plain"}
 
             file_response = await self.http_client.get(
                 file_url,
-                auth=auth,
-                headers=headers,
                 params={"format": "raw"},
+                **self._auth_kwargs(accept="text/plain"),
             )
             raise_for_status(
                 file_response,

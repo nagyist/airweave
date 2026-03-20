@@ -187,12 +187,4 @@ class SliteSource(BaseSource):
 
     async def validate(self) -> None:
         """Validate API key by listing one page of notes."""
-        try:
-            page = await self._list_notes_page()
-        except SourceAuthError:
-            raise
-        except Exception as e:
-            self.logger.warning(f"Slite validation failed: {e}")
-            raise
-        if "notes" not in page:
-            raise ValueError("Slite validation failed: unexpected API response")
+        await self._list_notes_page()

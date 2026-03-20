@@ -14,7 +14,6 @@ from tenacity import retry, stop_after_attempt
 
 from airweave.core.logging import ContextualLogger
 from airweave.domains.browse_tree.types import NodeSelectionData
-from airweave.domains.sources.exceptions import SourceAuthError
 from airweave.domains.sources.token_providers.protocol import SourceAuthProvider
 from airweave.domains.storage.file_service import FileService
 from airweave.domains.syncs.cursors.cursor import SyncCursor
@@ -240,12 +239,6 @@ class ServiceNowSource(BaseSource):
 
     async def validate(self) -> None:
         """Validate credentials by querying the instance (minimal table read)."""
-        try:
-            url = self._table_url("incident")
-            params = {"sysparm_limit": 1, "sysparm_fields": "sys_id"}
-            await self._get(url, params=params)
-        except SourceAuthError:
-            raise
-        except Exception as e:
-            self.logger.warning(f"ServiceNow validation failed: {e}")
-            raise
+        await self._get(
+            self._table_url("incident"), params={"sysparm_limit": 1, "sysparm_fields": "sys_id"}
+        )

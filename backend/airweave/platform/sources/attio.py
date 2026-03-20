@@ -541,8 +541,4 @@ class AttioSource(BaseSource):
 
     async def validate(self) -> None:
         """Verify credentials by pinging the Attio API."""
-        try:
-            await self._get(f"{_API}/objects", params={"limit": 1})
-        except Exception as e:
-            self.logger.warning(f"Attio credential validation failed: {e}")
-            raise
+        await self._get(f"{_API}/objects", params={"limit": 1})

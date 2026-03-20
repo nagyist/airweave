@@ -452,25 +452,4 @@ class ZohoCRMSource(BaseSource):
 
         Note: Zoho uses 'Zoho-oauthtoken' header format, not standard 'Bearer'.
         """
-        if self.auth.provider_kind == AuthProviderKind.CREDENTIAL:
-            token = self.auth.credentials.access_token
-        else:
-            token = await self.auth.get_token()
-        if not token:
-            self.logger.warning("OAuth2 validation failed: no access token available.")
-            raise ValueError("Zoho validation failed: no access token available")
-
-        headers = {
-            "Authorization": f"Zoho-oauthtoken {token}",
-            "Accept": "application/json",
-        }
-        try:
-            resp = await self.http_client.get(
-                f"{self._get_base_url()}/users?type=CurrentUser",
-                headers=headers,
-            )
-        except Exception as e:
-            self.logger.warning(f"Zoho validation request error: {e}")
-            raise
-        if not (200 <= resp.status_code < 300):
-            raise ValueError(f"Zoho validation failed: HTTP {resp.status_code}")
+        await self._get(f"{self._get_base_url()}/users?type=CurrentUser")

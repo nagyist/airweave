@@ -27,7 +27,6 @@ from tenacity import retry, stop_after_attempt
 from airweave.core.logging import ContextualLogger
 from airweave.core.shared_models import RateLimitLevel
 from airweave.domains.browse_tree.types import NodeSelectionData
-from airweave.domains.sources.exceptions import SourceAuthError
 from airweave.domains.sources.token_providers.protocol import AuthProviderKind, SourceAuthProvider
 from airweave.domains.storage.file_service import FileService
 from airweave.domains.syncs.cursors.cursor import SyncCursor
@@ -552,10 +551,4 @@ class StripeSource(BaseSource):
 
     async def validate(self) -> None:
         """Verify Stripe API key by pinging a lightweight endpoint (/v1/balance)."""
-        try:
-            await self._get("https://api.stripe.com/v1/balance")
-        except SourceAuthError:
-            raise
-        except Exception as e:
-            self.logger.warning(f"Unexpected error during Stripe validation: {e}")
-            raise
+        await self._get("https://api.stripe.com/v1/balance")

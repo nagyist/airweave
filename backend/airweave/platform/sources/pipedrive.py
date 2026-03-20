@@ -245,13 +245,4 @@ class PipedriveSource(BaseSource):
 
     async def validate(self) -> None:
         """Verify Pipedrive API token by pinging a lightweight endpoint."""
-        try:
-            url = f"{self.BASE_URL}/users/me"
-            data = await self._get(url)
-        except SourceAuthError:
-            raise
-        except Exception as e:
-            self.logger.warning(f"Pipedrive API token validation failed: {e}")
-            raise
-        if not data.get("success", False):
-            raise ValueError("Pipedrive validation failed: API returned success=false")
+        await self._get(f"{self.BASE_URL}/users/me")

@@ -498,13 +498,4 @@ class TrelloSource(BaseSource):
 
     async def validate(self) -> None:
         """Verify OAuth1 credentials by calling the /members/me endpoint."""
-        try:
-            await self._get(
-                f"{self.API_BASE}/members/me",
-                query_params={"fields": "id,username"},
-            )
-        except SourceAuthError:
-            raise
-        except Exception as e:
-            self.logger.warning(f"OAuth1 validation failed: {str(e)}")
-            raise
+        await self._get(f"{self.API_BASE}/members/me", query_params={"fields": "id,username"})

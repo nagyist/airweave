@@ -362,17 +362,7 @@ class ConfluenceSource(BaseSource):
 
     async def validate(self) -> None:
         """Verify Confluence OAuth2 token by calling accessible-resources endpoint."""
-        try:
-            resources = await self._get_accessible_resources()
-            if not resources:
-                self.logger.warning("Confluence validation failed: no accessible resources found")
-                raise ValueError("Confluence validation failed: no accessible resources found")
-            self.logger.debug("Confluence validation successful")
-        except SourceAuthError:
-            raise
-        except Exception as e:
-            self.logger.warning(f"Confluence validation failed: {e}")
-            raise
+        await self._get(ATLASSIAN_ACCESSIBLE_RESOURCES_URL)
 
     async def generate_entities(  # noqa: C901
         self,

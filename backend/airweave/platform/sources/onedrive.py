@@ -23,7 +23,7 @@ from tenacity import retry, stop_after_attempt
 from airweave.core.logging import ContextualLogger
 from airweave.core.shared_models import RateLimitLevel
 from airweave.domains.browse_tree.types import NodeSelectionData
-from airweave.domains.sources.exceptions import SourceAuthError, SourceEntityForbiddenError
+from airweave.domains.sources.exceptions import SourceAuthError
 from airweave.domains.sources.token_providers.protocol import TokenProviderProtocol
 from airweave.domains.storage import FileSkippedException
 from airweave.domains.storage.file_service import FileService
@@ -368,10 +368,4 @@ class OneDriveSource(BaseSource):
 
     async def validate(self) -> None:
         """Validate OneDrive credentials with drive access fallback."""
-        try:
-            await self._get("https://graph.microsoft.com/v1.0/me/drive")
-        except SourceEntityForbiddenError:
-            await self._get(
-                "https://graph.microsoft.com/v1.0/me/drives",
-                params={"$top": "1"},
-            )
+        await self._get("https://graph.microsoft.com/v1.0/me/drive")

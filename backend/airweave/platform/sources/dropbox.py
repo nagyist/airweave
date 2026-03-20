@@ -409,14 +409,4 @@ class DropboxSource(BaseSource):
 
     async def validate(self) -> None:
         """Verify Dropbox OAuth2 token by calling /users/get_current_account (POST, no body)."""
-        try:
-            await self._post(
-                "https://api.dropboxapi.com/2/users/get_current_account",
-                None,
-            )
-        except SourceAuthError:
-            self.logger.warning("Dropbox validation failed: authentication error")
-            raise
-        except Exception as e:
-            self.logger.warning(f"Unexpected error during Dropbox validation: {e}")
-            raise
+        await self._post("https://api.dropboxapi.com/2/users/get_current_account", None)

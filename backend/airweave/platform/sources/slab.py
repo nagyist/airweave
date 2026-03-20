@@ -21,7 +21,6 @@ from tenacity import retry, stop_after_attempt
 from airweave.core.logging import ContextualLogger
 from airweave.core.shared_models import RateLimitLevel
 from airweave.domains.browse_tree.types import NodeSelectionData
-from airweave.domains.sources.exceptions import SourceAuthError
 from airweave.domains.sources.token_providers.protocol import AuthProviderKind, SourceAuthProvider
 from airweave.domains.storage.file_service import FileService
 from airweave.domains.syncs.cursors.cursor import SyncCursor
@@ -327,12 +326,4 @@ class SlabSource(BaseSource):
 
     async def validate(self) -> None:
         """Verify credentials by querying the organization info."""
-        try:
-            result = await self._post("query { organization { id name host } }")
-        except SourceAuthError:
-            raise
-        except Exception as e:
-            self.logger.warning(f"Validation failed: {e}")
-            raise
-        if not ("organization" in result and result["organization"] is not None):
-            raise ValueError("Slab validation failed: unexpected GraphQL response")
+        await self._post("query { organization { id name host } }")

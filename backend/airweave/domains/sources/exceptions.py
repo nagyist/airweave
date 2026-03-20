@@ -125,7 +125,7 @@ class SourceValidationError(SourceError):
 
 
 class SourceAuthError(SourceError):
-    """401/403 — credentials are invalid, revoked, or insufficient.
+    """401 Unauthorized.
 
     The pipeline should abort the sync.
     """
@@ -143,7 +143,7 @@ class SourceAuthError(SourceError):
         Args:
             message: Human-readable error description.
             source_short_name: Source identifier.
-            status_code: HTTP status code that triggered this (401 or 403).
+            status_code: HTTP status code that triggered this (401).
             token_provider_kind: Auth provider kind.
         """
         self.status_code = status_code

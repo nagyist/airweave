@@ -580,48 +580,4 @@ class MondaySource(BaseSource):
 
     async def validate(self) -> None:
         """Verify Monday OAuth2 token by POSTing a minimal GraphQL query to /v2."""
-        try:
-            token = await self.auth.get_token()
-            if not token:
-                self.logger.warning("Monday validation failed: no access token available.")
-                raise ValueError("Monday validation failed: no access token available.")
-
-            payload = {"query": "query { me { id } }"}
-            headers = {
-                "Authorization": token,
-                "Content-Type": "application/json",
-                "Accept": "application/json",
-            }
-
-            resp = await self.http_client.post(self.GRAPHQL_ENDPOINT, json=payload, headers=headers)
-
-            if resp.status_code == 401 and self.auth.supports_refresh:
-                self.logger.info("Monday validate: 401 Unauthorized; attempting token refresh.")
-                new_token = await self.auth.force_refresh()
-                headers["Authorization"] = new_token
-                resp = await self.http_client.post(
-                    self.GRAPHQL_ENDPOINT, json=payload, headers=headers
-                )
-
-            if not (200 <= resp.status_code < 300):
-                self.logger.warning(
-                    f"Monday validate failed: HTTP {resp.status_code} - {resp.text[:200]}"
-                )
-                raise ValueError(f"Monday validate failed: HTTP {resp.status_code}")
-
-            body = resp.json()
-            if body.get("errors"):
-                self.logger.warning(f"Monday validate GraphQL errors: {body['errors']}")
-                raise ValueError("Monday validate failed: GraphQL errors in response")
-
-            me = (body.get("data") or {}).get("me") or {}
-            if not me.get("id"):
-                raise ValueError("Monday validation failed: missing me id")
-
-        except SourceAuthError:
-            raise
-        except ValueError:
-            raise
-        except Exception as e:
-            self.logger.warning(f"Unexpected error during Monday validation: {e}")
-            raise
+        await self._graphql_query("query { me { id } }")

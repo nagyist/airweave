@@ -5,7 +5,8 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Any, Optional
 from uuid import UUID
 
-from sqlalchemy import JSON, Connection, DateTime, String, event, text
+from sqlalchemy import JSON, DateTime, String, event, text
+from sqlalchemy import Connection as SAConnection
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -81,12 +82,23 @@ class Sync(OrganizationBase, UserMixin):
     )
 
 
-def cancel_running_sync_jobs(connection: Connection, sync_id: UUID) -> None:
+def cancel_running_sync_jobs(connection: SAConnection, sync_id: UUID) -> None:
     """Cancel any running or pending jobs for the given sync.
 
     Called from ORM event listeners and from source_connection cleanup.
     Best-effort: failures are logged but do not propagate.
     """
+
+    async def _cancel_workflow(workflow_job_id: str) -> None:
+        client = await temporal_client.get_client()
+        workflow_id = f"sync-{workflow_job_id}"
+        try:
+            handle = client.get_workflow_handle(workflow_id)
+            await handle.cancel()
+            logger.info(f"Requested Temporal cancellation for workflow {workflow_id}")
+        except Exception as e:
+            logger.debug(f"Could not cancel Temporal workflow {workflow_id}: {e}")
+
     try:
         result = connection.execute(
             text(
@@ -121,17 +133,6 @@ def cancel_running_sync_jobs(connection: Connection, sync_id: UUID) -> None:
             )
 
             try:
-
-                async def _cancel_workflow(workflow_job_id: str) -> None:
-                    client = await temporal_client.get_client()
-                    workflow_id = f"sync-{workflow_job_id}"
-                    try:
-                        handle = client.get_workflow_handle(workflow_id)
-                        await handle.cancel()
-                        logger.info(f"Requested Temporal cancellation for workflow {workflow_id}")
-                    except Exception as e:
-                        logger.debug(f"Could not cancel Temporal workflow {workflow_id}: {e}")
-
                 try:
                     loop = asyncio.get_running_loop()
                     loop.create_task(_cancel_workflow(job_id))

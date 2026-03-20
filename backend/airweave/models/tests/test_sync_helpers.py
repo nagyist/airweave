@@ -114,6 +114,65 @@ def test_cleanup_temporal_schedules_exception_is_swallowed():
 
 
 # ---------------------------------------------------------------------------
+# _cancel_workflow coverage (lines 93-99)
+# ---------------------------------------------------------------------------
+
+
+def test_cancel_workflow_success_path(sync_job_db, quiet_logger):
+    """Temporal cancel succeeds — covers lines 93, 95-97."""
+    sync_id = uuid4()
+    job_id = uuid4()
+
+    sync_job_db.execute(
+        text(
+            "INSERT INTO sync_job (id, sync_id, status, created_at)"
+            " VALUES (:id, :sync_id, :status, CURRENT_TIMESTAMP)"
+        ),
+        {"id": str(job_id), "sync_id": str(sync_id), "status": "running"},
+    )
+
+    mock_handle = AsyncMock()
+    mock_client = MagicMock()
+    mock_client.get_workflow_handle.return_value = mock_handle
+
+    with patch(
+        "airweave.models.sync.temporal_client.get_client",
+        new=AsyncMock(return_value=mock_client),
+    ):
+        cancel_running_sync_jobs(sync_job_db, sync_id)
+
+    mock_handle.cancel.assert_awaited_once()
+    assert any("Requested Temporal cancellation" in m for m in quiet_logger.infos)
+
+
+def test_cancel_workflow_exception_path(sync_job_db, quiet_logger):
+    """Temporal cancel raises — covers lines 93, 98-99."""
+    sync_id = uuid4()
+    job_id = uuid4()
+
+    sync_job_db.execute(
+        text(
+            "INSERT INTO sync_job (id, sync_id, status, created_at)"
+            " VALUES (:id, :sync_id, :status, CURRENT_TIMESTAMP)"
+        ),
+        {"id": str(job_id), "sync_id": str(sync_id), "status": "running"},
+    )
+
+    mock_handle = AsyncMock()
+    mock_handle.cancel.side_effect = RuntimeError("temporal down")
+    mock_client = MagicMock()
+    mock_client.get_workflow_handle.return_value = mock_handle
+
+    with patch(
+        "airweave.models.sync.temporal_client.get_client",
+        new=AsyncMock(return_value=mock_client),
+    ):
+        cancel_running_sync_jobs(sync_job_db, sync_id)
+
+    assert any("Could not cancel Temporal workflow" in m for m in quiet_logger.debugs)
+
+
+# ---------------------------------------------------------------------------
 # cleanup_temporal_schedules outer exception (line 175)
 # ---------------------------------------------------------------------------
 

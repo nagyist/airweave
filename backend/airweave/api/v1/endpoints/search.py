@@ -131,7 +131,8 @@ async def agentic_search(
 
     # Service emits SearchCompletedEvent internally
     results = await service.search(db, ctx, readable_id, request)
-    return SearchV2Response(results=results.results)
+    truncated = results.results[: request.limit] if request.limit else results.results
+    return SearchV2Response(results=truncated)
 
 
 # ── Streaming agentic search ──────────────────────────────────────────

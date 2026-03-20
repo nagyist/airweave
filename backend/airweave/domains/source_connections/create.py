@@ -184,6 +184,11 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
             )
         except (SourceCreationError, SourceValidationError) as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except Exception as exc:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Validation failed for {obj_in.short_name}: {exc}",
+            ) from exc
         auth_fields = validated_auth.model_dump()
         return await self._create_authenticated_connection(
             db,

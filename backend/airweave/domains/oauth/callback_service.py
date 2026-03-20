@@ -594,6 +594,11 @@ class OAuthCallbackService:
             raise HTTPException(status_code=404, detail=str(e)) from e
         except (SourceCreationError, SourceValidationError) as e:
             raise HTTPException(status_code=400, detail=str(e)) from e
+        except Exception as e:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Validation failed for {source_entry.short_name}: {e}",
+            ) from e
 
     # ------------------------------------------------------------------
     # Private: finalization (response + sync trigger)

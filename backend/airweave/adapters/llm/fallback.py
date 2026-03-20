@@ -109,9 +109,12 @@ class FallbackChainLLM(LLMProtocol):
         tools: list[dict],
         system_prompt: str,
         thinking: bool = False,
+        max_tokens: int | None = None,
     ) -> LLMResponse:
         """Send a tool-calling conversation, falling through the provider chain."""
-        return await self._try_chain(lambda p: p.chat(messages, tools, system_prompt, thinking))
+        return await self._try_chain(
+            lambda p: p.chat(messages, tools, system_prompt, thinking, max_tokens)
+        )
 
     async def close(self) -> None:
         """Clean up all providers in the chain."""

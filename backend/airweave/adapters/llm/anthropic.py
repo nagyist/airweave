@@ -133,6 +133,7 @@ class AnthropicLLM(BaseLLM):
         tools: list[dict],
         system_prompt: str,
         thinking: bool = False,
+        max_tokens: int | None = None,
     ) -> LLMResponse:
         """Anthropic tool calling with optional extended thinking."""
         # Convert tool defs and messages to Anthropic format
@@ -153,7 +154,7 @@ class AnthropicLLM(BaseLLM):
         # Build API kwargs
         kwargs: dict[str, Any] = {
             "model": self._model_spec.api_model_name,
-            "max_tokens": self._model_spec.max_output_tokens,
+            "max_tokens": max_tokens or self._model_spec.max_output_tokens,
             "system": cached_system,
             "messages": anthropic_messages,
             "tools": anthropic_tools,

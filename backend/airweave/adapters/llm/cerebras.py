@@ -157,6 +157,7 @@ class CerebrasLLM(BaseLLM):
         tools: list[dict],
         system_prompt: str,
         thinking: bool = False,
+        max_tokens: int | None = None,
     ) -> LLMResponse:
         """Cerebras tool calling (OpenAI-compatible format)."""
         converted = self._prepare_messages_for_api(messages)
@@ -172,7 +173,7 @@ class CerebrasLLM(BaseLLM):
             tools=strict_tools,
             tool_choice="required",
             temperature=0.3,
-            max_completion_tokens=self._model_spec.max_output_tokens,
+            max_completion_tokens=max_tokens or self._model_spec.max_output_tokens,
             **reasoning_params,
         )
         api_time = time.monotonic() - api_start

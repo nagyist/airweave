@@ -212,10 +212,24 @@ class Agent:
         for iteration in range(max_iter):
             diag.iteration = iteration
 
-            # 1. Call LLM
+            # 1. Call LLM — compute dynamic max_tokens to stay within context window.
+            #    APIs validate: input_tokens + max_tokens <= context_window.
+            input_tokens = context_mgr.fixed_overhead + context_mgr._count_messages_tokens(messages)
+            dynamic_max_tokens = min(
+                self._llm.model_spec.max_output_tokens,
+                self._llm.model_spec.context_window - input_tokens - 512,
+            )
+            if dynamic_max_tokens < 1:
+                raise ContextBudgetExhaustedError(
+                    f"Input ({input_tokens} tokens) leaves no room for output "
+                    f"in context window ({self._llm.model_spec.context_window})"
+                )
+
             llm_start = time.monotonic()
             response = await self._llm.chat(
-                messages, ALL_TOOL_DEFINITIONS, system_prompt, thinking=thinking_enabled
+                messages, ALL_TOOL_DEFINITIONS, system_prompt,
+                thinking=thinking_enabled,
+                max_tokens=dynamic_max_tokens,
             )
             llm_duration = int((time.monotonic() - llm_start) * 1000)
 

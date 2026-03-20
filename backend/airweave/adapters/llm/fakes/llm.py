@@ -71,6 +71,7 @@ class FakeLLM:
         tools: list[dict],
         system_prompt: str,
         thinking: bool = False,
+        max_tokens: int | None = None,
     ) -> LLMResponse:
         """Return next seeded tool response, or raise seeded error."""
         self._calls.append(("chat", messages, tools, system_prompt))

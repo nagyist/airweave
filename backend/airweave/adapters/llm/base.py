@@ -105,6 +105,10 @@ class BaseLLM(LLMProtocol):
         """Provider name for log messages (e.g., 'CerebrasLLM')."""
         return self.__class__.__name__
 
+    def _resolve_max_tokens(self, max_tokens: int | None) -> int:
+        """Resolve max_tokens: use caller-provided value or fall back to model spec."""
+        return max_tokens if max_tokens is not None else self._model_spec.max_output_tokens
+
     # ── Template method ──────────────────────────────────────────────────
 
     async def structured_output(
@@ -139,14 +143,20 @@ class BaseLLM(LLMProtocol):
         tools: list[dict],
         system_prompt: str,
         thinking: bool = False,
+        max_tokens: int | None = None,
     ) -> LLMResponse:
         """Send a conversation with tools and get a response.
 
         Template method: wraps the provider-specific _call_api_chat
         with the same retry logic used by structured_output.
+
+        Args:
+            max_tokens: Override max output tokens for this call. When None,
+                uses model_spec.max_output_tokens.
         """
+        resolved = self._resolve_max_tokens(max_tokens)
         return await self._with_retry(
-            "tool API call", self._call_api_chat, messages, tools, system_prompt, thinking
+            "tool API call", self._call_api_chat, messages, tools, system_prompt, thinking, resolved
         )
 
     # ── Hooks for subclasses ─────────────────────────────────────────────

@@ -126,6 +126,7 @@ class TogetherLLM(BaseLLM):
         tools: list[dict],
         system_prompt: str,
         thinking: bool = False,
+        max_tokens: int | None = None,
     ) -> LLMResponse:
         """Together AI tool calling (OpenAI-compatible format)."""
         converted = self._prepare_messages_for_api(messages)
@@ -137,7 +138,7 @@ class TogetherLLM(BaseLLM):
             "tools": tools,
             "tool_choice": "required",
             "temperature": 1.0 if thinking else 0.6,
-            "max_tokens": self._model_spec.max_output_tokens,
+            "max_tokens": max_tokens or self._model_spec.max_output_tokens,
             **self._build_reasoning_kwargs(thinking),
         }
 

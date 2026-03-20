@@ -104,16 +104,33 @@ class ContextManager:
         """Tokens used by system prompt + tool definitions (constant)."""
         return self._system_prompt_tokens + self._tools_tokens
 
+    # Minimum output tokens needed for a useful LLM response (tool call + reasoning).
+    _MIN_OUTPUT_TOKENS = 2_000
+
     def max_output_tokens(self, messages: list[dict]) -> int:
         """Compute max_tokens to send to the LLM API for this call.
 
         APIs validate: input_tokens + max_tokens <= context_window.
         Returns the maximum output tokens that fit, capped at the model's
         max_output_tokens.
+
+        Raises:
+            ContextBudgetExhaustedError: If there's not enough room for a
+                useful response.
         """
+        from airweave.domains.search.agentic.exceptions import ContextBudgetExhaustedError
+
         input_tokens = self.fixed_overhead + self._count_messages_tokens(messages)
         available = self._context_window - input_tokens - 512  # safety buffer
-        return max(1, min(available, self._max_output_tokens))
+
+        if available < self._MIN_OUTPUT_TOKENS:
+            raise ContextBudgetExhaustedError(
+                f"Input ({input_tokens} tokens) leaves only {available} tokens for output "
+                f"in context window ({self._context_window}). "
+                f"Minimum {self._MIN_OUTPUT_TOKENS} needed for a useful response."
+            )
+
+        return min(available, self._max_output_tokens)
 
     def available_budget(self, messages: list[dict]) -> int:
         """Calculate remaining token budget for new content.

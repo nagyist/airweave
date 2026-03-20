@@ -3,7 +3,7 @@
 Three responsibilities:
 1. compress_history — 3-tier retention of old tool result messages
 2. fit_tool_result — truncate current tool results to fit available budget
-3. check_budget — safety valve when context is dangerously full
+3. emergency_compress — last-resort: drop oldest messages when budget is critical
 
 Token counting always uses the tokenizer (never chars/4).
 Context window = input + output combined (all providers).
@@ -19,6 +19,7 @@ import json
 from typing import Union
 
 from airweave.core.protocols.tokenizer import TokenizerProtocol
+from airweave.domains.search.agentic.exceptions import ContextBudgetExhaustedError
 from airweave.domains.search.agentic.state import AgentState
 from airweave.domains.search.agentic.tools.types import (
     COMPRESSIBLE_TOOLS,
@@ -49,13 +50,11 @@ ToolResult = Union[
 ]
 
 
-# Reserve tokens for system nudges appended after tool results
-# (iteration warnings, stagnation nudges, progress messages)
-_NUDGE_RESERVE_TOKENS = 500
-
-
 class ContextManager:
     """Manages the LLM context window for the agentic search agent."""
+
+    # Minimum output tokens needed for a useful LLM response (tool call + reasoning).
+    _MIN_OUTPUT_TOKENS = 2_000
 
     def __init__(
         self,
@@ -89,7 +88,13 @@ class ContextManager:
 
     @property
     def output_reserve(self) -> int:
-        """Tokens reserved for the model's response (thinking + tool calls)."""
+        """Tokens reserved for the model's response (thinking + tool calls).
+
+        Used by available_budget to determine how many tokens can be used
+        for input (tool results, messages). This is the expected output
+        size, not the max — the actual max_tokens sent to the API is
+        computed dynamically by max_output_tokens().
+        """
         if self._thinking_enabled:
             return int(self._max_output_tokens * 0.75)
         return SearchConfig.NON_THINKING_OUTPUT_RESERVE
@@ -104,8 +109,9 @@ class ContextManager:
         """Tokens used by system prompt + tool definitions (constant)."""
         return self._system_prompt_tokens + self._tools_tokens
 
-    # Minimum output tokens needed for a useful LLM response (tool call + reasoning).
-    _MIN_OUTPUT_TOKENS = 2_000
+    def input_tokens(self, messages: list[dict]) -> int:
+        """Total input tokens: fixed overhead + all messages."""
+        return self.fixed_overhead + self._count_messages_tokens(messages)
 
     def max_output_tokens(self, messages: list[dict]) -> int:
         """Compute max_tokens to send to the LLM API for this call.
@@ -116,31 +122,41 @@ class ContextManager:
 
         Raises:
             ContextBudgetExhaustedError: If there's not enough room for a
-                useful response.
+                useful response even after emergency compression.
         """
-        from airweave.domains.search.agentic.exceptions import ContextBudgetExhaustedError
-
-        input_tokens = self.fixed_overhead + self._count_messages_tokens(messages)
-        available = self._context_window - input_tokens - 512  # safety buffer
+        available = self._context_window - self.input_tokens(messages)
 
         if available < self._MIN_OUTPUT_TOKENS:
-            raise ContextBudgetExhaustedError(
-                f"Input ({input_tokens} tokens) leaves only {available} tokens for output "
-                f"in context window ({self._context_window}). "
-                f"Minimum {self._MIN_OUTPUT_TOKENS} needed for a useful response."
-            )
+            # Last resort: drop oldest half of messages
+            messages[:] = self.emergency_compress(messages)
+            available = self._context_window - self.input_tokens(messages)
+
+            if available < self._MIN_OUTPUT_TOKENS:
+                raise ContextBudgetExhaustedError(
+                    f"Input ({self.input_tokens(messages)} tokens) leaves only "
+                    f"{available} tokens for output in context window "
+                    f"({self._context_window}). Minimum {self._MIN_OUTPUT_TOKENS} needed."
+                )
 
         return min(available, self._max_output_tokens)
 
     def available_budget(self, messages: list[dict]) -> int:
-        """Calculate remaining token budget for new content.
+        """Calculate remaining token budget for new tool result content.
 
-        Accounts for fixed overhead (system prompt + tools), all current
-        messages, and a reserve for system nudges (iteration warnings,
-        stagnation, progress).
+        This is the space available for adding more content to messages
+        while still leaving enough room for the LLM's output response.
         """
-        used = self.fixed_overhead + self._count_messages_tokens(messages)
-        return max(0, self.input_budget - used - _NUDGE_RESERVE_TOKENS)
+        used = self.input_tokens(messages)
+        return max(0, self.input_budget - used)
+
+    def check_budget(self, messages: list[dict]) -> bool:
+        """Check if there's enough budget for useful work.
+
+        Returns True if budget is healthy, False if dangerously low.
+        When False, the agent loop should trigger emergency_compress
+        before continuing.
+        """
+        return self.available_budget(messages) >= SearchConfig.MIN_USEFUL_BUDGET_TOKENS
 
     # ── 1. Compress history ───────────────────────────────────────────
 
@@ -239,24 +255,26 @@ class ContextManager:
     def fit_tool_result(
         self,
         result: ToolResult,
-        messages: list[dict],
+        budget: int,
     ) -> str:
-        """Fit a tool result into the available context budget.
+        """Fit a tool result into the given token budget.
 
         For results with lists of rendered items (search summaries, read
         entities), drops items from the bottom until they fit. Small results
-        (collect, count, finish, error) always fit.
+        (collect, count, finish, error) always fit regardless of budget.
+
+        Args:
+            result: The tool result to format.
+            budget: Maximum tokens this result may consume.
 
         Returns the content string for the tool result message.
         """
-        available = self.available_budget(messages)
-
         if isinstance(result, SearchToolResult):
-            return self._fit_search_result(result, available)
+            return self._fit_search_result(result, budget)
         if isinstance(result, NavigateToolResult):
-            return self._fit_navigate_result(result, available)
+            return self._fit_navigate_result(result, budget)
         if isinstance(result, (ReadToolResult, ReviewToolResult)):
-            return self._fit_read_result(result, available)
+            return self._fit_read_result(result, budget)
         if isinstance(result, CollectToolResult):
             return _format_collect_result(result)
         if isinstance(result, CountToolResult):
@@ -371,16 +389,36 @@ class ContextManager:
 
         return "\n\n".join(parts)
 
-    # ── 3. Budget check (safety valve) ────────────────────────────────
+    # ── 3. Emergency compression ──────────────────────────────────────
 
-    def check_budget(self, messages: list[dict]) -> bool:
-        """Check if there's enough budget for useful work.
+    def emergency_compress(self, messages: list[dict]) -> list[dict]:
+        """Last-resort compression: drop the oldest half of messages.
 
-        Returns True if budget is healthy, False if dangerously low.
-        The agent loop uses this to decide whether to trigger
-        conversation summarization.
+        Keeps the first message (user query) and the most recent half of
+        the conversation. Injects a system note so the LLM knows context
+        was dropped.
+
+        Returns a new message list.
         """
-        return self.available_budget(messages) >= SearchConfig.MIN_USEFUL_BUDGET_TOKENS
+        if len(messages) <= 2:
+            return list(messages)
+
+        # Keep the first message (user query) and the newest half
+        midpoint = len(messages) // 2
+        dropped_count = midpoint - 1  # -1 because we keep messages[0]
+
+        kept = [messages[0]]
+        kept.append({
+            "role": "user",
+            "content": (
+                f"[System] Context limit reached. The oldest {dropped_count} messages "
+                "were dropped to free space. Your collected results and search state "
+                "are preserved. Continue with the tools available."
+            ),
+        })
+        kept.extend(messages[midpoint:])
+
+        return kept
 
     # ── Token counting ────────────────────────────────────────────────
 

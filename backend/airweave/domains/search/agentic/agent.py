@@ -283,11 +283,13 @@ class Agent:
                 prev_read_ids,
             )
 
-            # 7. Safety check
+            # 7. Safety check — emergency compress if budget is too low for tool results
             if not context_mgr.check_budget(messages):
-                raise ContextBudgetExhaustedError(
-                    "Context window too full for useful work after compression"
-                )
+                messages = context_mgr.emergency_compress(messages)
+                if not context_mgr.check_budget(messages):
+                    raise ContextBudgetExhaustedError(
+                        "Context window too full for useful work after emergency compression"
+                    )
 
             # 8. Execute tool calls
             await self._execute_tool_calls(
@@ -493,6 +495,17 @@ class Agent:
         new_read_ids: set[str],
     ) -> None:
         """Execute all tool calls, emit events, fit results into context."""
+        # Divide budget fairly among large tool calls (search, read, navigate).
+        # Small tools (collect, count, finish, error) use negligible tokens.
+        _LARGE_TOOLS = {
+            ToolName.SEARCH, ToolName.READ, ToolName.GET_CHILDREN,
+            ToolName.GET_SIBLINGS, ToolName.GET_PARENT, ToolName.REVIEW_RESULTS,
+        }
+        large_count = sum(1 for tc in tool_calls if tc.name in _LARGE_TOOLS)
+        total_available = context_mgr.available_budget(messages)
+        small_reserve = 500  # enough for all small tool results combined
+        large_budget_each = (total_available - small_reserve) // max(1, large_count)
+
         for tc in tool_calls:
             tc_start = time.monotonic()
             try:
@@ -517,7 +530,8 @@ class Agent:
                 )
             )
 
-            content = context_mgr.fit_tool_result(result, messages)
+            budget = large_budget_each if tc.name in _LARGE_TOOLS else small_reserve
+            content = context_mgr.fit_tool_result(result, budget)
             messages.append(build_tool_result_message(tc.id, tc.name, content))
 
             if tc.name in (

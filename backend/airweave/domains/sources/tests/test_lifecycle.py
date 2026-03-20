@@ -19,11 +19,7 @@ from airweave.domains.source_connections.fakes.repository import FakeSourceConne
 from airweave.core.exceptions import NotFoundException
 from airweave.domains.auth_provider.fake import FakeAuthProviderRegistry
 from airweave.domains.auth_provider.types import AuthProviderRegistryEntry
-from airweave.domains.sources.exceptions import (
-    SourceCreationError,
-    SourceNotFoundError,
-    SourceValidationError,
-)
+from airweave.domains.sources.exceptions import SourceNotFoundError, SourceValidationError
 from airweave.domains.sources.fakes.registry import FakeSourceRegistry
 from airweave.domains.sources.lifecycle import SourceLifecycleService
 from airweave.domains.sources.tests.conftest import _make_ctx, _make_entry
@@ -39,36 +35,27 @@ from airweave.platform.configs._base import Fields
 class _StubSourceValid:
     """Source whose create() and validate() both succeed."""
 
-    _http_client_factory = None
-
     @classmethod
-    async def create(cls, credentials, config=None):
+    async def create(cls, *, auth, logger, http_client, config=None):
         instance = cls()
-        instance._credentials = credentials
+        instance._auth = auth
+        instance._logger = logger
+        instance._http_client = http_client
         instance._config = config
-        instance._logger = None
-        instance._token_provider = None
-        instance._sync_org_id = None
-        instance._sync_sc_id = None
         return instance
 
     async def validate(self):
-        return True
-
-    def set_logger(self, logger):
-        self._logger = logger
-
-    def set_http_client_factory(self, factory):
-        self._http_client_factory = factory
-
-    def set_token_provider(self, tp):
-        self._token_provider = tp
+        pass
 
 
 class _StubSourceValidateFalse:
     @classmethod
-    async def create(cls, credentials, config=None):
-        return cls()
+    async def create(cls, *, auth, logger, http_client, config=None):
+        instance = cls()
+        instance._auth = auth
+        instance._logger = logger
+        instance._http_client = http_client
+        return instance
 
     async def validate(self):
         return False
@@ -76,8 +63,12 @@ class _StubSourceValidateFalse:
 
 class _StubSourceValidateRaises:
     @classmethod
-    async def create(cls, credentials, config=None):
-        return cls()
+    async def create(cls, *, auth, logger, http_client, config=None):
+        instance = cls()
+        instance._auth = auth
+        instance._logger = logger
+        instance._http_client = http_client
+        return instance
 
     async def validate(self):
         raise ConnectionError("cannot reach API")
@@ -85,21 +76,23 @@ class _StubSourceValidateRaises:
 
 class _StubSourceCreateRaises:
     @classmethod
-    async def create(cls, credentials, config=None):
+    async def create(cls, *, auth, logger, http_client, config=None):
         raise ValueError("bad credentials format")
 
 
 class _StubSourceMinimal:
     """Source with no set_* methods at all."""
 
-    _http_client_factory = None
-
     @classmethod
-    async def create(cls, credentials, config=None):
-        return cls()
+    async def create(cls, *, auth, logger, http_client, config=None):
+        instance = cls()
+        instance._auth = auth
+        instance._logger = logger
+        instance._http_client = http_client
+        return instance
 
     async def validate(self):
-        return True
+        pass
 
 
 # ---------------------------------------------------------------------------
@@ -247,16 +240,14 @@ VALIDATE_TABLE = [
                  error_substring="nonexistent"),
     ValidateCase(id="create-raises", short_name="bad_source",
                  source_class=_StubSourceCreateRaises,
-                 expect_error=SourceCreationError,
+                 expect_error=ValueError,
                  error_substring="bad credentials format"),
     ValidateCase(id="validate-raises", short_name="unreachable",
                  source_class=_StubSourceValidateRaises,
-                 expect_error=SourceValidationError,
-                 error_substring="validation raised"),
-    ValidateCase(id="validate-returns-false", short_name="invalid_creds",
-                 source_class=_StubSourceValidateFalse,
-                 expect_error=SourceValidationError,
-                 error_substring="validate() returned False"),
+                 expect_error=ConnectionError,
+                 error_substring="cannot reach API"),
+    ValidateCase(id="validate-returns-false-noop", short_name="invalid_creds",
+                 source_class=_StubSourceValidateFalse),
 ]
 
 
@@ -287,25 +278,21 @@ async def test_validate_not_found_error_attributes():
 
 
 @pytest.mark.asyncio
-async def test_validate_creation_error_attributes():
-    """SourceCreationError carries short_name + reason."""
+async def test_validate_creation_error_propagates():
+    """create() errors propagate directly without wrapping."""
     entry = _entry_with_class("bad", _StubSourceCreateRaises)
     service = _make_service(source_entries=[entry])
-    with pytest.raises(SourceCreationError) as exc_info:
+    with pytest.raises(ValueError, match="bad credentials format"):
         await service.validate("bad", "tok")
-    assert exc_info.value.short_name == "bad"
-    assert "bad credentials format" in exc_info.value.reason
 
 
 @pytest.mark.asyncio
-async def test_validate_validation_error_attributes():
-    """SourceValidationError carries short_name + reason."""
-    entry = _entry_with_class("fail", _StubSourceValidateFalse)
+async def test_validate_raises_propagates():
+    """validate() errors propagate directly without wrapping."""
+    entry = _entry_with_class("fail", _StubSourceValidateRaises)
     service = _make_service(source_entries=[entry])
-    with pytest.raises(SourceValidationError) as exc_info:
+    with pytest.raises(ConnectionError, match="cannot reach API"):
         await service.validate("fail", "tok")
-    assert exc_info.value.short_name == "fail"
-    assert exc_info.value.reason == "validate() returned False"
 
 
 # ===========================================================================
@@ -682,133 +669,6 @@ def test_normalize_credentials(case: ProcessCredsCase):
 
 
 # ===========================================================================
-# _configure_token_provider() — table-driven
-# ===========================================================================
-
-
-@dataclass
-class TokenManagerCase:
-    id: str
-    access_token: str | None = None
-    oauth_type: str | None = None
-    expect_tm_set: bool = False
-
-
-TOKEN_MANAGER_TABLE = [
-    TokenManagerCase(id="direct-injection", access_token="injected",
-                     expect_tm_set=True),
-    TokenManagerCase(id="skip-no-oauth-type", oauth_type=None),
-    TokenManagerCase(id="access-only-no-refresh", oauth_type="access_only",
-                     expect_tm_set=True),
-    TokenManagerCase(id="happy-with-refresh", oauth_type="with_refresh",
-                     expect_tm_set=True),
-    TokenManagerCase(id="happy-rotating-refresh", oauth_type="with_rotating_refresh",
-                     expect_tm_set=True),
-]
-
-
-@pytest.mark.parametrize("case", TOKEN_MANAGER_TABLE, ids=lambda c: c.id)
-@pytest.mark.asyncio
-async def test_configure_token_provider(case: TokenManagerCase):
-    source = MagicMock() if case.expect_tm_set else await _StubSourceValid.create("tok")
-    data = _sc_data(short_name="src", oauth_type=case.oauth_type)
-    ctx = _make_ctx()
-    auth_config = AuthConfig(
-        credentials="tok",
-        auth_provider_instance=None,
-    )
-    service = _make_service()
-
-    if case.expect_tm_set:
-        with patch("airweave.domains.sources.lifecycle.OAuthTokenProvider") as mock_tp:
-            mock_tp.return_value = MagicMock()
-            await service._configure_token_provider(
-                source=source, source_connection_data=data,
-                source_credentials="tok", ctx=ctx, logger=ctx.logger,
-                access_token=case.access_token, auth_config=auth_config,
-            )
-        source.set_token_provider.assert_called_once()
-    else:
-        await service._configure_token_provider(
-            source=source, source_connection_data=data,
-            source_credentials="tok", ctx=ctx, logger=ctx.logger,
-            access_token=case.access_token, auth_config=auth_config,
-        )
-        assert source._token_provider is None
-
-
-# ===========================================================================
-# _configure_* static helpers — table-driven
-# ===========================================================================
-
-
-class TestConfigureLogger:
-    def test_sets_logger(self):
-        source = MagicMock()
-        logger = MagicMock()
-        SourceLifecycleService._configure_logger(source, logger)
-        source.set_logger.assert_called_once_with(logger)
-
-    def test_noop_when_no_set_logger(self):
-        source = MagicMock(spec=[])
-        SourceLifecycleService._configure_logger(source, MagicMock())
-
-
-class TestConfigureHttpClientFactory:
-    def test_sets_when_present(self):
-        source = MagicMock()
-        factory = MagicMock()
-        ac = AuthConfig(
-            credentials="x",
-            auth_provider_instance=None,
-        )
-        SourceLifecycleService._configure_http_client_factory(source, ac)
-        source.set_http_client_factory.assert_called_once_with(factory)
-
-    def test_noop_when_none(self):
-        source = MagicMock()
-        ac = AuthConfig(
-            credentials="x",
-            auth_provider_instance=None,
-        )
-        SourceLifecycleService._configure_http_client_factory(source, ac)
-        source.set_http_client_factory.assert_not_called()
-
-
-# ===========================================================================
-# _wrap_source_with_airweave_client() — table-driven
-# ===========================================================================
-
-
-@dataclass
-class WrapClientCase:
-    id: str
-    has_existing_factory: bool = False
-
-
-WRAP_CLIENT_TABLE = [
-    WrapClientCase(id="no-existing-factory"),
-    WrapClientCase(id="with-existing-factory", has_existing_factory=True),
-]
-
-
-@pytest.mark.parametrize("case", WRAP_CLIENT_TABLE, ids=lambda c: c.id)
-def test_wrap_source_with_airweave_client(case: WrapClientCase):
-    source = _StubSourceValid()
-    original = MagicMock() if case.has_existing_factory else None
-    source._http_client_factory = original
-    ctx = _make_ctx()
-
-    SourceLifecycleService._wrap_source_with_airweave_client(
-        source=source, source_short_name="src",
-        source_connection_id=uuid4(), ctx=ctx, logger=ctx.logger,
-    )
-
-    assert source._http_client_factory is not None
-    assert source._http_client_factory is not original
-
-
-# ===========================================================================
 # _merge_source_config() — table-driven
 # ===========================================================================
 
@@ -1020,7 +880,7 @@ async def test_create(case: CreateCase):
     if case.expect_logger:
         assert source._logger is not None
     if case.expect_http_client:
-        assert source._http_client_factory is not None
+        assert source._http_client is not None
 
 
 # ===========================================================================

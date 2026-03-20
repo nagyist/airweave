@@ -42,6 +42,7 @@ from airweave.domains.sources.protocols import (
 )
 from airweave.domains.sources.rate_limiting.service import SourceRateLimiter
 from airweave.domains.sources.token_providers.auth_provider import AuthProviderTokenProvider
+from airweave.domains.sources.token_providers.credential import DirectCredentialProvider
 from airweave.domains.sources.token_providers.oauth import OAuthTokenProvider
 from airweave.domains.sources.token_providers.static import StaticTokenProvider
 from airweave.domains.sources.types import AuthConfig, SourceConnectionData, SourceRegistryEntry
@@ -172,12 +173,9 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
 
         Raises:
             SourceNotFoundError: If source short_name is not in the registry.
-            SourceCreationError: If source_class.create() fails.
-            SourceValidationError: If source.validate() returns False or raises.
+            Exception: If source_class.create() or source.validate() fails.
         """
         from uuid import UUID as _UUID
-
-        from airweave.domains.sources.token_providers.credential import DirectCredentialProvider
 
         try:
             entry = self._source_registry.get(short_name)

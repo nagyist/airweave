@@ -227,7 +227,7 @@ class SourceRegistry(SourceRegistryProtocol):
             registry_logger.warning(f"Could not inspect create() for '{short_name}': {e}")
 
         # --- generate_entities() ---
-        gen_expected = {"cursor", "files"}
+        gen_expected = {"cursor", "files", "node_selections"}
         try:
             gen_sig = inspect.signature(source_cls.generate_entities)
             gen_params = {

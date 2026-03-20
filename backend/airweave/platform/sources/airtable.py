@@ -103,13 +103,7 @@ class AirtableSource(BaseSource):
 
     async def _get_user_info(self) -> Optional[Dict[str, Any]]:
         """Get authenticated user information from whoami endpoint."""
-        try:
-            return await self._get(f"{_API}/meta/whoami")
-        except SourceAuthError:
-            raise
-        except Exception as e:
-            self.logger.warning(f"Failed to get user info: {e}")
-            return None
+        return await self._get(f"{_API}/meta/whoami")
 
     async def _list_bases(self) -> AsyncGenerator[Dict[str, Any], None]:
         """List all accessible bases via Meta API with pagination."""

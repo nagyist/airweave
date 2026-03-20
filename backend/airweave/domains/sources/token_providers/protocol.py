@@ -41,7 +41,7 @@ class SourceAuthProvider(Protocol):
     @property
     def provider_kind(self) -> AuthProviderKind:
         """The kind of auth this provider supplies."""
-        ...
+        pass
 
     @property
     def supports_refresh(self) -> bool:
@@ -50,7 +50,7 @@ class SourceAuthProvider(Protocol):
         Callers should check this before calling ``force_refresh()``
         to avoid using exceptions for control flow.
         """
-        ...
+        pass
 
 
 @runtime_checkable

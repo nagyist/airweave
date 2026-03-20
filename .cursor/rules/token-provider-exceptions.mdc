@@ -25,6 +25,7 @@ TokenCredentialsInvalidError, TokenProviderAccountGoneError, ... (domains/source
 
 ```
 TokenProviderError (SourceError)
+├── TokenExpiredError                    — token is known-dead, cannot be refreshed (fast abort)
 ├── TokenCredentialsInvalidError         — token/refresh_token expired or revoked
 ├── TokenProviderAccountGoneError        — external record deleted (Composio/Pipedream)
 │     .account_id
@@ -37,6 +38,8 @@ TokenProviderError (SourceError)
 │     .status_code
 └── TokenRefreshNotSupportedError        — static token / no refresh_token
 ```
+
+`TokenExpiredError` is raised by `get_token()` when the provider knows the token is dead and refresh is impossible (e.g. the refresh_token itself is revoked). Callers should treat it as a permanent failure and surface `NEEDS_REAUTH` immediately without retrying.
 
 ## How the SC domain makes this actionable
 

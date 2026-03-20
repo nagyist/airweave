@@ -238,15 +238,14 @@ class ServiceNowSource(BaseSource):
             yield entity
         self.logger.info("ServiceNow sync completed")
 
-    async def validate(self) -> bool:
+    async def validate(self) -> None:
         """Validate credentials by querying the instance (minimal table read)."""
         try:
             url = self._table_url("incident")
             params = {"sysparm_limit": 1, "sysparm_fields": "sys_id"}
             await self._get(url, params=params)
-            return True
         except SourceAuthError:
             raise
         except Exception as e:
             self.logger.warning(f"ServiceNow validation failed: {e}")
-            return False
+            raise

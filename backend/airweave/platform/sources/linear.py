@@ -659,13 +659,13 @@ class LinearSource(BaseSource):
     # Validation
     # ------------------------------------------------------------------
 
-    async def validate(self) -> bool:
+    async def validate(self) -> None:
         """Verify Linear OAuth2 token by POSTing a minimal GraphQL query."""
         try:
             token = await self.auth.get_token()
             if not token:
                 self.logger.warning("Linear validation failed: no access token available.")
-                return False
+                raise ValueError("Linear validation failed: no access token available.")
 
             query = {"query": "query { viewer { id } }"}
             headers = {
@@ -685,16 +685,17 @@ class LinearSource(BaseSource):
                     self.logger.warning(
                         f"Linear validate failed: HTTP {resp.status_code} — {resp.text[:200]}"
                     )
-                    return False
+                    raise ValueError(f"Linear validate failed: HTTP {resp.status_code}")
 
                 body = resp.json()
                 if body.get("errors"):
                     self.logger.warning(f"Linear validate GraphQL errors: {body['errors']}")
-                    return False
+                    raise ValueError("Linear validate failed: GraphQL errors in response")
 
                 viewer = (body.get("data") or {}).get("viewer") or {}
-                return bool(viewer.get("id"))
+                if not viewer.get("id"):
+                    raise ValueError("Linear validation failed: missing viewer id")
 
         except httpx.RequestError as e:
             self.logger.warning(f"Linear validation request error: {e}")
-            return False
+            raise

@@ -462,7 +462,6 @@ class HubspotSource(BaseSource):
         async for ticket_entity in self._generate_ticket_entities():
             yield ticket_entity
 
-    async def validate(self) -> bool:
+    async def validate(self) -> None:
         """Validate credentials by pinging a lightweight CRM endpoint."""
         await self._get("https://api.hubapi.com/crm/v3/objects/contacts?limit=1")
-        return True

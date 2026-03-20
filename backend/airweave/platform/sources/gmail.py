@@ -893,7 +893,6 @@ class GmailSource(BaseSource):
             self.logger.warning(f"Error in entity generation: {str(e)}", exc_info=True)
             raise
 
-    async def validate(self) -> bool:
+    async def validate(self) -> None:
         """Validate credentials by pinging the Gmail user profile."""
         await self._get("https://gmail.googleapis.com/gmail/v1/users/me/profile")
-        return True

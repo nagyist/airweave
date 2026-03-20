@@ -1021,7 +1021,7 @@ class SharePoint2019V2Source(BaseSource):
     # Validation
     # -------------------------------------------------------------------------
 
-    async def validate(self) -> bool:
+    async def validate(self) -> None:
         """Validate SharePoint and Active Directory connections."""
         try:
             sp_client = self._create_client()
@@ -1029,7 +1029,7 @@ class SharePoint2019V2Source(BaseSource):
             self.logger.info("SharePoint connection validated successfully")
         except Exception as e:
             self.logger.warning(f"SharePoint validation failed: {e}")
-            return False
+            raise
 
         try:
             from airweave.platform.sources.sharepoint2019v2.ldap import LDAPClient
@@ -1047,9 +1047,7 @@ class SharePoint2019V2Source(BaseSource):
             self.logger.info("Active Directory connection validated successfully")
         except Exception as e:
             self.logger.warning(f"Active Directory validation failed: {e}")
-            return False
-
-        return True
+            raise
 
     # -------------------------------------------------------------------------
     # Access Control Memberships

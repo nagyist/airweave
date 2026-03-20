@@ -322,14 +322,15 @@ class ApolloSource(BaseSource):
 
         self.logger.info("Apollo sync completed")
 
-    async def validate(self) -> bool:
+    async def validate(self) -> None:
         """Validate API key by calling a lightweight endpoint."""
         try:
             data = await self._post(
                 f"{APOLLO_BASE_URL}/accounts/search",
                 {"per_page": 1, "page": 1},
             )
-            return "accounts" in data
         except Exception as e:
             self.logger.warning(f"Apollo validation failed: {e}")
-            return False
+            raise
+        if "accounts" not in data:
+            raise ValueError("Apollo validation failed: unexpected API response")

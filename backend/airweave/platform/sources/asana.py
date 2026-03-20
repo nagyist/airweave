@@ -455,7 +455,6 @@ class AsanaSource(BaseSource):
                     async for entity in self._yield_task_tree(task, proj_bcs, files):
                         yield entity
 
-    async def validate(self) -> bool:
+    async def validate(self) -> None:
         """Validate credentials by pinging Asana's /users/me endpoint."""
         await self._get(f"{_API}/users/me")
-        return True

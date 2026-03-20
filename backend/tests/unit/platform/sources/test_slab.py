@@ -155,7 +155,7 @@ def test_json_description_to_string():
 
 @pytest.mark.asyncio
 async def test_validate_success(slab_auth_config):
-    """validate returns True when organization query succeeds."""
+    """validate completes when organization query succeeds."""
     org_response = _response(
         200,
         json={
@@ -171,31 +171,30 @@ async def test_validate_success(slab_auth_config):
     http_client = _mock_http_client_with_post_queue([org_response])
     source = await make_slab_source(slab_auth_config, http_client=http_client)
 
-    result = await source.validate()
-    assert result is True
+    await source.validate()
 
 
 @pytest.mark.asyncio
 async def test_validate_failure_no_org(slab_auth_config):
-    """validate returns False when organization is null."""
+    """validate raises when organization is null."""
     org_response = _response(200, json={"data": {"organization": None}})
     http_client = _mock_http_client_with_post_queue([org_response])
     source = await make_slab_source(slab_auth_config, http_client=http_client)
 
-    result = await source.validate()
-    assert result is False
+    with pytest.raises(ValueError, match="Slab validation failed"):
+        await source.validate()
 
 
 @pytest.mark.asyncio
 async def test_validate_failure_http_error(slab_auth_config):
-    """validate returns False on non-auth HTTP errors (e.g. 5xx)."""
-    http_client = _mock_http_client_with_post_queue(
-        [_response(500, json={"error": "Server Error"})]
-    )
+    """validate propagates SourceServerError on non-auth HTTP errors (e.g. 5xx)."""
+    err_500 = _response(500, json={"error": "Server Error"})
+    # _post is wrapped with tenacity (5 attempts); each retry calls post again.
+    http_client = _mock_http_client_with_post_queue([err_500] * 5)
     source = await make_slab_source(slab_auth_config, http_client=http_client)
 
-    result = await source.validate()
-    assert result is False
+    with pytest.raises(SourceServerError):
+        await source.validate()
 
 
 @pytest.mark.asyncio
@@ -212,7 +211,7 @@ async def test_validate_raises_source_auth_error_on_401(slab_auth_config):
 
 @pytest.mark.asyncio
 async def test_validate_failure_organization_null_graphql_error(slab_auth_config):
-    """validate returns False when GraphQL returns organization null error."""
+    """validate raises when GraphQL returns organization null error."""
     resp = _response(
         200,
         json={
@@ -228,8 +227,8 @@ async def test_validate_failure_organization_null_graphql_error(slab_auth_config
     http_client = _mock_http_client_with_post_queue([resp])
     source = await make_slab_source(slab_auth_config, http_client=http_client)
 
-    result = await source.validate()
-    assert result is False
+    with pytest.raises(ValueError, match="Slab validation failed"):
+        await source.validate()
 
 
 # ---------------------------------------------------------------------------

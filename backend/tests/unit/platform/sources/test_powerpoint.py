@@ -377,11 +377,12 @@ async def test_generate_presentation_entities_folder_path_strips_root():
 
 
 @pytest.mark.asyncio
-async def test_validate_returns_true_on_success():
-    """validate() returns True when drive ping succeeds."""
+async def test_validate_succeeds_when_drive_ping_succeeds():
+    """validate() completes when Graph drive ping succeeds."""
     source = await _make_source("token")
-    source._validate_oauth2 = AsyncMock(return_value=True)
-    assert await source.validate() is True
+    source._get = AsyncMock(return_value={"id": "drive-1"})
+    await source.validate()
+    source._get.assert_awaited()
 
 
 @pytest.mark.asyncio

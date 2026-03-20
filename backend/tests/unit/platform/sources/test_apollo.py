@@ -522,7 +522,7 @@ class TestValidate:
             http_client=client,
             config=ApolloConfig(),
         )
-        assert await source.validate() is True
+        await source.validate()
 
     @pytest.mark.asyncio
     async def test_validate_failure_missing_accounts_key(self):
@@ -535,7 +535,8 @@ class TestValidate:
             http_client=client,
             config=ApolloConfig(),
         )
-        assert await source.validate() is False
+        with pytest.raises(ValueError, match="Apollo validation failed"):
+            await source.validate()
 
     @pytest.mark.asyncio
     async def test_validate_failure_http_error(self):
@@ -548,7 +549,8 @@ class TestValidate:
             http_client=client,
             config=ApolloConfig(),
         )
-        assert await source.validate() is False
+        with pytest.raises(SourceAuthError):
+            await source.validate()
 
 
 # ---------------------------------------------------------------------------

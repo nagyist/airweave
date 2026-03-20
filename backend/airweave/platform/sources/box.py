@@ -425,7 +425,6 @@ class BoxSource(BaseSource):
 
         self.logger.debug("Box sync completed")
 
-    async def validate(self) -> bool:
+    async def validate(self) -> None:
         """Validate credentials by pinging Box's /users/me endpoint."""
         await self._get(f"{self.API_BASE}/users/me")
-        return True

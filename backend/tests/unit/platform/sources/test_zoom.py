@@ -82,13 +82,12 @@ async def test_create_with_config():
 
 @pytest.mark.asyncio
 async def test_validate_success():
-    """validate() should return True when _get succeeds."""
+    """validate() should complete when _get succeeds."""
     source = await _make_zoom_source("token")
     with patch.object(
         source, "_get", new_callable=AsyncMock, return_value={"id": "u1"}
     ) as mock_get:
-        result = await source.validate()
-        assert result is True
+        await source.validate()
         mock_get.assert_awaited_once()
         assert mock_get.call_args[0][0] == "https://api.zoom.us/v2/users/me"
 

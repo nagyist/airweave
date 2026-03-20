@@ -517,8 +517,7 @@ async def test_generate_catalog_items_category_and_active_branches(
 async def test_validate_success(auth_config: ServiceNowAuthConfig) -> None:
     source = await _make_source(auth_config)
     with patch.object(source, "_get", new_callable=AsyncMock, return_value={"result": []}):
-        result = await source.validate()
-    assert result is True
+        await source.validate()
 
 
 @pytest.mark.asyncio
@@ -530,8 +529,8 @@ async def test_validate_failure(auth_config: ServiceNowAuthConfig) -> None:
         new_callable=AsyncMock,
         side_effect=httpx.HTTPStatusError("401", request=MagicMock(), response=MagicMock()),
     ):
-        result = await source.validate()
-    assert result is False
+        with pytest.raises(httpx.HTTPStatusError):
+            await source.validate()
 
 
 @pytest.mark.asyncio
@@ -544,8 +543,8 @@ async def test_validate_failure_generic_exception(auth_config: ServiceNowAuthCon
         new_callable=AsyncMock,
         side_effect=RuntimeError("connection failed"),
     ):
-        result = await source.validate()
-    assert result is False
+        with pytest.raises(RuntimeError, match="connection failed"):
+            await source.validate()
 
 
 # ---------------------------------------------------------------------------

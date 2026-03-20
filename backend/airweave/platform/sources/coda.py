@@ -79,10 +79,9 @@ class CodaSource(BaseSource):
         instance._folder_id_filter = (config.folder_id or "") if config else ""
         return instance
 
-    async def validate(self) -> bool:
+    async def validate(self) -> None:
         """Validate credentials by pinging Coda's whoami endpoint."""
         await self._get("/whoami")
-        return True
 
     # ------------------------------------------------------------------
     # HTTP

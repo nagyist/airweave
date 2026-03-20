@@ -195,12 +195,8 @@ class FirefliesSource(BaseSource):
                 break
             skip += TRANSCRIPTS_PAGE_SIZE
 
-    async def validate(self) -> bool:
-        """Validate credentials by running a minimal transcripts query.
-
-        Returns:
-            True if the API key is valid and the request succeeds.
-        """
+    async def validate(self) -> None:
+        """Validate credentials by running a minimal transcripts query."""
         query = """
         query Validate {
           transcripts(limit: 1, mine: true) {
@@ -208,8 +204,4 @@ class FirefliesSource(BaseSource):
           }
         }
         """
-        try:
-            await self._graphql(query)
-            return True
-        except Exception:
-            return False
+        await self._graphql(query)

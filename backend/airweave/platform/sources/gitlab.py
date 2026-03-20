@@ -496,7 +496,6 @@ class GitLabSource(BaseSource):
             async for entity in self._process_project(project, project_breadcrumbs, files):
                 yield entity
 
-    async def validate(self) -> bool:
+    async def validate(self) -> None:
         """Validate credentials by pinging GitLab's /user endpoint."""
         await self._get(f"{self.BASE_URL}/user")
-        return True

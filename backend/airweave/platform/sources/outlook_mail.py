@@ -1188,10 +1188,9 @@ class OutlookMailSource(BaseSource):
                 f"===== OUTLOOK MAIL ENTITY GENERATION COMPLETE: {entity_count} entities ====="
             )
 
-    async def validate(self) -> bool:
+    async def validate(self) -> None:
         """Validate credentials by pinging the mailFolders endpoint."""
         await self._get(
             f"{self.GRAPH_BASE_URL}/me/mailFolders",
             params={"$top": "1"},
         )
-        return True

@@ -360,20 +360,19 @@ class ConfluenceSource(BaseSource):
     # Lifecycle
     # ------------------------------------------------------------------
 
-    async def validate(self) -> bool:
+    async def validate(self) -> None:
         """Verify Confluence OAuth2 token by calling accessible-resources endpoint."""
         try:
             resources = await self._get_accessible_resources()
             if not resources:
                 self.logger.warning("Confluence validation failed: no accessible resources found")
-                return False
+                raise ValueError("Confluence validation failed: no accessible resources found")
             self.logger.debug("Confluence validation successful")
-            return True
         except SourceAuthError:
             raise
         except Exception as e:
             self.logger.warning(f"Confluence validation failed: {e}")
-            return False
+            raise
 
     async def generate_entities(  # noqa: C901
         self,

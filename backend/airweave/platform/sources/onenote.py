@@ -447,10 +447,9 @@ class OneNoteSource(BaseSource):
                 f"===== MICROSOFT ONENOTE ENTITY GENERATION COMPLETE: {entity_count} entities ====="
             )
 
-    async def validate(self) -> bool:
+    async def validate(self) -> None:
         """Validate credentials by pinging the OneNote notebooks endpoint."""
         await self._get(
             f"{self.GRAPH_BASE_URL}/me/onenote/notebooks",
             params={"$top": "1"},
         )
-        return True

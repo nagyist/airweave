@@ -74,9 +74,9 @@ async def test_create_with_defaults():
 
 
 @pytest.mark.asyncio
-async def test_validate_returns_true(source):
-    """validate() always returns True for stub source."""
-    assert await source.validate() is True
+async def test_validate_completes(source):
+    """validate() completes without error for stub source."""
+    await source.validate()
 
 
 # ---------------------------------------------------------------------------

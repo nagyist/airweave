@@ -11,13 +11,14 @@ from airweave.domains.auth_provider._base import BaseAuthProvider
 from airweave.models.connection import Connection
 from airweave.models.source_connection import SourceConnection
 from airweave.platform.configs._base import BaseConfig, Fields
+from airweave.platform.sources._base import BaseSource
 
 
 class SourceRegistryEntry(BaseRegistryEntry):
     """Precomputed source metadata. Built once at startup from @source decorators."""
 
     # Resolved classes (read directly from decorator — no locator needed)
-    source_class_ref: type
+    source_class_ref: type[BaseSource]
     config_ref: type[BaseConfig] | None
     auth_config_ref: type[BaseConfig] | None
 

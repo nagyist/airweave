@@ -366,14 +366,12 @@ class OneDriveSource(BaseSource):
         ):
             yield file_entity
 
-    async def validate(self) -> bool:
+    async def validate(self) -> None:
         """Validate OneDrive credentials with drive access fallback."""
         try:
             await self._get("https://graph.microsoft.com/v1.0/me/drive")
-            return True
         except SourceEntityForbiddenError:
             await self._get(
                 "https://graph.microsoft.com/v1.0/me/drives",
                 params={"$top": "1"},
             )
-            return True

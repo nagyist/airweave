@@ -325,13 +325,14 @@ class SlabSource(BaseSource):
             f"{len(post_ids)} posts, {len(comment_payloads)} comments"
         )
 
-    async def validate(self) -> bool:
+    async def validate(self) -> None:
         """Verify credentials by querying the organization info."""
         try:
             result = await self._post("query { organization { id name host } }")
-            return "organization" in result and result["organization"] is not None
         except SourceAuthError:
             raise
         except Exception as e:
             self.logger.warning(f"Validation failed: {e}")
-            return False
+            raise
+        if not ("organization" in result and result["organization"] is not None):
+            raise ValueError("Slab validation failed: unexpected GraphQL response")

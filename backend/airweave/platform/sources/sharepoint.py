@@ -807,7 +807,6 @@ class SharePointSource(BaseSource):
                 f"===== SHAREPOINT ENTITY GENERATION COMPLETE: {entity_count} entities ====="
             )
 
-    async def validate(self) -> bool:
+    async def validate(self) -> None:
         """Validate credentials by pinging the root site endpoint."""
         await self._get(f"{self.GRAPH_BASE_URL}/sites/root")
-        return True

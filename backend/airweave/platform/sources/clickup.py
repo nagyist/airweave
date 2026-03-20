@@ -504,7 +504,6 @@ class ClickUpSource(BaseSource):
             ):
                 yield file_entity
 
-    async def validate(self) -> bool:
+    async def validate(self) -> None:
         """Validate credentials by pinging ClickUp's /user endpoint."""
         await self._get(f"{self.BASE_URL}/user")
-        return True

@@ -133,7 +133,7 @@ class GoogleSlidesSource(BaseSource):
     # Validation
     # -----------------------
 
-    async def validate(self) -> bool:
+    async def validate(self) -> None:
         """Validate credentials by pinging Drive files (presentation MIME type)."""
         await self._get(
             "https://www.googleapis.com/drive/v3/files",
@@ -142,7 +142,6 @@ class GoogleSlidesSource(BaseSource):
                 "q": "mimeType='application/vnd.google-apps.presentation'",
             },
         )
-        return True
 
     # -----------------------
     # File downloads

@@ -368,7 +368,6 @@ class AirtableSource(BaseSource):
     # Validation
     # ------------------------------------------------------------------
 
-    async def validate(self) -> bool:
+    async def validate(self) -> None:
         """Validate credentials by pinging Airtable's bases metadata endpoint."""
         await self._get(f"{_API}/meta/bases")
-        return True

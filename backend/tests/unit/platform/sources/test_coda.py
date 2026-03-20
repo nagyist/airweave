@@ -104,12 +104,11 @@ async def test_create_with_coda_auth_config():
 
 @pytest.mark.asyncio
 async def test_validate_success(coda_source):
-    """validate() should return True when whoami returns 200."""
+    """validate() should complete when whoami returns 200."""
     with patch.object(
         coda_source, "_get", new_callable=AsyncMock, return_value={}
     ) as mock_get:
-        result = await coda_source.validate()
-        assert result is True
+        await coda_source.validate()
         mock_get.assert_awaited_once()
         assert mock_get.call_args[0][0] == "/whoami"
 

@@ -515,6 +515,5 @@ class FileStubSource(BaseSource):
 
         self.logger.info("FileStubSource: generated all 4 file entities")
 
-    async def validate(self) -> bool:
+    async def validate(self) -> None:
         """Always valid - no external dependencies."""
-        return True

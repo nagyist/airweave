@@ -231,7 +231,7 @@ class BaseSource:
         yield  # type: ignore[misc]
 
     @abstractmethod
-    async def validate(self) -> bool:
+    async def validate(self) -> None:
         """Validate that this source is reachable and credentials are usable."""
         raise NotImplementedError
 

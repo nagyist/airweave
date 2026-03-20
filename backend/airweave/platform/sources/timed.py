@@ -173,6 +173,5 @@ class TimedSource(BaseSource):
 
         self.logger.info(f"TimedSource: finished generating {self.entity_count} entities")
 
-    async def validate(self) -> bool:
+    async def validate(self) -> None:
         """Validate the source (always succeeds for timed test sources)."""
-        return True

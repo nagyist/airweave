@@ -189,6 +189,5 @@ class IncrementalStubSource(BaseSource):
                 entity_count=self.entity_count,
             )
 
-    async def validate(self) -> bool:
+    async def validate(self) -> None:
         """Validate the incremental stub source configuration."""
-        return True

@@ -1026,10 +1026,9 @@ class SharePointOnlineSource(BaseSource):
 
     # -- Validation --
 
-    async def validate(self) -> bool:
+    async def validate(self) -> None:
         """Validate credentials by pinging the root site endpoint."""
         await self._get(f"{GRAPH_BASE_URL}/sites/root")
-        return True
 
     # -- Access Control Memberships --
 

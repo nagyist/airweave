@@ -447,7 +447,7 @@ class ZohoCRMSource(BaseSource):
         async for entity in self._generate_invoice_entities():
             yield entity
 
-    async def validate(self) -> bool:
+    async def validate(self) -> None:
         """Verify Zoho CRM OAuth2 token by pinging a lightweight endpoint.
 
         Note: Zoho uses 'Zoho-oauthtoken' header format, not standard 'Bearer'.
@@ -458,7 +458,7 @@ class ZohoCRMSource(BaseSource):
             token = await self.auth.get_token()
         if not token:
             self.logger.warning("OAuth2 validation failed: no access token available.")
-            return False
+            raise ValueError("Zoho validation failed: no access token available")
 
         headers = {
             "Authorization": f"Zoho-oauthtoken {token}",
@@ -469,7 +469,8 @@ class ZohoCRMSource(BaseSource):
                 f"{self._get_base_url()}/users?type=CurrentUser",
                 headers=headers,
             )
-            return 200 <= resp.status_code < 300
         except Exception as e:
             self.logger.warning(f"Zoho validation request error: {e}")
-            return False
+            raise
+        if not (200 <= resp.status_code < 300):
+            raise ValueError(f"Zoho validation failed: HTTP {resp.status_code}")

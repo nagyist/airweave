@@ -258,7 +258,7 @@ class CTTISource(BaseSource):
         finally:
             await self._close_pool()
 
-    async def validate(self) -> bool:
+    async def validate(self) -> None:
         """Verify CTTI DB credentials and basic access by running a tiny query."""
         try:
             pool = await self._ensure_pool()
@@ -270,13 +270,12 @@ class CTTISource(BaseSource):
                     )
 
             await self._retry_with_backoff(_ping, max_retries=2)
-            return True
 
         except (asyncpg.InvalidPasswordError, asyncpg.InvalidCatalogNameError, ValueError) as e:
             self.logger.warning(f"CTTI validation failed (credentials/config): {e}")
-            return False
+            raise
         except Exception as e:
             self.logger.warning(f"CTTI validation encountered an error: {e}")
-            return False
+            raise
         finally:
             await self._close_pool()

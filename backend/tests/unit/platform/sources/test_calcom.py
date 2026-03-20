@@ -242,8 +242,7 @@ async def test_validate_uses_configured_host_in_ping_url():
     source = await _cal_source(config=CalComConfig(host="https://cal.example.com"))
 
     with patch.object(source, "_get", new=AsyncMock(return_value={"data": []})) as m:
-        ok = await source.validate()
-        assert ok is True
+        await source.validate()
         m.assert_awaited_once()
         assert m.call_args[0][0] == "/v2/bookings"
         assert m.call_args.kwargs["params"] == {"take": 1, "skip": 0}

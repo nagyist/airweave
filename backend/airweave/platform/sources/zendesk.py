@@ -290,7 +290,6 @@ class ZendeskSource(BaseSource):
             ):
                 yield attachment_entity
 
-    async def validate(self) -> bool:
+    async def validate(self) -> None:
         """Validate credentials by pinging Zendesk's /users/me endpoint."""
         await self._get(f"https://{self.subdomain}.zendesk.com/api/v2/users/me.json")
-        return True

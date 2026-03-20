@@ -11,6 +11,7 @@ from airweave.core.events.sync import AccessControlMembershipBatchProcessedEvent
 from airweave.core.shared_models import SyncJobStatus
 from airweave.core.sync_job_service import sync_job_service
 from airweave.db.session import get_db_context
+from airweave.domains.syncs.cursors.service import SyncCursorService
 from airweave.domains.usage.exceptions import (
     PaymentRequiredError,
     UsageLimitExceededError,
@@ -45,7 +46,7 @@ class SyncOrchestrator:
         sync_context: SyncContext,
         runtime: SyncRuntime,
         access_control_pipeline: AccessControlPipeline,
-        sync_cursor_service=None,
+        sync_cursor_service: SyncCursorService,
     ):
         """Initialize the sync orchestrator with ALL required components."""
         self.entity_pipeline = entity_pipeline

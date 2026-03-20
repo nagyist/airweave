@@ -90,13 +90,12 @@ class GoogleDocsSource(BaseSource):
         instance.include_shared = config.include_shared if config else True
         return instance
 
-    async def validate(self) -> bool:
+    async def validate(self) -> None:
         """Validate credentials by pinging Drive API about (user)."""
         await self._get(
             "https://www.googleapis.com/drive/v3/about",
             params={"fields": "user"},
         )
-        return True
 
     # --- HTTP helpers ---
 

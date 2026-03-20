@@ -199,32 +199,28 @@ async def test_get_raises_on_success_false():
 
 
 @pytest.mark.asyncio
-async def test_validate_returns_false_when_no_token():
+async def test_validate_raises_when_no_token():
     source = await _make_source(api_token=VALID_API_TOKEN)
     source._api_token = None
-    result = await source.validate()
-    assert result is False
+    with pytest.raises(ValueError, match="Document360 validation failed: missing API token"):
+        await source.validate()
 
 
 @pytest.mark.asyncio
-async def test_validate_returns_true_on_success():
+async def test_validate_succeeds_on_success():
     source = await _make_source(api_token=VALID_API_TOKEN)
     mock_get = AsyncMock(return_value={"success": True, "data": []})
     with patch.object(source, "_get", mock_get):
-        result = await source.validate()
-    assert result is True
+        await source.validate()
 
 
 @pytest.mark.asyncio
-async def test_validate_returns_false_on_http_error():
+async def test_validate_propagates_http_error():
     source = await _make_source(api_token=VALID_API_TOKEN)
-    with patch.object(
-        source,
-        "_get",
-        side_effect=httpx.HTTPStatusError("err", request=MagicMock(), response=MagicMock()),
-    ):
-        result = await source.validate()
-    assert result is False
+    err = httpx.HTTPStatusError("err", request=MagicMock(), response=MagicMock())
+    with patch.object(source, "_get", side_effect=err):
+        with pytest.raises(httpx.HTTPStatusError):
+            await source.validate()
 
 
 # ---------------------------------------------------------------------------

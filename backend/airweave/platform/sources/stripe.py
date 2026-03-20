@@ -550,13 +550,12 @@ class StripeSource(BaseSource):
         async for sub_entity in self._generate_subscription_entities():
             yield sub_entity
 
-    async def validate(self) -> bool:
+    async def validate(self) -> None:
         """Verify Stripe API key by pinging a lightweight endpoint (/v1/balance)."""
         try:
             await self._get("https://api.stripe.com/v1/balance")
-            return True
         except SourceAuthError:
             raise
         except Exception as e:
             self.logger.warning(f"Unexpected error during Stripe validation: {e}")
-            return False
+            raise

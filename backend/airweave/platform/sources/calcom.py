@@ -267,11 +267,10 @@ class CalSource(BaseSource):
                         latest_watermark = iso
                         cursor.update(last_updated_at=latest_watermark)
 
-    async def validate(self) -> bool:
+    async def validate(self) -> None:
         """Validate credentials by pinging the Cal.com bookings endpoint."""
         await self._get(
             "/v2/bookings",
             params={"take": 1, "skip": 0},
             headers={"cal-api-version": CAL_BOOKINGS_API_VERSION},
         )
-        return True

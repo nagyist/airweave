@@ -441,7 +441,6 @@ class ZoomSource(BaseSource):
 
         self.logger.info(f"Zoom entity generation complete: {entity_count} entities")
 
-    async def validate(self) -> bool:
+    async def validate(self) -> None:
         """Validate credentials by pinging the Zoom current-user endpoint."""
         await self._get(f"{self.ZOOM_BASE_URL}/users/me")
-        return True

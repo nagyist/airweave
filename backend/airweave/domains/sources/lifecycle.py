@@ -35,7 +35,6 @@ from airweave.domains.source_connections.protocols import (
 from airweave.domains.sources.exceptions import (
     SourceCreationError,
     SourceNotFoundError,
-    SourceValidationError,
 )
 from airweave.domains.sources.protocols import (
     SourceLifecycleServiceProtocol,
@@ -209,23 +208,13 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
         typed_config = self._build_typed_config(entry, config or {})
 
         try:
-            try:
-                source = await source_class.create(
-                    auth=auth,
-                    logger=validation_logger,
-                    http_client=validation_client,
-                    config=typed_config,
-                )
-            except Exception as exc:
-                raise SourceCreationError(short_name, str(exc)) from exc
-
-            try:
-                is_valid = await source.validate()
-            except Exception as exc:
-                raise SourceValidationError(short_name, f"validation raised: {exc}") from exc
-
-            if not is_valid:
-                raise SourceValidationError(short_name, "validate() returned False")
+            source = await source_class.create(
+                auth=auth,
+                logger=validation_logger,
+                http_client=validation_client,
+                config=typed_config,
+            )
+            await source.validate()
         finally:
             await validation_client.aclose()
 

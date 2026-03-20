@@ -101,13 +101,12 @@ class GoogleDriveSource(BaseSource):
         """Parse Google Drive RFC3339 timestamps into aware datetimes."""
         return _parse_drive_dt(value)
 
-    async def validate(self) -> bool:
+    async def validate(self) -> None:
         """Validate credentials by pinging the shared drives list."""
         await self._get(
             "https://www.googleapis.com/drive/v3/drives",
             params={"pageSize": "1"},
         )
-        return True
 
     @retry(
         stop=stop_after_attempt(5),

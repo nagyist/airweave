@@ -349,17 +349,16 @@ class FreshdeskSource(BaseSource):
         async for entity in self._generate_solution_article_entities():
             yield entity
 
-    async def validate(self) -> bool:
+    async def validate(self) -> None:
         """Validate Freshdesk credentials by calling GET /api/v2/agents/me."""
         if not getattr(self, "_api_key", None):
             self.logger.warning("Freshdesk validation failed: missing API key.")
-            return False
+            raise ValueError("Freshdesk validation failed: missing API key.")
         if not getattr(self, "_domain", None):
             self.logger.warning("Freshdesk validation failed: missing domain.")
-            return False
+            raise ValueError("Freshdesk validation failed: missing domain.")
         try:
             await self._get(f"{self._base_url()}/agents/me")
-            return True
         except SourceAuthError:
             raise
         except httpx.HTTPStatusError as e:
@@ -367,7 +366,7 @@ class FreshdeskSource(BaseSource):
             self.logger.warning(
                 f"Freshdesk validation failed: HTTP {e.response.status_code} - {text_preview}"
             )
-            return False
+            raise
         except Exception as e:
             self.logger.warning(f"Unexpected error during Freshdesk validation: {e}")
-            return False
+            raise

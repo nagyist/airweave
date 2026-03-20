@@ -872,15 +872,14 @@ class ShopifySource(BaseSource):
         async for entity in self._generate_theme_entities():
             yield entity
 
-    async def validate(self) -> bool:
+    async def validate(self) -> None:
         """Verify Shopify API access by pinging the shop endpoint."""
         try:
             result = await self._get(self._build_api_url("shop.json"))
             shop_name = result.get("shop", {}).get("name", "Unknown")
             self.logger.info(f"✅ [SHOPIFY] Connected to store: {shop_name}")
-            return True
         except SourceAuthError:
             raise
         except Exception as e:
             self.logger.warning(f"Unexpected error during Shopify validation: {e}")
-            return False
+            raise

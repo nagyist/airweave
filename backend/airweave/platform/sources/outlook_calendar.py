@@ -472,10 +472,9 @@ class OutlookCalendarSource(BaseSource):
                 f"Outlook Calendar entity generation complete: {entity_count} entities"
             )
 
-    async def validate(self) -> bool:
+    async def validate(self) -> None:
         """Validate credentials by pinging the calendars endpoint."""
         await self._get(
             f"{self.GRAPH_BASE_URL}/me/calendars",
             params={"$top": "1"},
         )
-        return True

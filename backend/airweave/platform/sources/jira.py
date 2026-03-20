@@ -667,17 +667,16 @@ class JiraSource(BaseSource):
                 f"{zephyr_test_plan_count} test plans"
             )
 
-    async def validate(self) -> bool:
+    async def validate(self) -> None:
         """Verify Jira OAuth2 token by calling accessible-resources endpoint."""
         try:
             resources = await self._get_accessible_resources()
             if not resources:
                 self.logger.warning("Jira validation failed: no accessible resources found")
-                return False
+                raise ValueError("Jira validation failed: no accessible resources found")
             self.logger.debug("Jira OAuth validation successful")
-            return True
         except SourceAuthError:
             raise
         except Exception as e:
             self.logger.warning(f"Jira validation failed: {e}")
-            return False
+            raise

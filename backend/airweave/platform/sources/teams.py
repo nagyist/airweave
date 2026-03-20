@@ -491,7 +491,6 @@ class TeamsSource(BaseSource):
 
         self.logger.info(f"Microsoft Teams entity generation complete: {entity_count} entities")
 
-    async def validate(self) -> bool:
+    async def validate(self) -> None:
         """Validate credentials by pinging the joinedTeams endpoint."""
         await self._get(f"{self.GRAPH_BASE_URL}/me/joinedTeams")
-        return True

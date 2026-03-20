@@ -294,11 +294,7 @@ class SyncFactory:
             original_short_name=original_short_name,
         )
 
-        if not await source.validate():
-            raise NotFoundException(
-                f"ARF data not found for sync {sync.id}. "
-                f"Cannot replay - ensure ARF capture was enabled for previous syncs."
-            )
+        await source.validate()
 
         cursor = SyncCursor(sync_id=sync.id, cursor_schema=None, cursor_data=None)
         return source, cursor

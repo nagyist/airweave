@@ -250,7 +250,7 @@ async def test_validate_success():
     source = await _make_source()
     source._graphql = AsyncMock(return_value={"data": {}})
 
-    assert await source.validate() is True
+    await source.validate()
 
 
 @pytest.mark.asyncio
@@ -265,4 +265,5 @@ async def test_validate_failure():
         )
     )
 
-    assert await source.validate() is False
+    with pytest.raises(SourceAuthError):
+        await source.validate()

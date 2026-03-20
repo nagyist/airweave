@@ -312,7 +312,6 @@ class TodoistSource(BaseSource):
                 ):
                     yield comment_entity
 
-    async def validate(self) -> bool:
+    async def validate(self) -> None:
         """Validate credentials by pinging the Todoist projects endpoint."""
         await self._get("https://api.todoist.com/api/v1/projects")
-        return True

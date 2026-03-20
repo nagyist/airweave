@@ -7,7 +7,6 @@ import mimetypes
 from pathlib import Path
 from typing import Any, AsyncGenerator, Dict, List, Optional
 
-import httpx
 from tenacity import retry, stop_after_attempt
 
 from airweave.core.logging import ContextualLogger
@@ -824,54 +823,14 @@ class GitHubSource(BaseSource):
             ):
                 yield entity
 
-    async def validate(self) -> bool:
-        """Verify GitHub PAT and repo/branch access with lightweight pings."""
-        if not getattr(self, "_personal_access_token", None):
-            self.logger.warning("GitHub validation failed: missing personal_access_token.")
-            return False
+    async def validate(self) -> None:
+        """Verify GitHub PAT and optional repo/branch access via the same path as sync.
 
-        try:
-            headers = {
-                "Authorization": f"token {self._personal_access_token}",
-                "Accept": "application/vnd.github.v3+json",
-                "X-GitHub-Api-Version": "2022-11-28",
-            }
-
-            me = await self.http_client.get(f"{self.BASE_URL}/user", headers=headers)
-            if not (200 <= me.status_code < 300):
-                self.logger.warning(f"GitHub /user ping failed: {me.status_code} - {me.text[:200]}")
-                return False
-
-            if getattr(self, "_repo_name", None):
-                repo = await self.http_client.get(
-                    f"{self.BASE_URL}/repos/{self._repo_name}", headers=headers
-                )
-                if not (200 <= repo.status_code < 300):
-                    self.logger.warning(
-                        f"GitHub repo '{self._repo_name}' check failed: "
-                        f"{repo.status_code} - {repo.text[:200]}"
-                    )
-                    return False
-
-                if getattr(self, "_branch", None):
-                    br = await self.http_client.get(
-                        f"{self.BASE_URL}/repos/{self._repo_name}/branches/{self._branch}",
-                        headers=headers,
-                    )
-                    if not (200 <= br.status_code < 300):
-                        self.logger.warning(
-                            f"GitHub branch '{self._branch}' not found or inaccessible in "
-                            f"'{self._repo_name}': {br.status_code} - {br.text[:200]}"
-                        )
-                        return False
-
-            return True
-
-        except SourceAuthError:
-            raise
-        except httpx.RequestError as e:
-            self.logger.warning(f"GitHub validation request error: {e}")
-            return False
-        except Exception as e:
-            self.logger.warning(f"Unexpected error during GitHub validation: {e}")
-            return False
+        Uses :meth:`_get` (Airweave client + ``raise_for_status``) so failures surface as
+        the same domain errors as the rest of the connector. Relies on :meth:`create` for
+        ``_personal_access_token``, ``_repo_name``, and ``_branch``.
+        """
+        if self._repo_name:
+            await self._get(f"{self.BASE_URL}/repos/{self._repo_name}")
+            if self._branch:
+                await self._get(f"{self.BASE_URL}/repos/{self._repo_name}/branches/{self._branch}")

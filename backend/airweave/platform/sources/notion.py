@@ -93,10 +93,9 @@ class NotionSource(BaseSource):
         """Create a new Notion source."""
         return cls(auth=auth, logger=logger, http_client=http_client)
 
-    async def validate(self) -> bool:
+    async def validate(self) -> None:
         """Validate credentials by pinging the Notion current-user endpoint."""
         await self._get("https://api.notion.com/v1/users/me")
-        return True
 
     # ------------------------------------------------------------------
     # HTTP helpers

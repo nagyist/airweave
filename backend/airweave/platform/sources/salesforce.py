@@ -356,14 +356,15 @@ class SalesforceSource(BaseSource):
         async for opportunity_entity in self._generate_opportunity_entities():
             yield opportunity_entity
 
-    async def validate(self) -> bool:
+    async def validate(self) -> None:
         """Validate credentials by pinging the Salesforce OAuth2 userinfo endpoint."""
         if getattr(self, "_is_validation_mode", False):
             token = await self.auth.get_token()
-            return bool(token)
+            if not token:
+                raise ValueError("Salesforce validation: no OAuth token available")
+            return
         if not self.instance_url:
             raise ValueError(
                 f"Salesforce instance_url is not set. instance_url={self.instance_url}"
             )
         await self._get(f"https://{self.instance_url}/services/oauth2/userinfo")
-        return True

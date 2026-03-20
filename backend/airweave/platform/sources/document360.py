@@ -241,17 +241,16 @@ class Document360Source(BaseSource):
                 ):
                     yield e
 
-    async def validate(self) -> bool:
+    async def validate(self) -> None:
         """Verify API token by fetching project versions."""
         if not getattr(self, "_api_token", None):
             self.logger.warning("Document360 validation failed: missing API token")
-            return False
+            raise ValueError("Document360 validation failed: missing API token")
         try:
             await self._get("/ProjectVersions")
-            return True
         except SourceAuthError:
             self.logger.warning("Document360 validation failed: authentication error")
-            return False
+            raise
         except Exception as e:
             self.logger.warning(f"Document360 validation failed: {e}")
-            return False
+            raise

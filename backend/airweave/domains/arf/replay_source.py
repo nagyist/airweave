@@ -12,6 +12,7 @@ Unlike SnapshotSource (user-facing for evals), this source:
 from typing import AsyncGenerator, Optional
 from uuid import UUID
 
+from airweave.core.exceptions import NotFoundException
 from airweave.core.logging import ContextualLogger
 from airweave.domains.arf.reader import ArfReader
 from airweave.domains.storage.protocols import StorageBackend
@@ -84,9 +85,13 @@ class ArfReplaySource(BaseSource):
         async for entity in self.reader.iter_entities():
             yield entity
 
-    async def validate(self) -> bool:
+    async def validate(self) -> None:
         """Validate that ARF data exists for this sync."""
-        return await self.reader.validate()
+        if not await self.reader.validate():
+            raise NotFoundException(
+                f"ARF data not found for sync {self.sync_id}. "
+                "Cannot replay - ensure ARF capture was enabled for previous syncs."
+            )
 
     def cleanup(self) -> None:
         """Clean up temp files."""

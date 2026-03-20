@@ -578,13 +578,13 @@ class MondaySource(BaseSource):
             ):
                 yield update_entity
 
-    async def validate(self) -> bool:
+    async def validate(self) -> None:
         """Verify Monday OAuth2 token by POSTing a minimal GraphQL query to /v2."""
         try:
             token = await self.auth.get_token()
             if not token:
                 self.logger.warning("Monday validation failed: no access token available.")
-                return False
+                raise ValueError("Monday validation failed: no access token available.")
 
             payload = {"query": "query { me { id } }"}
             headers = {
@@ -607,18 +607,21 @@ class MondaySource(BaseSource):
                 self.logger.warning(
                     f"Monday validate failed: HTTP {resp.status_code} - {resp.text[:200]}"
                 )
-                return False
+                raise ValueError(f"Monday validate failed: HTTP {resp.status_code}")
 
             body = resp.json()
             if body.get("errors"):
                 self.logger.warning(f"Monday validate GraphQL errors: {body['errors']}")
-                return False
+                raise ValueError("Monday validate failed: GraphQL errors in response")
 
             me = (body.get("data") or {}).get("me") or {}
-            return bool(me.get("id"))
+            if not me.get("id"):
+                raise ValueError("Monday validation failed: missing me id")
 
         except SourceAuthError:
             raise
+        except ValueError:
+            raise
         except Exception as e:
             self.logger.warning(f"Unexpected error during Monday validation: {e}")
-            return False
+            raise

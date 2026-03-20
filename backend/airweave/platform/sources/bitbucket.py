@@ -467,19 +467,17 @@ class BitbucketSource(BaseSource):
                         entity.breadcrumbs = [workspace_breadcrumb]
                     yield entity
 
-    async def validate(self) -> bool:
+    async def validate(self) -> None:
         """Verify Bitbucket Basic Auth and (if provided) workspace access."""
-        try:
-            auth = httpx.BasicAuth(username=self._email, password=self._access_token)
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                resp = await client.get(
-                    f"{self.BASE_URL}/user",
-                    auth=auth,
-                    headers={"Accept": "application/json"},
-                )
-                if not resp.is_success:
-                    return False
-                data = resp.json()
-                return bool(data.get("uuid"))
-        except Exception:
-            return False
+        auth = httpx.BasicAuth(username=self._email, password=self._access_token)
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(
+                f"{self.BASE_URL}/user",
+                auth=auth,
+                headers={"Accept": "application/json"},
+            )
+            if not resp.is_success:
+                raise ValueError(f"Bitbucket validation failed: HTTP {resp.status_code}")
+            data = resp.json()
+            if not data.get("uuid"):
+                raise ValueError("Bitbucket validation failed: missing user uuid")

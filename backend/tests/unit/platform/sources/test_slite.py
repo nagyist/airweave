@@ -310,24 +310,23 @@ async def test_generate_entities_yields_notes(slite_credentials):
 
 @pytest.mark.asyncio
 async def test_validate_success(slite_credentials):
-    """validate returns True when list notes returns notes key."""
+    """validate completes when list notes returns notes key."""
     mock_http = _mock_http_client_get_queue(
         [_response(200, {"notes": [], "total": 0, "hasNextPage": False, "nextCursor": None})]
     )
     source = await _make_slite_source(slite_credentials, http_client=mock_http)
 
-    result = await source.validate()
-    assert result is True
+    await source.validate()
 
 
 @pytest.mark.asyncio
 async def test_validate_failure_missing_notes_key(slite_credentials):
-    """validate returns False when response does not contain notes key."""
+    """validate raises when response does not contain notes key."""
     mock_http = _mock_http_client_get_queue([_response(200, {"data": []})])
     source = await _make_slite_source(slite_credentials, http_client=mock_http)
 
-    result = await source.validate()
-    assert result is False
+    with pytest.raises(ValueError, match="Slite validation failed"):
+        await source.validate()
 
 
 @pytest.mark.asyncio

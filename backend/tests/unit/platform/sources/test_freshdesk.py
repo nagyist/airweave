@@ -133,7 +133,7 @@ def test_parse_link_header_returns_none_when_no_next():
 
 @pytest.mark.asyncio
 async def test_validate_success():
-    """validate() should return True when GET /agents/me returns 200."""
+    """validate() should complete when GET /agents/me returns 200."""
     source = await FreshdeskSource.create(
         auth=_mock_auth(api_key="valid-key"),
         logger=_mock_logger(),
@@ -141,20 +141,15 @@ async def test_validate_success():
         config=FreshdeskConfig(domain="test"),
     )
 
-    mock_response = MagicMock()
-    mock_response.status_code = 200
-    mock_response.raise_for_status = MagicMock()
-
     with patch.object(source, "_get", new_callable=AsyncMock) as mock_get:
-        mock_get.return_value = mock_response
-        result = await source.validate()
-    assert result is True
+        mock_get.return_value = {"id": 1}
+        await source.validate()
     mock_get.assert_called_once()
 
 
 @pytest.mark.asyncio
 async def test_validate_fails_when_missing_api_key():
-    """validate() should return False when api_key is missing."""
+    """validate() should raise when api_key is missing."""
     source = await FreshdeskSource.create(
         auth=_mock_auth(api_key="k"),
         logger=_mock_logger(),
@@ -162,13 +157,13 @@ async def test_validate_fails_when_missing_api_key():
         config=FreshdeskConfig(domain="d"),
     )
     source._api_key = None
-    result = await source.validate()
-    assert result is False
+    with pytest.raises(ValueError, match="Freshdesk validation failed: missing API key"):
+        await source.validate()
 
 
 @pytest.mark.asyncio
 async def test_validate_fails_when_missing_domain():
-    """validate() should return False when domain is missing."""
+    """validate() should raise when domain is missing."""
     source = await FreshdeskSource.create(
         auth=_mock_auth(api_key="k"),
         logger=_mock_logger(),
@@ -176,13 +171,13 @@ async def test_validate_fails_when_missing_domain():
         config=FreshdeskConfig(domain="d"),
     )
     source._domain = None
-    result = await source.validate()
-    assert result is False
+    with pytest.raises(ValueError, match="Freshdesk validation failed: missing domain"):
+        await source.validate()
 
 
 @pytest.mark.asyncio
 async def test_validate_fails_on_http_error():
-    """validate() should return False when API returns non-2xx."""
+    """validate() should propagate when API returns non-2xx."""
     source = await FreshdeskSource.create(
         auth=_mock_auth(api_key="bad"),
         logger=_mock_logger(),
@@ -194,8 +189,8 @@ async def test_validate_fails_on_http_error():
         mock_get.side_effect = httpx.HTTPStatusError(
             "401", request=MagicMock(), response=MagicMock(status_code=401)
         )
-        result = await source.validate()
-    assert result is False
+        with pytest.raises(httpx.HTTPStatusError):
+            await source.validate()
 
 
 # ---------------------------------------------------------------------------
@@ -766,7 +761,7 @@ async def test_generate_entities_yields_from_all_generators():
 
 @pytest.mark.asyncio
 async def test_validate_fails_on_generic_exception():
-    """validate() returns False on unexpected exception."""
+    """validate() propagates unexpected exceptions."""
     source = await FreshdeskSource.create(
         auth=_mock_auth(api_key="k"),
         logger=_mock_logger(),
@@ -775,5 +770,5 @@ async def test_validate_fails_on_generic_exception():
     )
     with patch.object(source, "_get", new_callable=AsyncMock) as mock_get:
         mock_get.side_effect = RuntimeError("connection failed")
-        result = await source.validate()
-    assert result is False
+        with pytest.raises(RuntimeError, match="connection failed"):
+            await source.validate()

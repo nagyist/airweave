@@ -185,13 +185,14 @@ class SliteSource(BaseSource):
         async for entity in self._generate_note_entities():
             yield entity
 
-    async def validate(self) -> bool:
+    async def validate(self) -> None:
         """Validate API key by listing one page of notes."""
         try:
             page = await self._list_notes_page()
-            return "notes" in page
         except SourceAuthError:
             raise
         except Exception as e:
             self.logger.warning(f"Slite validation failed: {e}")
-            return False
+            raise
+        if "notes" not in page:
+            raise ValueError("Slite validation failed: unexpected API response")

@@ -7,7 +7,7 @@ NotFoundException
 
 SourceError (AirweaveException)  — base for ALL source runtime errors
 ├── SourceCreationError          — source_class.create() failed
-├── SourceValidationError        — source.validate() returned False / raised
+├── SourceValidationError        — source.validate() raised
 │
 │   Runtime errors (during generate_entities / search / ACL / browse / tool calls)
 ├── SourceAuthError              — 401 after token refresh attempt → abort sync

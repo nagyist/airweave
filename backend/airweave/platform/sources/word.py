@@ -210,10 +210,9 @@ class WordSource(BaseSource):
         async for entity in self._generate_word_document_entities(files=files):
             yield entity
 
-    async def validate(self) -> bool:
+    async def validate(self) -> None:
         """Validate credentials by pinging the drive endpoint."""
         await self._get(
             f"{self.GRAPH_BASE_URL}/me/drive",
             params={"$select": "id"},
         )
-        return True

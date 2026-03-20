@@ -491,40 +491,41 @@ class SnapshotSource(BaseSource):
                 self.logger.warning(f"Failed to reconstruct entity from {file_path}: {e}")
                 continue
 
-    async def validate(self) -> bool:
+    async def validate(self) -> None:
         """Validate that the snapshot path exists and is readable."""
         self.logger.info(f"Validating snapshot source with path: {self.path}")
 
         if not self.path:
             self.logger.warning("Snapshot validation failed: path is empty")
-            return False
+            raise ValueError("Snapshot validation failed: path is empty")
 
         # Check path exists based on storage type
         if self._is_local_path:
             if not self._local_path().exists():
                 self.logger.warning(f"Snapshot validation failed: path does not exist: {self.path}")
-                return False
+                raise ValueError(f"Snapshot validation failed: path does not exist: {self.path}")
         elif self._is_azure_url:
             # Direct Azure URL access
             if not await self._azure_blob_exists("manifest.json"):
                 self.logger.warning(
                     f"Snapshot validation failed: manifest not found at {self.path}"
                 )
-                return False
+                raise ValueError(f"Snapshot validation failed: manifest not found at {self.path}")
         else:
             # Storage-relative path
             if not await self.storage.exists(f"{self.path}/manifest.json"):
                 self.logger.warning(
                     f"Snapshot validation failed: manifest not found at {self.path}"
                 )
-                return False
+                raise ValueError(f"Snapshot validation failed: manifest not found at {self.path}")
 
         try:
             manifest = await self._read_json("manifest.json")
-            return "sync_id" in manifest
         except Exception as e:
             self.logger.warning(f"Snapshot validation failed: {e}")
-            return False
+            raise
+        if "sync_id" not in manifest:
+            raise ValueError("Snapshot validation failed: manifest missing sync_id")
 
     def cleanup(self) -> None:
         """Clean up temp files and close Azure client."""

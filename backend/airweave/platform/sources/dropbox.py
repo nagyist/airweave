@@ -407,17 +407,16 @@ class DropboxSource(BaseSource):
                 ):
                     yield entity
 
-    async def validate(self) -> bool:
+    async def validate(self) -> None:
         """Verify Dropbox OAuth2 token by calling /users/get_current_account (POST, no body)."""
         try:
             await self._post(
                 "https://api.dropboxapi.com/2/users/get_current_account",
                 None,
             )
-            return True
         except SourceAuthError:
             self.logger.warning("Dropbox validation failed: authentication error")
-            return False
+            raise
         except Exception as e:
             self.logger.warning(f"Unexpected error during Dropbox validation: {e}")
-            return False
+            raise

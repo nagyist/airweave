@@ -251,7 +251,6 @@ class SlackSource(BaseSource):
             "Slack uses federated search. Use the search() method instead of generate_entities()."
         )
 
-    async def validate(self) -> bool:
+    async def validate(self) -> None:
         """Validate credentials by calling Slack auth.test."""
         await self._get("https://slack.com/api/auth.test")
-        return True

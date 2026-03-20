@@ -922,7 +922,7 @@ class StubSource(BaseSource):
 
         self.logger.info(f"Completed stub entity generation. Distribution: {type_counts}")
 
-    async def validate(self) -> bool:
+    async def validate(self) -> None:
         """Validate the stub source configuration.
 
         Always returns True since stub source doesn't require external validation.
@@ -930,4 +930,3 @@ class StubSource(BaseSource):
         Returns:
             True (stub source is always valid).
         """
-        return True

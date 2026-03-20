@@ -367,10 +367,9 @@ class GoogleCalendarSource(BaseSource):
             async for entity in self._process_calendars_sequential(calendar_list_entries):
                 yield entity
 
-    async def validate(self) -> bool:
+    async def validate(self) -> None:
         """Validate credentials by pinging the Calendar API calendarList endpoint."""
         await self._get(
             "https://www.googleapis.com/calendar/v3/users/me/calendarList",
             params={"maxResults": "1"},
         )
-        return True

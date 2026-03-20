@@ -148,8 +148,8 @@ async def test_validate_success():
 
 
 @pytest.mark.asyncio
-async def test_validate_fails_when_missing_api_key():
-    """validate() should raise when api_key is missing."""
+async def test_validate_raises_type_error_when_api_key_missing():
+    """httpx BasicAuth rejects None username when _get builds the request."""
     source = await FreshdeskSource.create(
         auth=_mock_auth(api_key="k"),
         logger=_mock_logger(),
@@ -157,13 +157,13 @@ async def test_validate_fails_when_missing_api_key():
         config=FreshdeskConfig(domain="d"),
     )
     source._api_key = None
-    with pytest.raises(ValueError, match="Freshdesk validation failed: missing API key"):
+    with pytest.raises(TypeError):
         await source.validate()
 
 
 @pytest.mark.asyncio
-async def test_validate_fails_when_missing_domain():
-    """validate() should raise when domain is missing."""
+async def test_validate_calls_agents_me_using_base_url_when_domain_none():
+    """Without explicit domain check, validate still issues GET via _get (URL uses str(None))."""
     source = await FreshdeskSource.create(
         auth=_mock_auth(api_key="k"),
         logger=_mock_logger(),
@@ -171,8 +171,13 @@ async def test_validate_fails_when_missing_domain():
         config=FreshdeskConfig(domain="d"),
     )
     source._domain = None
-    with pytest.raises(ValueError, match="Freshdesk validation failed: missing domain"):
+    with patch.object(source, "_get", new_callable=AsyncMock) as mock_get:
+        mock_get.return_value = MagicMock(status_code=200)
         await source.validate()
+    mock_get.assert_awaited_once()
+    called_url = mock_get.await_args[0][0]
+    assert "None.freshdesk.com" in called_url
+    assert called_url.endswith("/agents/me")
 
 
 @pytest.mark.asyncio

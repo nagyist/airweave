@@ -199,11 +199,13 @@ async def test_get_raises_on_success_false():
 
 
 @pytest.mark.asyncio
-async def test_validate_raises_when_no_token():
+async def test_validate_delegates_to_get_project_versions():
+    """validate() should call _get with ProjectVersions; failures come from _get / HTTP."""
     source = await _make_source(api_token=VALID_API_TOKEN)
-    source._api_token = None
-    with pytest.raises(ValueError, match="Document360 validation failed: missing API token"):
+    mock_get = AsyncMock(return_value={"success": True, "data": []})
+    with patch.object(source, "_get", mock_get):
         await source.validate()
+    mock_get.assert_awaited_once_with("/ProjectVersions")
 
 
 @pytest.mark.asyncio

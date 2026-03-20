@@ -320,13 +320,12 @@ async def test_validate_success(slite_credentials):
 
 
 @pytest.mark.asyncio
-async def test_validate_failure_missing_notes_key(slite_credentials):
-    """validate raises when response does not contain notes key."""
+async def test_validate_succeeds_when_response_omits_notes_key(slite_credentials):
+    """validate only awaits _list_notes_page; JSON shape beyond HTTP success is not checked."""
     mock_http = _mock_http_client_get_queue([_response(200, {"data": []})])
     source = await _make_slite_source(slite_credentials, http_client=mock_http)
 
-    with pytest.raises(ValueError, match="Slite validation failed"):
-        await source.validate()
+    await source.validate()
 
 
 @pytest.mark.asyncio

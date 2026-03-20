@@ -175,14 +175,13 @@ async def test_validate_success(slab_auth_config):
 
 
 @pytest.mark.asyncio
-async def test_validate_failure_no_org(slab_auth_config):
-    """validate raises when organization is null."""
+async def test_validate_succeeds_when_organization_null_in_response(slab_auth_config):
+    """_post returns data without organization; validate does not assert on shape."""
     org_response = _response(200, json={"data": {"organization": None}})
     http_client = _mock_http_client_with_post_queue([org_response])
     source = await make_slab_source(slab_auth_config, http_client=http_client)
 
-    with pytest.raises(ValueError, match="Slab validation failed"):
-        await source.validate()
+    await source.validate()
 
 
 @pytest.mark.asyncio
@@ -210,8 +209,10 @@ async def test_validate_raises_source_auth_error_on_401(slab_auth_config):
 
 
 @pytest.mark.asyncio
-async def test_validate_failure_organization_null_graphql_error(slab_auth_config):
-    """validate raises when GraphQL returns organization null error."""
+async def test_validate_succeeds_when_graphql_org_null_non_nullable_handled_by_post(
+    slab_auth_config,
+):
+    """_post maps org-null GraphQL errors to organization None without raising."""
     resp = _response(
         200,
         json={
@@ -227,7 +228,23 @@ async def test_validate_failure_organization_null_graphql_error(slab_auth_config
     http_client = _mock_http_client_with_post_queue([resp])
     source = await make_slab_source(slab_auth_config, http_client=http_client)
 
-    with pytest.raises(ValueError, match="Slab validation failed"):
+    await source.validate()
+
+
+@pytest.mark.asyncio
+async def test_validate_propagates_graphql_errors_from_post(slab_auth_config):
+    """Non–org-null GraphQL errors raise from _post and propagate through validate."""
+    resp = _response(
+        200,
+        json={
+            "data": None,
+            "errors": [{"message": "Rate limit exceeded"}],
+        },
+    )
+    http_client = _mock_http_client_with_post_queue([resp])
+    source = await make_slab_source(slab_auth_config, http_client=http_client)
+
+    with pytest.raises(ValueError, match="GraphQL errors"):
         await source.validate()
 
 

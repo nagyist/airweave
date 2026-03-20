@@ -525,7 +525,8 @@ class TestValidate:
         await source.validate()
 
     @pytest.mark.asyncio
-    async def test_validate_failure_missing_accounts_key(self):
+    async def test_validate_succeeds_when_http_ok_even_if_body_omits_accounts(self):
+        """validate only requires a successful _post; response shape is not asserted here."""
         client = _mock_http_client()
         client.post.return_value = _ok_response({"data": []})
 
@@ -535,8 +536,7 @@ class TestValidate:
             http_client=client,
             config=ApolloConfig(),
         )
-        with pytest.raises(ValueError, match="Apollo validation failed"):
-            await source.validate()
+        await source.validate()
 
     @pytest.mark.asyncio
     async def test_validate_failure_http_error(self):

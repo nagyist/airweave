@@ -14,6 +14,7 @@ from uuid import UUID
 
 from airweave.core.exceptions import NotFoundException
 from airweave.core.logging import ContextualLogger
+from airweave.core.logging import logger as _module_logger
 from airweave.domains.arf.reader import ArfReader
 from airweave.domains.storage.protocols import StorageBackend
 from airweave.platform.entities._base import BaseEntity
@@ -38,10 +39,12 @@ class ArfReplaySource(BaseSource):
         restore_files: bool = True,
         original_short_name: Optional[str] = None,
     ) -> None:
-        super().__init__()
+        # Internal source — bypass BaseSource.__init__ (no auth/http_client needed)
+        self._auth = None  # type: ignore[assignment]
+        self._http_client = None  # type: ignore[assignment]
+        self._logger = logger or _module_logger
         self.sync_id = sync_id
         self._storage = storage
-        self._logger = logger
         self.restore_files = restore_files
         self._reader: Optional[ArfReader] = None
 

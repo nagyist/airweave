@@ -22,7 +22,6 @@ from airweave.core.context import BaseContext
 from airweave.core.exceptions import NotFoundException
 from airweave.core.logging import ContextualLogger, LoggerConfigurator, logger
 from airweave.core.protocols.event_bus import EventBus
-from airweave.core.sync_cursor_service import sync_cursor_service
 from airweave.domains.access_control.dispatcher import ACActionDispatcher
 from airweave.domains.access_control.membership_tracker import ACLMembershipTracker
 from airweave.domains.access_control.pipeline import AccessControlPipeline
@@ -37,17 +36,20 @@ from airweave.domains.entities.protocols import EntityRepositoryProtocol
 from airweave.domains.entities.registry import EntityDefinitionRegistry
 from airweave.domains.source_connections.protocols import SourceConnectionRepositoryProtocol
 from airweave.domains.sources.lifecycle import SourceLifecycleService
+from airweave.domains.sources.protocols import SourceRegistryProtocol
+from airweave.domains.storage.file_service import FileService
 from airweave.domains.sync_pipeline.builders import SyncContextBuilder
 from airweave.domains.sync_pipeline.builders.destinations import DestinationsContextBuilder
 from airweave.domains.sync_pipeline.config import SyncConfig, SyncConfigBuilder
 from airweave.domains.sync_pipeline.contexts.runtime import SyncRuntime
-from airweave.domains.syncs.cursors.cursor import SyncCursor
 from airweave.domains.sync_pipeline.entity.dispatcher_builder import EntityDispatcherBuilder
 from airweave.domains.sync_pipeline.orchestrator import SyncOrchestrator
 from airweave.domains.sync_pipeline.pipeline.entity_tracker import EntityTracker
 from airweave.domains.sync_pipeline.protocols import ChunkEmbedProcessorProtocol
 from airweave.domains.sync_pipeline.stream import AsyncSourceStream
 from airweave.domains.sync_pipeline.worker_pool import AsyncWorkerPool
+from airweave.domains.syncs.cursors.cursor import SyncCursor
+from airweave.domains.syncs.cursors.service import SyncCursorService
 from airweave.domains.usage.protocols import UsageLedgerProtocol, UsageLimitCheckerProtocol
 from airweave.models.source_connection import SourceConnection
 from airweave.platform.entities._base import BaseEntity
@@ -80,6 +82,8 @@ class SyncFactory:
         storage_backend: Any,
         selection_repo: NodeSelectionRepositoryProtocol,
         arf_service: Optional[ArfServiceProtocol] = None,
+        sync_cursor_service: Optional[SyncCursorService] = None,
+        source_registry: Optional[SourceRegistryProtocol] = None,
     ) -> None:
         """Initialize with all required service and repository dependencies."""
         self._sc_repo = sc_repo
@@ -96,6 +100,8 @@ class SyncFactory:
         self._storage_backend = storage_backend
         self._selection_repo = selection_repo
         self._arf_service = arf_service
+        self._sync_cursor_service = sync_cursor_service
+        self._source_registry = source_registry
 
     async def create_orchestrator(
         self,
@@ -161,7 +167,7 @@ class SyncFactory:
             ),
         )
 
-        source, cursor = source_result
+        source, cursor, files, node_selections = source_result
         destinations, entity_map = destinations_result
 
         sync_context = await SyncContextBuilder.build(
@@ -227,7 +233,11 @@ class SyncFactory:
         worker_pool = AsyncWorkerPool(logger=sync_context.logger)
 
         stream = AsyncSourceStream(
-            source_generator=runtime.source.generate_entities(),
+            source_generator=runtime.source.generate_entities(
+                cursor=runtime.cursor,
+                files=files,
+                node_selections=node_selections,
+            ),
             queue_size=10000,
             logger=sync_context.logger,
         )
@@ -242,6 +252,7 @@ class SyncFactory:
             event_bus=self._event_bus,
             usage_checker=self._usage_checker,
             usage_ledger=self._usage_ledger,
+            sync_cursor_service=self._sync_cursor_service,
         )
 
         logger.info(f"Total orchestrator initialization took {time.time() - init_start:.2f}s")
@@ -261,8 +272,10 @@ class SyncFactory:
         source_connection: SourceConnection,
         force_full_sync: bool,
         execution_config: SyncConfig,
-    ) -> Tuple[BaseSource, SyncCursor]:
-        """Build source instance and cursor. Returns (source, cursor)."""
+    ) -> Tuple[
+        BaseSource, Optional[SyncCursor], Optional[FileService], Optional[List[NodeSelectionData]]
+    ]:
+        """Build source instance and cursor. Returns (source, cursor, files, node_selections)."""
         if execution_config and execution_config.behavior.replay_from_arf:
             return await self._build_arf_replay_source(db=db, sync=sync, ctx=ctx, logger=logger)
 
@@ -275,6 +288,8 @@ class SyncFactory:
             source_connection_id=source_connection_id,
             ctx=ctx,
         )
+
+        files = FileService(sync_job_id=sync_job.id, storage_backend=self._storage_backend)
 
         # TODO(@felix): add pre-sync validation
         # short_name = source.source_name
@@ -297,8 +312,6 @@ class SyncFactory:
         #       await self._temporal_schedule_service.pause_schedule(schedule_id)
         # Also update source_connection status to NEEDS_REAUTH here.
 
-        self._setup_file_downloader(source, sync_job, logger)
-
         cursor = await self._create_cursor(
             db=db,
             sync=sync,
@@ -309,14 +322,11 @@ class SyncFactory:
             execution_config=execution_config,
         )
 
-        source.set_cursor(cursor)
-
         node_selections = await self._load_node_selections(db, source_connection_id, ctx)
         if node_selections:
-            source.set_node_selections(node_selections)
             logger.info(f"Loaded {len(node_selections)} node selections for targeted sync")
 
-        return source, cursor
+        return source, cursor, files, node_selections
 
     async def _build_arf_replay_source(
         self,
@@ -324,7 +334,9 @@ class SyncFactory:
         sync: schemas.Sync,
         ctx: BaseContext,
         logger: ContextualLogger,
-    ) -> Tuple[BaseSource, SyncCursor]:
+    ) -> Tuple[
+        BaseSource, Optional[SyncCursor], Optional[FileService], Optional[List[NodeSelectionData]]
+    ]:
         """Build source context for ARF replay mode."""
         from airweave.domains.arf.replay_source import ArfReplaySource
 
@@ -346,9 +358,6 @@ class SyncFactory:
             original_short_name=original_short_name,
         )
 
-        if hasattr(source, "set_logger"):
-            source.set_logger(logger)
-
         if not await source.validate():
             raise NotFoundException(
                 f"ARF data not found for sync {sync.id}. "
@@ -356,7 +365,7 @@ class SyncFactory:
             )
 
         cursor = SyncCursor(sync_id=sync.id, cursor_schema=None, cursor_data=None)
-        return source, cursor
+        return source, cursor, None, None
 
     @staticmethod
     def _validate_not_completed_snapshot(source_connection_obj: SourceConnection) -> None:
@@ -378,23 +387,8 @@ class SyncFactory:
             except ValidationError:
                 pass
 
-    def _setup_file_downloader(
-        self, source: BaseSource, sync_job: Any, logger: ContextualLogger
-    ) -> None:
-        """Setup file downloader for file-based sources."""
-        from airweave.domains.storage.file_service import FileService
-
-        if not sync_job or not hasattr(sync_job, "id"):
-            raise ValueError("sync_job is required for file downloader initialization.")
-
-        file_downloader = FileService(
-            sync_job_id=sync_job.id,
-            storage_backend=self._storage_backend,
-        )
-        source.set_file_downloader(file_downloader)
-
-    @staticmethod
     async def _create_cursor(
+        self,
         db: AsyncSession,
         sync: schemas.Sync,
         source_class: type,
@@ -402,11 +396,13 @@ class SyncFactory:
         logger: ContextualLogger,
         force_full_sync: bool,
         execution_config: Optional[SyncConfig],
-    ) -> SyncCursor:
+    ) -> Optional[SyncCursor]:
         """Create sync cursor with optional data loading."""
-        cursor_schema = None
-        if hasattr(source_class, "cursor_class") and source_class.cursor_class:
-            cursor_schema = source_class.cursor_class
+        entry = self._source_registry.get(source_class.short_name)
+        if not entry.supports_cursor:
+            return None
+        cursor_schema = source_class.cursor_class
+        if cursor_schema:
             logger.debug(f"Source has typed cursor: {cursor_schema.__name__}")
 
         if force_full_sync:
@@ -418,7 +414,9 @@ class SyncFactory:
             )
             cursor_data = None
         else:
-            cursor_data = await sync_cursor_service.get_cursor_data(db=db, sync_id=sync.id, ctx=ctx)
+            cursor_data = await self._sync_cursor_service.get_cursor_data(
+                db=db, sync_id=sync.id, ctx=ctx
+            )
             if cursor_data:
                 logger.info(f"Incremental sync: Using cursor data with {len(cursor_data)} keys")
 

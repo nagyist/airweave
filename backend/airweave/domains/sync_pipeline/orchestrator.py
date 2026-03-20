@@ -8,11 +8,10 @@ from airweave import schemas
 from airweave.analytics import business_events
 from airweave.core.datetime_utils import utc_now_naive
 from airweave.core.events.sync import AccessControlMembershipBatchProcessedEvent
+from airweave.core.protocols.event_bus import EventBus
 from airweave.core.shared_models import SyncJobStatus
-from airweave.core.sync_cursor_service import sync_cursor_service
 from airweave.core.sync_job_service import sync_job_service
 from airweave.db.session import get_db_context
-from airweave.core.protocols.event_bus import EventBus
 from airweave.domains.access_control.pipeline import AccessControlPipeline
 from airweave.domains.sync_pipeline.contexts import SyncContext
 from airweave.domains.sync_pipeline.contexts.runtime import SyncRuntime
@@ -20,6 +19,7 @@ from airweave.domains.sync_pipeline.entity.pipeline import EntityPipeline
 from airweave.domains.sync_pipeline.exceptions import EntityProcessingError, SyncFailureError
 from airweave.domains.sync_pipeline.stream import AsyncSourceStream
 from airweave.domains.sync_pipeline.worker_pool import AsyncWorkerPool
+from airweave.domains.syncs.cursors.service import SyncCursorService
 from airweave.domains.usage.exceptions import (
     PaymentRequiredError,
     UsageLimitExceededError,
@@ -51,6 +51,7 @@ class SyncOrchestrator:
         event_bus: EventBus,
         usage_checker: UsageLimitCheckerProtocol,
         usage_ledger: UsageLedgerProtocol,
+        sync_cursor_service: SyncCursorService,
     ):
         """Initialize the sync orchestrator with ALL required components."""
         self.entity_pipeline = entity_pipeline
@@ -62,6 +63,7 @@ class SyncOrchestrator:
         self._event_bus = event_bus
         self._usage_checker = usage_checker
         self._usage_ledger = usage_ledger
+        self._sync_cursor_service = sync_cursor_service
 
         # Batch config from context
         self.should_batch = sync_context.should_batch
@@ -433,52 +435,26 @@ class SyncOrchestrator:
 
     async def _cleanup_orphaned_entities_if_needed(self) -> None:
         """Cleanup orphaned entities based on sync type."""
-        has_cursor_data = bool(self.runtime.cursor and self.runtime.cursor.loaded_from_db)
+        cursor = self.runtime.cursor
+        is_incremental = cursor is not None and cursor.loaded_from_db
 
-        # Check if source supports continuous/incremental sync (class attribute)
-        source_class = type(self.runtime.source)
-        source_supports_continuous = getattr(source_class, "supports_continuous", False)
-
-        self.sync_context.logger.debug(
-            f"Orphan cleanup check: has_cursor_data={has_cursor_data}, "
-            f"supports_continuous={source_supports_continuous}, "
-            f"force_full_sync={self.sync_context.force_full_sync}"
-        )
-
-        # Cleanup should run if:
-        # 1. Forced full sync (daily cleanup schedule), OR
-        # 2. First sync (no cursor data), OR
-        # 3. Source doesn't support incremental sync (every sync is a full sync)
-        should_cleanup = (
-            self.sync_context.force_full_sync
-            or not has_cursor_data
-            or not source_supports_continuous
-        )
-
-        if should_cleanup:
-            if self.sync_context.force_full_sync:
-                self.sync_context.logger.info(
-                    "🧹 Starting orphaned entity cleanup phase (FORCED FULL SYNC - "
-                    "daily cleanup schedule)."
-                )
-            elif not source_supports_continuous:
-                self.sync_context.logger.info(
-                    "🧹 Starting orphaned entity cleanup phase (full sync - "
-                    "source doesn't support incremental sync)"
-                )
-            else:
-                self.sync_context.logger.info(
-                    "🧹 Starting orphaned entity cleanup phase (first sync - no cursor data)"
-                )
-            # Dispatcher handles ALL handlers: Destination, ARF, and Postgres
-            await self.entity_pipeline.cleanup_orphaned_entities(self.sync_context, self.runtime)
-        elif (
-            has_cursor_data and not self.sync_context.force_full_sync and source_supports_continuous
-        ):
+        if is_incremental:
             self.sync_context.logger.info(
                 "⏩ Skipping orphaned entity cleanup for INCREMENTAL sync "
                 "(cursor data exists, only changed entities are processed)"
             )
+            return
+
+        if cursor is None:
+            reason = "source doesn't support incremental sync"
+        elif self.sync_context.force_full_sync:
+            reason = "FORCED FULL SYNC - daily cleanup schedule"
+        else:
+            reason = "first sync - no cursor data"
+
+        self.sync_context.logger.info(f"🧹 Starting orphaned entity cleanup phase ({reason}).")
+        # Dispatcher handles ALL handlers: Destination, ARF, and Postgres
+        await self.entity_pipeline.cleanup_orphaned_entities(self.sync_context, self.runtime)
 
     def _source_supports_access_control(self) -> bool:
         """Check if the source supports access control membership syncing."""
@@ -643,6 +619,9 @@ class SyncOrchestrator:
 
     async def _save_cursor_data(self) -> None:
         """Save cursor data to database if it exists."""
+        if self.runtime.cursor is None:
+            return
+
         # Check if cursor updates are disabled
         if (
             self.sync_context.execution_config
@@ -651,7 +630,7 @@ class SyncOrchestrator:
             self.sync_context.logger.info("⏭️ Skipping cursor update (disabled by execution_config)")
             return
 
-        if not self.runtime.cursor or not self.runtime.cursor.cursor_data:
+        if not self.runtime.cursor.cursor_data:
             if self.sync_context.force_full_sync:
                 self.sync_context.logger.info(
                     "📝 No cursor data to save from forced "
@@ -661,7 +640,7 @@ class SyncOrchestrator:
 
         try:
             async with get_db_context() as db:
-                await sync_cursor_service.create_or_update_cursor(
+                await self._sync_cursor_service.create_or_update_cursor(
                     db=db,
                     sync_id=self.sync_context.sync.id,
                     cursor_data=self.runtime.cursor.cursor_data,

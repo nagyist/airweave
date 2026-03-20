@@ -25,6 +25,8 @@ def _build_factory(**overrides):
         "source_lifecycle_service": MagicMock(),
         "storage_backend": MagicMock(),
         "selection_repo": MagicMock(),
+        "sync_cursor_service": MagicMock(),
+        "source_registry": MagicMock(),
     }
     defaults.update(overrides)
     return SyncFactory(**defaults)
@@ -51,6 +53,8 @@ def test_constructor_stores_all_deps():
         "source_lifecycle_service": MagicMock(),
         "storage_backend": MagicMock(),
         "selection_repo": MagicMock(),
+        "sync_cursor_service": MagicMock(),
+        "source_registry": MagicMock(),
     }
     f = SyncFactory(**deps)
     assert f._sc_repo is deps["sc_repo"]
@@ -66,6 +70,8 @@ def test_constructor_stores_all_deps():
     assert f._source_lifecycle_service is deps["source_lifecycle_service"]
     assert f._storage_backend is deps["storage_backend"]
     assert f._selection_repo is deps["selection_repo"]
+    assert f._sync_cursor_service is deps["sync_cursor_service"]
+    assert f._source_registry is deps["source_registry"]
 
 
 # ---------------------------------------------------------------------------
@@ -156,7 +162,9 @@ async def test_create_orchestrator_passes_entity_repo_to_pipeline():
             new_callable=AsyncMock,
         ) as mock_build_tracker,
     ):
-        mock_build_source.return_value = (MagicMock(), MagicMock())
+        mock_source = MagicMock()
+        mock_source.generate_entities = MagicMock(return_value=AsyncMock())
+        mock_build_source.return_value = (mock_source, MagicMock(), MagicMock(), [])
         mock_build_destinations.return_value = ([], {})
         mock_build_tracker.return_value = MagicMock()
         mock_sc_builder.build = AsyncMock(return_value=MagicMock())
@@ -204,15 +212,12 @@ def _make_sync_job(job_id=None):
 
 class TestBuildSource:
     @pytest.mark.asyncio
-    async def test_returns_source_and_cursor(self):
+    async def test_returns_source_cursor_files_selections(self):
         sc = MagicMock()
         sc.id = uuid4()
         sc.short_name = "github"
         sc.config_fields = {}
         mock_source = MagicMock()
-        mock_source.set_cursor = MagicMock()
-        mock_source.set_file_downloader = MagicMock()
-        mock_source.set_node_selections = MagicMock()
         mock_lifecycle = MagicMock()
         mock_lifecycle.create = AsyncMock(return_value=mock_source)
 
@@ -236,9 +241,9 @@ class TestBuildSource:
                 new_callable=AsyncMock,
                 return_value=[],
             ),
-            patch("airweave.domains.storage.file_service.FileService"),
+            patch("airweave.domains.sync_pipeline.factory.FileService"),
         ):
-            source, cursor = await factory._build_source(
+            source, cursor, files, node_selections = await factory._build_source(
                 db=db,
                 sync=sync,
                 sync_job=sync_job,
@@ -251,17 +256,16 @@ class TestBuildSource:
 
         assert source is mock_source
         assert cursor is not None
+        assert files is not None
+        assert node_selections == []
 
     @pytest.mark.asyncio
-    async def test_sets_node_selections_when_present(self):
+    async def test_returns_node_selections_when_present(self):
         sc = MagicMock()
         sc.id = uuid4()
         sc.short_name = "github"
         sc.config_fields = {}
         mock_source = MagicMock()
-        mock_source.set_cursor = MagicMock()
-        mock_source.set_file_downloader = MagicMock()
-        mock_source.set_node_selections = MagicMock()
         mock_lifecycle = MagicMock()
         mock_lifecycle.create = AsyncMock(return_value=mock_source)
         fake_selection = MagicMock()
@@ -286,9 +290,9 @@ class TestBuildSource:
                 new_callable=AsyncMock,
                 return_value=[fake_selection],
             ),
-            patch("airweave.domains.storage.file_service.FileService"),
+            patch("airweave.domains.sync_pipeline.factory.FileService"),
         ):
-            await factory._build_source(
+            source, cursor, files, node_selections = await factory._build_source(
                 db=db,
                 sync=sync,
                 sync_job=sync_job,
@@ -299,7 +303,7 @@ class TestBuildSource:
                 execution_config=None,
             )
 
-        mock_source.set_node_selections.assert_called_once_with([fake_selection])
+        assert node_selections == [fake_selection]
 
 
 class TestBuildArfReplaySource:
@@ -309,7 +313,6 @@ class TestBuildArfReplaySource:
 
         mock_source = AsyncMock()
         mock_source.validate = AsyncMock(return_value=False)
-        mock_source.set_logger = MagicMock()
 
         factory = _build_factory()
         db = AsyncMock()
@@ -334,10 +337,9 @@ class TestBuildArfReplaySource:
                 )
 
     @pytest.mark.asyncio
-    async def test_success_returns_source_and_cursor(self):
+    async def test_success_returns_4_tuple(self):
         mock_source = AsyncMock()
         mock_source.validate = AsyncMock(return_value=True)
-        mock_source.set_logger = MagicMock()
 
         factory = _build_factory()
         db = AsyncMock()
@@ -356,12 +358,14 @@ class TestBuildArfReplaySource:
                 return_value=mock_source,
             ),
         ):
-            source, cursor = await factory._build_arf_replay_source(
+            source, cursor, files, node_selections = await factory._build_arf_replay_source(
                 db=db, sync=sync, ctx=ctx, logger=MagicMock()
             )
 
         assert source is mock_source
         assert cursor.sync_id == sync.id
+        assert files is None
+        assert node_selections is None
 
 
 class TestValidateNotCompletedSnapshot:
@@ -388,73 +392,100 @@ class TestValidateNotCompletedSnapshot:
                 SyncFactory._validate_not_completed_snapshot(sc)
 
 
-class TestSetupFileDownloader:
-    def test_raises_when_sync_job_is_none(self):
-        factory = _build_factory()
-        source = MagicMock()
-
-        with pytest.raises(ValueError, match="sync_job is required"):
-            factory._setup_file_downloader(source=source, sync_job=None, logger=MagicMock())
-
-    def test_sets_file_downloader_on_source(self):
-        factory = _build_factory()
-        source = MagicMock()
-        sync_job = _make_sync_job()
-
-        with patch("airweave.domains.storage.file_service.FileService") as MockFileService:
-            factory._setup_file_downloader(source=source, sync_job=sync_job, logger=MagicMock())
-
-        MockFileService.assert_called_once()
-        source.set_file_downloader.assert_called_once()
-
-
 class TestCreateCursor:
     @pytest.mark.asyncio
-    async def test_skips_cursor_load_when_force_full_sync(self):
+    async def test_returns_none_when_source_has_no_cursor(self):
+        mock_entry = MagicMock()
+        mock_entry.supports_cursor = False
+        mock_registry = MagicMock()
+        mock_registry.get = MagicMock(return_value=mock_entry)
+
+        factory = _build_factory(source_registry=mock_registry)
         db = AsyncMock()
         sync = _make_sync()
         ctx = _make_ctx()
+        source_class = MagicMock()
+        source_class.short_name = "test_source"
 
-        with patch(
-            "airweave.domains.sync_pipeline.factory.sync_cursor_service.get_cursor_data",
-            new_callable=AsyncMock,
-        ) as mock_get:
-            cursor = await SyncFactory._create_cursor(
-                db=db,
-                sync=sync,
-                source_class=object,
-                ctx=ctx,
-                logger=MagicMock(),
-                force_full_sync=True,
-                execution_config=None,
-            )
+        cursor = await factory._create_cursor(
+            db=db,
+            sync=sync,
+            source_class=source_class,
+            ctx=ctx,
+            logger=MagicMock(),
+            force_full_sync=False,
+            execution_config=None,
+        )
 
-        mock_get.assert_not_awaited()
-        assert not cursor.cursor_data
+        assert cursor is None
+
+    @pytest.mark.asyncio
+    async def test_skips_cursor_load_when_force_full_sync(self):
+        mock_entry = MagicMock()
+        mock_entry.supports_cursor = True
+        mock_registry = MagicMock()
+        mock_registry.get = MagicMock(return_value=mock_entry)
+        mock_cursor_service = MagicMock()
+        mock_cursor_service.get_cursor_data = AsyncMock()
+
+        factory = _build_factory(
+            source_registry=mock_registry,
+            sync_cursor_service=mock_cursor_service,
+        )
+        db = AsyncMock()
+        sync = _make_sync()
+        ctx = _make_ctx()
+        source_class = MagicMock()
+        source_class.short_name = "test_source"
+        source_class.cursor_class = MagicMock()
+        source_class.cursor_class.__name__ = "TestCursor"
+
+        cursor = await factory._create_cursor(
+            db=db,
+            sync=sync,
+            source_class=source_class,
+            ctx=ctx,
+            logger=MagicMock(),
+            force_full_sync=True,
+            execution_config=None,
+        )
+
+        mock_cursor_service.get_cursor_data.assert_not_awaited()
+        assert cursor is not None
 
     @pytest.mark.asyncio
     async def test_loads_cursor_from_service_when_incremental(self):
+        mock_entry = MagicMock()
+        mock_entry.supports_cursor = True
+        mock_registry = MagicMock()
+        mock_registry.get = MagicMock(return_value=mock_entry)
+        mock_data = {"key": "value"}
+        mock_cursor_service = MagicMock()
+        mock_cursor_service.get_cursor_data = AsyncMock(return_value=mock_data)
+
+        factory = _build_factory(
+            source_registry=mock_registry,
+            sync_cursor_service=mock_cursor_service,
+        )
         db = AsyncMock()
         sync = _make_sync()
         ctx = _make_ctx()
-        mock_data = {"key": "value"}
+        source_class = MagicMock()
+        source_class.short_name = "test_source"
+        source_class.cursor_class = None  # None → raw dict storage in SyncCursor
 
-        with patch(
-            "airweave.domains.sync_pipeline.factory.sync_cursor_service.get_cursor_data",
-            new_callable=AsyncMock,
-            return_value=mock_data,
-        ):
-            cursor = await SyncFactory._create_cursor(
-                db=db,
-                sync=sync,
-                source_class=object,
-                ctx=ctx,
-                logger=MagicMock(),
-                force_full_sync=False,
-                execution_config=None,
-            )
+        cursor = await factory._create_cursor(
+            db=db,
+            sync=sync,
+            source_class=source_class,
+            ctx=ctx,
+            logger=MagicMock(),
+            force_full_sync=False,
+            execution_config=None,
+        )
 
         assert cursor.cursor_data == mock_data
+        assert cursor.loaded_from_db is True
 
 
 class TestBuildEntityTracker:

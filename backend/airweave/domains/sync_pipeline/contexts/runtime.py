@@ -8,11 +8,11 @@ are injected directly into their consumers via constructor DI.
 """
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, List
+from typing import TYPE_CHECKING, List, Optional
 
 if TYPE_CHECKING:
-    from airweave.domains.syncs.cursors.cursor import SyncCursor
     from airweave.domains.sync_pipeline.pipeline.entity_tracker import EntityTracker
+    from airweave.domains.syncs.cursors.cursor import SyncCursor
     from airweave.platform.destinations._base import BaseDestination
     from airweave.platform.sources._base import BaseSource
 
@@ -27,6 +27,6 @@ class SyncRuntime:
     """
 
     source: "BaseSource"
-    cursor: "SyncCursor"
     entity_tracker: "EntityTracker"
+    cursor: Optional["SyncCursor"] = None
     destinations: List["BaseDestination"] = field(default_factory=list)

@@ -122,10 +122,10 @@ from airweave.domains.sources.service import SourceService
 from airweave.domains.sources.validation import SourceValidationService
 from airweave.domains.storage.sync_file_manager import SyncFileManager
 from airweave.domains.sync_pipeline.factory import SyncFactory
-from airweave.domains.syncs.cursors.repository import SyncCursorRepository
-from airweave.domains.syncs.cursors.service import SyncCursorService
 from airweave.domains.sync_pipeline.processors.chunk_embed import ChunkEmbedProcessor
 from airweave.domains.sync_pipeline.subscribers.progress_relay import SyncProgressRelay
+from airweave.domains.syncs.cursors.repository import SyncCursorRepository
+from airweave.domains.syncs.cursors.service import SyncCursorService
 from airweave.domains.syncs.service import SyncService
 from airweave.domains.syncs.sync_job_repository import SyncJobRepository
 from airweave.domains.syncs.sync_job_service import SyncJobService
@@ -438,6 +438,8 @@ def create_container(settings: Settings) -> Container:
         storage_backend=storage_backend,
         selection_repo=node_selection_repo,
         arf_service=arf_service,
+        sync_cursor_service=source_deps["sync_cursor_service"],
+        source_registry=source_deps["source_registry"],
     )
 
     sync_service = SyncService(

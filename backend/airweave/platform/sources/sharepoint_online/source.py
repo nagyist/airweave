@@ -37,6 +37,7 @@ from airweave.domains.sources.exceptions import SourceAuthError
 from airweave.domains.sources.token_providers.protocol import TokenProviderProtocol
 from airweave.domains.storage import FileSkippedException
 from airweave.domains.storage.file_service import FileService
+from airweave.domains.sync_pipeline.exceptions import EntityProcessingError
 from airweave.domains.syncs.cursors.cursor import SyncCursor
 from airweave.platform.configs.config import SharePointOnlineConfig
 from airweave.platform.cursors.sharepoint_online import SharePointOnlineCursor
@@ -60,7 +61,6 @@ from airweave.platform.sources.sharepoint_online.builders import (
 )
 from airweave.platform.sources.sharepoint_online.client import GRAPH_BASE_URL, GraphClient
 from airweave.platform.sources.sharepoint_online.graph_groups import EntraGroupExpander
-from airweave.platform.sync.exceptions import EntityProcessingError
 from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
 
 MAX_CONCURRENT_FILE_DOWNLOADS = 10

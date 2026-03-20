@@ -32,6 +32,7 @@ from airweave.domains.browse_tree.types import BrowseNode, NodeSelectionData
 from airweave.domains.sources.token_providers.credential import DirectCredentialProvider
 from airweave.domains.storage import FileSkippedException
 from airweave.domains.storage.file_service import FileService
+from airweave.domains.sync_pipeline.exceptions import EntityProcessingError
 from airweave.domains.syncs.cursors.cursor import SyncCursor
 from airweave.platform.configs.auth import SharePoint2019V2AuthConfig
 from airweave.platform.configs.config import SharePoint2019V2Config
@@ -56,7 +57,6 @@ from airweave.platform.sources.sharepoint2019v2.builders import (
     build_site_entity,
 )
 from airweave.platform.sources.sharepoint2019v2.client import SharePointClient
-from airweave.platform.sync.exceptions import EntityProcessingError
 from airweave.schemas.source_connection import AuthenticationMethod
 
 MAX_CONCURRENT_FILE_DOWNLOADS = 10

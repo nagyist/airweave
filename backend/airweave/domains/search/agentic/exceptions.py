@@ -17,6 +17,13 @@ class ToolValidationError(ToolError):
     """LLM provided invalid arguments (bad JSON, wrong types, missing fields)."""
 
 
+class ToolTransientError(ToolError):
+    """Tool failed due to a transient infrastructure error (vector DB, embedding).
+
+    Tells the LLM "try again" rather than "try differently".
+    """
+
+
 class ToolExecutionError(ToolError):
     """Tool execution failed after adapter-level retries."""
 

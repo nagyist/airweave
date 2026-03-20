@@ -1,12 +1,17 @@
 """Tests for individual agentic search tools."""
 
+from unittest.mock import AsyncMock
+
 import pytest
 
+from airweave.core.protocols.llm import LLMToolCall
 from airweave.domains.search.adapters.vector_db.fakes import FakeVectorDB
-from airweave.domains.search.agentic.exceptions import ToolValidationError
+from airweave.domains.search.agentic.exceptions import ToolExecutionError, ToolValidationError
+from airweave.domains.search.agentic.state import AgentState
 from airweave.domains.search.agentic.tests.conftest import make_result, make_state
 from airweave.domains.search.agentic.tools.collect import AddToResultsTool, RemoveFromResultsTool
 from airweave.domains.search.agentic.tools.count import CountTool
+from airweave.domains.search.agentic.tools.dispatcher import ToolDispatcher
 from airweave.domains.search.agentic.tools.finish import ReturnResultsTool, ReviewResultsTool
 from airweave.domains.search.agentic.tools.navigate import (
     GetChildrenTool,
@@ -380,3 +385,103 @@ class TestCountTool:
         result = await tool.execute({"filter_groups": []}, make_state())
 
         assert result.count == 0
+
+
+# ── Tool error paths ─────────────────────────────────────────────────
+
+
+def _make_tool_call(name: str, arguments: dict | None = None, tc_id: str = "tc-err") -> LLMToolCall:
+    """Build an LLMToolCall for dispatcher tests."""
+    return LLMToolCall(id=tc_id, name=name, arguments=arguments or {})
+
+
+class _RaisingTool:
+    """Stub tool that raises a configurable exception on execute."""
+
+    def __init__(self, error: Exception) -> None:
+        self._error = error
+
+    async def execute(self, arguments: dict, state: AgentState, tool_call_id: str = "") -> None:
+        raise self._error
+
+
+class TestToolErrorPaths:
+    """Tests for error propagation through the tool dispatcher."""
+
+    @pytest.mark.asyncio
+    async def test_search_executor_error_becomes_tool_error(self) -> None:
+        """SearchTool executor RuntimeError → dispatcher wraps as ToolExecutionError."""
+        executor = FakeSearchPlanExecutor()
+        executor.seed_error(RuntimeError("embedding failed"))
+
+        tool = SearchTool(
+            executor=executor,
+            user_filter=[],
+            collection_id="col-1",
+            db=AsyncMock(),
+            ctx=AsyncMock(),
+            collection_readable_id="col-readable",
+        )
+        dispatcher = ToolDispatcher(tools={"search": tool})
+        tc = _make_tool_call(
+            "search",
+            {
+                "query": {"primary": "test"},
+                "limit": 10,
+                "offset": 0,
+                "retrieval_strategy": "hybrid",
+            },
+        )
+
+        with pytest.raises(ToolExecutionError, match="embedding failed"):
+            await dispatcher.dispatch(tc, make_state())
+
+    @pytest.mark.asyncio
+    async def test_count_vector_db_error_propagates_to_agent(self) -> None:
+        """CountTool VectorDBError propagates through dispatcher (not wrapped)."""
+        from airweave.domains.search.adapters.vector_db.exceptions import VectorDBError
+
+        vdb = FakeVectorDB()
+        vdb.seed_count_error(VectorDBError("db down"))
+
+        tool = CountTool(vector_db=vdb, collection_id="col-1", user_filter=[])
+        dispatcher = ToolDispatcher(tools={"count": tool})
+        tc = _make_tool_call("count", {"filter_groups": []})
+
+        with pytest.raises(VectorDBError, match="db down"):
+            await dispatcher.dispatch(tc, make_state())
+
+    @pytest.mark.asyncio
+    async def test_navigate_children_vector_db_error_propagates(self) -> None:
+        """GetChildrenTool VectorDBError propagates through dispatcher."""
+        from airweave.domains.search.adapters.vector_db.exceptions import VectorDBError
+
+        vdb = FakeVectorDB()
+        vdb.seed_filter_error(VectorDBError("timeout"))
+
+        tool = GetChildrenTool(vector_db=vdb, collection_id="col-1")
+        dispatcher = ToolDispatcher(tools={"get_children": tool})
+        tc = _make_tool_call("get_children", {"entity_id": "parent-1"})
+
+        with pytest.raises(VectorDBError, match="timeout"):
+            await dispatcher.dispatch(tc, make_state())
+
+    @pytest.mark.asyncio
+    async def test_dispatcher_wraps_unexpected_errors(self) -> None:
+        """Arbitrary ValueError → dispatcher wraps as ToolExecutionError."""
+        stub = _RaisingTool(ValueError("oops"))
+        dispatcher = ToolDispatcher(tools={"bad_tool": stub})
+        tc = _make_tool_call("bad_tool")
+
+        with pytest.raises(ToolExecutionError, match="oops"):
+            await dispatcher.dispatch(tc, make_state())
+
+    @pytest.mark.asyncio
+    async def test_dispatcher_passes_through_tool_validation_error(self) -> None:
+        """ToolValidationError raised by tool → passes through dispatcher as-is."""
+        stub = _RaisingTool(ToolValidationError("bad args"))
+        dispatcher = ToolDispatcher(tools={"strict_tool": stub})
+        tc = _make_tool_call("strict_tool")
+
+        with pytest.raises(ToolValidationError, match="bad args"):
+            await dispatcher.dispatch(tc, make_state())

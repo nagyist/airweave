@@ -6,6 +6,7 @@ format_filter_groups_md().
 
 from __future__ import annotations
 
+from datetime import datetime
 from enum import Enum
 from typing import Any, List, Optional, Union
 
@@ -103,6 +104,28 @@ _LIST_OPS: frozenset[FilterOperator] = frozenset(
         FilterOperator.NOT_IN,
     }
 )
+
+
+def _validate_iso_timestamp(value: str) -> None:
+    """Validate that a string is a parseable ISO 8601 timestamp.
+
+    Accepts formats like:
+    - 2024-01-01T00:00:00
+    - 2024-01-01T00:00:00Z
+    - 2024-01-01T00:00:00+00:00
+
+    Raises ValueError if the string is not a valid ISO timestamp.
+    """
+    s = value.strip("'\"")
+    if s.endswith("Z"):
+        s = s[:-1] + "+00:00"
+    try:
+        datetime.fromisoformat(s)
+    except (ValueError, AttributeError):
+        raise ValueError(
+            f"Date field requires an ISO 8601 timestamp, got '{value}'. "
+            f"Example: '2024-01-15T00:00:00Z' or '2024-01-15T12:30:00+05:30'."
+        )
 
 
 class FilterCondition(BaseModel):
@@ -227,6 +250,11 @@ class FilterCondition(BaseModel):
                 raise ValueError(
                     f"Field '{f.value}' is numeric — expected a number, got boolean {v}."
                 )
+
+        # 6. Date fields must receive a valid ISO 8601 timestamp
+        #    e.g. created_at > "not-a-date" → reject
+        if f in _DATE_FIELDS and isinstance(v, str):
+            _validate_iso_timestamp(v)
 
         return self
 

@@ -18,6 +18,7 @@ from airweave.api.context import ApiContext
 from airweave.domains.embedders.protocols import DenseEmbedderProtocol, SparseEmbedderProtocol
 from airweave.domains.search.adapters.vector_db.protocol import VectorDBProtocol
 from airweave.domains.search.builders.search_plan import SearchPlanBuilder
+from airweave.domains.search.exceptions import FederatedSearchError
 from airweave.domains.search.protocols import SearchPlanExecutorProtocol
 from airweave.domains.search.types import (
     FilterGroup,
@@ -143,7 +144,11 @@ class SearchPlanExecutor(SearchPlanExecutorProtocol):
         plan: SearchPlan,
         collection_id: str,
     ) -> list[SearchResult]:
-        """Embed, compile, and execute vector DB search."""
+        """Embed, compile, and execute vector DB search.
+
+        Adapter exceptions (EmbedderError, VectorDBError) propagate directly
+        to the caller — no wrapping needed since adapters own their error types.
+        """
         dense_embeddings = None
         sparse_embedding = None
 
@@ -210,7 +215,9 @@ class SearchPlanExecutor(SearchPlanExecutorProtocol):
                 )
                 federated_sources.append(source_instance)
             except Exception as e:
-                ctx.logger.warning(f"[FederatedSearch] Failed to instantiate {sc.short_name}: {e}")
+                raise FederatedSearchError(
+                    [(sc.short_name, e)]
+                ) from e
 
         return federated_sources
 
@@ -225,30 +232,39 @@ class SearchPlanExecutor(SearchPlanExecutorProtocol):
         limit: int,
         ctx: ApiContext,
     ) -> list[SearchResult]:
-        """Search all federated sources concurrently and return deduplicated results."""
+        """Search all federated sources concurrently and return deduplicated results.
+
+        Raises FederatedSearchError if any source fails.
+        """
         results_lists = await asyncio.gather(
             *[self._search_single_source(source, query, limit, ctx) for source in sources],
             return_exceptions=True,
         )
 
-        # Collect results, skipping failures
+        # Check for failures — fail if any source errored
+        source_errors: list[tuple[str, Exception]] = []
+        for idx, result_or_exc in enumerate(results_lists):
+            if isinstance(result_or_exc, BaseException):
+                source_name = sources[idx].__class__.__name__
+                source_errors.append((source_name, result_or_exc))
+
+        if source_errors:
+            raise FederatedSearchError(source_errors)
+
+        # All succeeded — deduplicate and return
         seen_ids: set[str] = set()
         all_results: list[SearchResult] = []
 
-        for idx, result_or_exc in enumerate(results_lists):
-            source_name = sources[idx].__class__.__name__
-            if isinstance(result_or_exc, BaseException):
-                ctx.logger.warning(
-                    f"[FederatedSearch] {source_name} search failed: {result_or_exc}"
-                )
-                continue
-
-            for result in result_or_exc:  # type: ignore[union-attr]
+        for result_list in results_lists:
+            for result in result_list:  # type: ignore[union-attr]
                 if result.entity_id not in seen_ids:
                     seen_ids.add(result.entity_id)
                     all_results.append(result)
 
         return all_results
+
+    _FEDERATED_MAX_RETRIES = 2
+    _FEDERATED_INITIAL_DELAY = 1.0
 
     async def _search_single_source(
         self,
@@ -257,15 +273,35 @@ class SearchPlanExecutor(SearchPlanExecutorProtocol):
         limit: int,
         ctx: ApiContext,
     ) -> list[SearchResult]:
-        """Search a single federated source and convert results to SearchResult."""
+        """Search a single federated source with retries on transient errors."""
         source_name = source.__class__.__name__
         ctx.logger.debug(f"[FederatedSearch] Searching {source_name} with query: '{query}'")
 
-        entities = await source.search(query, limit=limit)  # type: ignore[misc]
+        last_error: Exception | None = None
+        delay = self._FEDERATED_INITIAL_DELAY
 
-        ctx.logger.debug(
-            f"[FederatedSearch] {source_name} returned {len(entities)} results"  # type: ignore[arg-type]
-        )
+        for attempt in range(self._FEDERATED_MAX_RETRIES + 1):
+            try:
+                entities = await source.search(query, limit=limit)  # type: ignore[misc]
+                ctx.logger.debug(
+                    f"[FederatedSearch] {source_name} returned "
+                    f"{len(entities)} results"  # type: ignore[arg-type]
+                )
+                break
+            except Exception as e:
+                last_error = e
+                status = getattr(e, "status_code", None)
+                is_transient = isinstance(status, int) and status in {429, 500, 502, 503, 504}
+                if not is_transient or attempt == self._FEDERATED_MAX_RETRIES:
+                    raise
+                ctx.logger.warning(
+                    f"[FederatedSearch] {source_name} transient error "
+                    f"(attempt {attempt + 1}/{self._FEDERATED_MAX_RETRIES + 1}): {e}"
+                )
+                await asyncio.sleep(delay)
+                delay *= 2.0
+        else:
+            raise last_error  # type: ignore[misc]
 
         # Get source short_name from the source's metadata
         short_name = getattr(source, "short_name", source_name.lower())

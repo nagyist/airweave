@@ -1,5 +1,8 @@
 """Tests for SearchPlanBuilder — user filters AND'd into LLM groups."""
 
+import pytest
+from pydantic import ValidationError
+
 from airweave.domains.search.builders.search_plan import SearchPlanBuilder
 from airweave.domains.search.types.filters import (
     FilterCondition,
@@ -109,3 +112,75 @@ class TestSearchPlanBuilder:
         assert result.limit == 10
         assert result.offset == 0
         assert result.retrieval_strategy == RetrievalStrategy.HYBRID
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# ISO TIMESTAMP VALIDATION
+# ═══════════════════════════════════════════════════════════════════════
+
+
+class TestDateFieldValidation:
+    """Date fields (created_at, updated_at) must receive valid ISO 8601 timestamps."""
+
+    def test_valid_iso_timestamp_accepted(self) -> None:
+        """Standard ISO timestamp passes validation."""
+        fc = FilterCondition(
+            field=FilterableField.CREATED_AT,
+            operator=FilterOperator.GREATER_THAN,
+            value="2024-01-15T00:00:00Z",
+        )
+        assert fc.value == "2024-01-15T00:00:00Z"
+
+    def test_valid_iso_with_timezone_offset(self) -> None:
+        """ISO timestamp with timezone offset passes."""
+        fc = FilterCondition(
+            field=FilterableField.UPDATED_AT,
+            operator=FilterOperator.LESS_THAN,
+            value="2024-06-01T12:30:00+05:30",
+        )
+        assert fc.value == "2024-06-01T12:30:00+05:30"
+
+    def test_valid_iso_without_timezone(self) -> None:
+        """Naive ISO timestamp (no timezone) passes."""
+        fc = FilterCondition(
+            field=FilterableField.CREATED_AT,
+            operator=FilterOperator.EQUALS,
+            value="2024-01-15T00:00:00",
+        )
+        assert fc.value == "2024-01-15T00:00:00"
+
+    def test_invalid_date_string_rejected(self) -> None:
+        """Non-date string fails validation with clear error message."""
+        with pytest.raises(ValidationError, match="ISO 8601"):
+            FilterCondition(
+                field=FilterableField.CREATED_AT,
+                operator=FilterOperator.GREATER_THAN,
+                value="not-a-date",
+            )
+
+    def test_date_only_accepted(self) -> None:
+        """Date without time component is valid ISO 8601."""
+        fc = FilterCondition(
+            field=FilterableField.CREATED_AT,
+            operator=FilterOperator.EQUALS,
+            value="2024-01-15",
+        )
+        assert fc.value == "2024-01-15"
+
+    def test_impossible_date_rejected(self) -> None:
+        """Month 13 fails."""
+        with pytest.raises(ValidationError, match="ISO 8601"):
+            FilterCondition(
+                field=FilterableField.CREATED_AT,
+                operator=FilterOperator.GREATER_THAN,
+                value="2024-13-01T00:00:00",
+            )
+
+    def test_text_field_not_validated_as_date(self) -> None:
+        """Non-date fields don't get ISO validation."""
+        fc = FilterCondition(
+            field=FilterableField.NAME,
+            operator=FilterOperator.EQUALS,
+            value="anything goes here",
+        )
+        assert fc.value == "anything goes here"

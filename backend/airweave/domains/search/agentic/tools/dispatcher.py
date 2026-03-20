@@ -12,12 +12,15 @@ from typing import Any, Protocol, Union
 from pydantic import ValidationError
 
 from airweave.core.protocols.llm import LLMToolCall
+from airweave.domains.embedders.exceptions import EmbedderError
+from airweave.domains.search.adapters.vector_db.exceptions import VectorDBError
 from airweave.domains.search.agentic.exceptions import (
     ToolError,
     ToolExecutionError,
     ToolNotFoundError,
     ToolValidationError,
 )
+from airweave.domains.search.exceptions import SearchError
 from airweave.domains.search.agentic.state import AgentState
 from airweave.domains.search.agentic.tools.types import (
     CollectToolResult,
@@ -78,10 +81,19 @@ class ToolDispatcher:
     ) -> ToolResult:
         """Dispatch a tool call to the appropriate handler.
 
+        Correctable errors (bad arguments, not-found) are caught and converted
+        to ToolError subclasses — the agent loop feeds these back to the LLM
+        so it can self-correct.
+
+        Infrastructure errors (vector DB down, embedder timeout, federated
+        source failure) propagate uncaught — the LLM can't fix these, so they
+        should crash the agent loop and surface to the user.
+
         Raises:
-            ToolNotFoundError: If the tool name is not registered.
-            ToolValidationError: If the LLM arguments fail validation.
-            ToolExecutionError: If the tool execution fails.
+            ToolNotFoundError: Tool name not registered (correctable).
+            ToolValidationError: LLM arguments fail validation (correctable).
+            ToolExecutionError: Tool logic failed (correctable).
+            SearchError: Infrastructure failure (NOT correctable — propagates).
         """
         tool = self._tools.get(tc.name)
         if not tool:
@@ -91,6 +103,11 @@ class ToolDispatcher:
         try:
             return await tool.execute(tc.arguments, state, tool_call_id=tc.id)
         except ToolError:
+            raise
+        except (SearchError, EmbedderError, VectorDBError):
+            # Infrastructure errors (FederatedSearchError, EmbedderError,
+            # VectorDBError) propagate to the agent loop → SearchFailedEvent
+            # → user sees error. The LLM can't fix these.
             raise
         except ValidationError as e:
             raise ToolValidationError(f"Invalid arguments for '{tc.name}': {e}") from e

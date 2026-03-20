@@ -496,9 +496,8 @@ class Agent:
             try:
                 result = await dispatcher.dispatch(tc, state)
             except ToolError as e:
+                # Correctable errors — feed back to LLM for self-correction
                 result = ToolErrorResult(error=str(e))
-            except Exception as e:
-                result = ToolErrorResult(error=f"Unexpected error: {e}")
             tc_duration = int((time.monotonic() - tc_start) * 1000)
 
             await self._event_bus.publish(

@@ -819,15 +819,16 @@ class TestExecutorFederated:
         assert results.results[0].airweave_system_metadata.source_name == "slack"
 
     @pytest.mark.asyncio
-    async def test_federated_auth_failure_returns_vector_only(self):
-        """If federated source fails to instantiate, vector results still returned."""
+    async def test_federated_auth_failure_raises_error(self):
+        """If federated source fails to instantiate, FederatedSearchError is raised."""
+        from airweave.domains.search.exceptions import FederatedSearchError
+
         vector_db = FakeVectorDB()
         vector_db.seed_results(SearchResults(results=[_make_search_result()]))
 
         sc = _make_source_connection("slack", federated=True)
         sc_repo = FakeSourceConnectionRepository()
         sc_repo.seed(sc.id, sc)
-        # FakeSourceConnectionRepository filters by sc.readable_collection_id
 
         source_registry = FakeSourceRegistry()
         source_registry.seed(_make_registry_entry("slack", federated=True))
@@ -842,17 +843,18 @@ class TestExecutorFederated:
             source_lifecycle=source_lifecycle,
         )
 
-        results = await executor.execute(
-            plan=_make_plan(),
-            user_filter=[],
-            collection_id="col-1",
-            db=AsyncMock(),
-            ctx=_make_ctx(),
-            collection_readable_id="my-collection",
-        )
+        with pytest.raises(FederatedSearchError) as exc_info:
+            await executor.execute(
+                plan=_make_plan(),
+                user_filter=[],
+                collection_id="col-1",
+                db=AsyncMock(),
+                ctx=_make_ctx(),
+                collection_readable_id="my-collection",
+            )
 
-        # Should still get vector results despite federated failure
-        assert len(results.results) == 1
+        assert len(exc_info.value.source_errors) == 1
+        assert exc_info.value.source_errors[0][0] == "slack"
 
 
 class TestExecutorPagination:
@@ -883,3 +885,314 @@ class TestExecutorPagination:
         # Top results should be rank-1 from each list
         assert page[0].entity_id == "v0__chunk_0"
         assert page[1].entity_id == "f0__chunk_0"
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# ERROR PATHS
+# ═══════════════════════════════════════════════════════════════════════
+
+
+class TestExecutorErrorPaths:
+    """Tests for error wrapping in SearchPlanExecutor.execute().
+
+    Verifies that embedding, vector DB, and federated source failures
+    are wrapped in the correct domain exceptions.
+    """
+
+    @pytest.mark.asyncio
+    async def test_dense_embedding_failure_propagates(self):
+        """Dense embedder failure propagates as RuntimeError (adapter exception)."""
+        dense = FakeDenseEmbedder()
+        dense.seed_error(RuntimeError("provider down"))
+
+        executor = SearchPlanExecutor(
+            dense_embedder=dense,
+            sparse_embedder=FakeSparseEmbedder(),
+            vector_db=FakeVectorDB(),
+            sc_repo=FakeSourceConnectionRepository(),
+            source_registry=FakeSourceRegistry(),
+            source_lifecycle=FakeSourceLifecycleService(),
+        )
+
+        with pytest.raises(RuntimeError, match="provider down"):
+            await executor.execute(
+                plan=_make_plan(strategy="semantic"),
+                user_filter=[],
+                collection_id="col-1",
+                db=AsyncMock(),
+                ctx=_make_ctx(),
+                collection_readable_id="my-collection",
+            )
+
+    @pytest.mark.asyncio
+    async def test_sparse_embedding_failure_propagates(self):
+        """Sparse embedder failure propagates as RuntimeError (adapter exception)."""
+        sparse = FakeSparseEmbedder()
+        sparse.seed_error(RuntimeError("timeout"))
+
+        executor = SearchPlanExecutor(
+            dense_embedder=FakeDenseEmbedder(),
+            sparse_embedder=sparse,
+            vector_db=FakeVectorDB(),
+            sc_repo=FakeSourceConnectionRepository(),
+            source_registry=FakeSourceRegistry(),
+            source_lifecycle=FakeSourceLifecycleService(),
+        )
+
+        with pytest.raises(RuntimeError, match="timeout"):
+            await executor.execute(
+                plan=_make_plan(strategy="keyword"),
+                user_filter=[],
+                collection_id="col-1",
+                db=AsyncMock(),
+                ctx=_make_ctx(),
+                collection_readable_id="my-collection",
+            )
+
+    @pytest.mark.asyncio
+    async def test_vector_db_compile_failure_propagates(self):
+        """Vector DB compile failure propagates as RuntimeError (adapter exception)."""
+        vector_db = FakeVectorDB()
+        vector_db.seed_compile_error(RuntimeError("connection lost"))
+
+        executor = _build_executor(vector_db=vector_db)
+
+        with pytest.raises(RuntimeError, match="connection lost"):
+            await executor.execute(
+                plan=_make_plan(),
+                user_filter=[],
+                collection_id="col-1",
+                db=AsyncMock(),
+                ctx=_make_ctx(),
+                collection_readable_id="my-collection",
+            )
+
+    @pytest.mark.asyncio
+    async def test_vector_db_execute_failure_propagates(self):
+        """Vector DB execute failure propagates as RuntimeError (adapter exception)."""
+        vector_db = FakeVectorDB()
+        vector_db.seed_execute_error(RuntimeError("index corrupted"))
+
+        executor = _build_executor(vector_db=vector_db)
+
+        with pytest.raises(RuntimeError, match="index corrupted"):
+            await executor.execute(
+                plan=_make_plan(),
+                user_filter=[],
+                collection_id="col-1",
+                db=AsyncMock(),
+                ctx=_make_ctx(),
+                collection_readable_id="my-collection",
+            )
+
+    @pytest.mark.asyncio
+    async def test_federated_source_instantiation_failure_raises(self):
+        """Federated source that can't be instantiated → FederatedSearchError."""
+        from airweave.domains.search.exceptions import FederatedSearchError
+
+        vector_db = FakeVectorDB()
+        vector_db.seed_results(SearchResults(results=[_make_search_result()]))
+
+        sc = _make_source_connection("slack", federated=True)
+        sc_repo = FakeSourceConnectionRepository()
+        sc_repo.seed(sc.id, sc)
+
+        source_registry = FakeSourceRegistry()
+        source_registry.seed(_make_registry_entry("slack", federated=True))
+
+        # Don't seed source_lifecycle → create() will raise KeyError
+        source_lifecycle = FakeSourceLifecycleService()
+
+        executor = _build_executor(
+            vector_db=vector_db,
+            sc_repo=sc_repo,
+            source_registry=source_registry,
+            source_lifecycle=source_lifecycle,
+        )
+
+        with pytest.raises(FederatedSearchError) as exc_info:
+            await executor.execute(
+                plan=_make_plan(),
+                user_filter=[],
+                collection_id="col-1",
+                db=AsyncMock(),
+                ctx=_make_ctx(),
+                collection_readable_id="my-collection",
+            )
+
+        assert len(exc_info.value.source_errors) == 1
+        assert exc_info.value.source_errors[0][0] == "slack"
+
+    @pytest.mark.asyncio
+    async def test_federated_source_search_failure_raises(self):
+        """Federated source that errors during search() → FederatedSearchError."""
+        from airweave.domains.search.exceptions import FederatedSearchError
+
+        class _FailingFederatedSource:
+            short_name = "slack"
+
+            async def search(self, query: str, limit: int) -> list:
+                raise RuntimeError("search endpoint unavailable")
+
+        vector_db = FakeVectorDB()
+        vector_db.seed_results(SearchResults(results=[]))
+
+        sc = _make_source_connection("slack", federated=True)
+        sc_repo = FakeSourceConnectionRepository()
+        sc_repo.seed(sc.id, sc)
+
+        source_registry = FakeSourceRegistry()
+        source_registry.seed(_make_registry_entry("slack", federated=True))
+
+        source_lifecycle = FakeSourceLifecycleService()
+        source_lifecycle.seed_source(sc.id, _FailingFederatedSource())
+
+        executor = _build_executor(
+            vector_db=vector_db,
+            sc_repo=sc_repo,
+            source_registry=source_registry,
+            source_lifecycle=source_lifecycle,
+        )
+
+        with pytest.raises(FederatedSearchError) as exc_info:
+            await executor.execute(
+                plan=_make_plan(),
+                user_filter=[],
+                collection_id="col-1",
+                db=AsyncMock(),
+                ctx=_make_ctx(),
+                collection_readable_id="my-collection",
+            )
+
+        assert len(exc_info.value.source_errors) >= 1
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# FILTER EDGE CASES
+# ═══════════════════════════════════════════════════════════════════════
+
+
+class TestExecutorFilterEdgeCases:
+    """Edge-case tests for in-memory filtering."""
+
+    def test_empty_filter_groups_passes_all(self):
+        """filter_groups=[] → all results pass through unfiltered."""
+        results = [
+            _make_federated_result(entity_id=f"f{i}") for i in range(5)
+        ]
+        filtered = SearchPlanExecutor._apply_filters_in_memory(results, [])
+        assert len(filtered) == 5
+        assert filtered == results
+
+    def test_none_field_value_filters_out(self):
+        """Filter on a field that is None on the result → filtered out (not a crash).
+
+        Federated results have updated_at=None. Filtering with equals on a
+        None-valued field returns False, so the result is excluded gracefully.
+        """
+        result = _make_federated_result(entity_id="f1")
+        # updated_at is None on federated results
+        assert result.updated_at is None
+        filters = [_make_filter("updated_at", "equals", "2026-01-01T00:00:00")]
+        filtered = SearchPlanExecutor._apply_filters_in_memory([result], filters)
+        assert len(filtered) == 0
+
+    def test_gte_boundary_value(self):
+        """Filter with >= on exact boundary value → result passes."""
+        result = _make_federated_result(
+            entity_id="f1",
+            created_at=datetime(2026, 3, 15, 0, 0, 0),
+        )
+        filters = [
+            FilterGroup(
+                conditions=[
+                    FilterCondition(
+                        field="created_at",
+                        operator="greater_than_or_equal",
+                        value="2026-03-15T00:00:00",
+                    ),
+                ]
+            )
+        ]
+        filtered = SearchPlanExecutor._apply_filters_in_memory([result], filters)
+        assert len(filtered) == 1
+        assert filtered[0].entity_id == "f1"
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# FEDERATED RETRY
+# ═══════════════════════════════════════════════════════════════════════
+
+
+class TestFederatedRetry:
+    """Tests for retry logic in _search_single_source."""
+
+    @pytest.mark.asyncio
+    async def test_transient_429_retried_and_succeeds(self):
+        """Source returns 429 on first call, succeeds on second."""
+
+        class _TransientSource:
+            short_name = "slack"
+            _attempt = 0
+
+            async def search(self, query: str, limit: int) -> list:
+                self._attempt += 1
+                if self._attempt == 1:
+                    err = Exception("rate limited")
+                    err.status_code = 429  # type: ignore[attr-defined]
+                    raise err
+                return []
+
+        source = _TransientSource()
+        executor = _build_executor()
+
+        results = await executor._search_single_source(
+            source, "test", 10, _make_ctx()
+        )
+        assert results == []
+        assert source._attempt == 2
+
+    @pytest.mark.asyncio
+    async def test_non_transient_error_not_retried(self):
+        """Source returns 400 (non-transient) — fails immediately, no retry."""
+
+        class _FatalSource:
+            short_name = "slack"
+            _attempt = 0
+
+            async def search(self, query: str, limit: int) -> list:
+                self._attempt += 1
+                err = Exception("bad request")
+                err.status_code = 400  # type: ignore[attr-defined]
+                raise err
+
+        source = _FatalSource()
+        executor = _build_executor()
+
+        with pytest.raises(Exception, match="bad request"):
+            await executor._search_single_source(source, "test", 10, _make_ctx())
+
+        assert source._attempt == 1
+
+    @pytest.mark.asyncio
+    async def test_transient_exhausted_after_max_retries(self):
+        """Source always returns 500 — fails after max retries."""
+
+        class _AlwaysFailSource:
+            short_name = "slack"
+            _attempt = 0
+
+            async def search(self, query: str, limit: int) -> list:
+                self._attempt += 1
+                err = Exception("server error")
+                err.status_code = 500  # type: ignore[attr-defined]
+                raise err
+
+        source = _AlwaysFailSource()
+        executor = _build_executor()
+
+        with pytest.raises(Exception, match="server error"):
+            await executor._search_single_source(source, "test", 10, _make_ctx())
+
+        # 1 initial + 2 retries = 3 total
+        assert source._attempt == 3

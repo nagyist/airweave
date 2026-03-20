@@ -52,26 +52,25 @@ class BaseLLM(LLMProtocol):
     RETRY_MULTIPLIER = 2.0  # exponential backoff
     DEFAULT_TIMEOUT = 120.0
 
-    # Error classification — checked against str(error).lower()
-    FATAL_INDICATORS = [
-        "401",
-        "403",
+    # SDK exception types that map to fatal errors (all providers use
+    # OpenAI-compatible exception hierarchies with these class names).
+    # Imported lazily in _classify_error to avoid hard dependency on any
+    # single SDK at import time.
+    _FATAL_STATUS_CODES = {400, 401, 403, 404}
+    _TRANSIENT_STATUS_CODES = {429, 500, 502, 503, 504}
+
+    # Fallback string matching for exceptions that don't expose status_code
+    # (e.g. wrapped errors, connection issues, custom exceptions).
+    _FATAL_FALLBACK_INDICATORS = [
         "authentication",
         "unauthorized",
         "invalid_api_key",
         "model_not_found",
-        "invalid_request_error",
         "permission",
         "forbidden",
     ]
-
-    TRANSIENT_INDICATORS = [
+    _TRANSIENT_FALLBACK_INDICATORS = [
         "rate limit",
-        "429",
-        "500",
-        "502",
-        "503",
-        "504",
         "timeout",
         "connection",
         "network",
@@ -272,22 +271,50 @@ class BaseLLM(LLMProtocol):
         )
 
     def _classify_error(self, error: Exception, label: str) -> LLMTransientError | LLMFatalError:
-        """Classify an unknown exception as transient or fatal.
+        """Classify an exception as transient or fatal.
 
-        Checks the error message against known indicator strings.
-        Fatal indicators are checked first (more specific). If neither
-        matches, defaults to transient (safer to retry than to fail).
+        Uses HTTP status codes from SDK exceptions when available (all LLM
+        providers use OpenAI-compatible exception hierarchies with a
+        status_code attribute). Falls back to string matching for exceptions
+        that don't expose a status code (connection errors, wrapped exceptions).
+
+        Defaults to transient when uncertain — safer to retry than to fail.
         """
+        # 1. Check for status_code on SDK exceptions (e.g., BadRequestError,
+        #    RateLimitError, AuthenticationError — all have .status_code).
+        status_code = getattr(error, "status_code", None)
+        if isinstance(status_code, int):
+            if status_code in self._FATAL_STATUS_CODES:
+                return LLMFatalError(
+                    f"{self._name} {label} fatal error (HTTP {status_code}): {error}",
+                    provider=self._name,
+                    cause=error,
+                )
+            if status_code in self._TRANSIENT_STATUS_CODES:
+                return LLMTransientError(
+                    f"{self._name} {label} transient error (HTTP {status_code}): {error}",
+                    provider=self._name,
+                    cause=error,
+                )
+
+        # 2. Fallback: string matching for exceptions without status_code
         error_str = str(error).lower()
 
-        if any(indicator in error_str for indicator in self.FATAL_INDICATORS):
+        if any(indicator in error_str for indicator in self._FATAL_FALLBACK_INDICATORS):
             return LLMFatalError(
                 f"{self._name} {label} fatal error: {error}",
                 provider=self._name,
                 cause=error,
             )
 
-        # Transient (explicit match or unknown → default to transient)
+        if any(indicator in error_str for indicator in self._TRANSIENT_FALLBACK_INDICATORS):
+            return LLMTransientError(
+                f"{self._name} {label} transient error: {error}",
+                provider=self._name,
+                cause=error,
+            )
+
+        # 3. Unknown → default to transient (safer to retry)
         return LLMTransientError(
             f"{self._name} {label} transient error: {error}",
             provider=self._name,

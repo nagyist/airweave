@@ -607,6 +607,11 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
         if access_token is not None:
             return StaticTokenProvider(access_token, source_short_name=short_name)
 
+        # Normalize credentials: convert raw dicts to typed auth config models
+        # so sources that use attribute access (e.g. auth.credentials.api_key) work
+        entry = self._source_registry.get(short_name)
+        source_credentials = self._normalize_credentials(source_credentials, entry, logger)
+
         oauth_type = source_connection_data.oauth_type
 
         if not oauth_type:
@@ -622,17 +627,34 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
                     source_registry=self._source_registry,
                     logger=logger,
                 )
-            else:
-                return OAuthTokenProvider(
-                    credentials=source_credentials,
-                    oauth_type=oauth_type,
-                    oauth2_service=self._oauth2_service,
-                    source_short_name=short_name,
-                    connection_id=source_connection_data.connection_id,
-                    ctx=ctx,
-                    logger=logger,
-                    config_fields=source_connection_data.config_fields,
-                )
+
+            # Sources that support both OAuth and API key auth (e.g. calcom, coda)
+            # may have structured credentials without access_token when using
+            # API key mode — route those to DirectCredentialProvider.
+            if isinstance(source_credentials, BaseModel):
+                if _credentials_have_access_token(source_credentials):
+                    return OAuthTokenProvider(
+                        credentials=source_credentials,
+                        oauth_type=oauth_type,
+                        oauth2_service=self._oauth2_service,
+                        source_short_name=short_name,
+                        connection_id=source_connection_data.connection_id,
+                        ctx=ctx,
+                        logger=logger,
+                        config_fields=source_connection_data.config_fields,
+                    )
+                return DirectCredentialProvider(source_credentials, source_short_name=short_name)
+
+            return OAuthTokenProvider(
+                credentials=source_credentials,
+                oauth_type=oauth_type,
+                oauth2_service=self._oauth2_service,
+                source_short_name=short_name,
+                connection_id=source_connection_data.connection_id,
+                ctx=ctx,
+                logger=logger,
+                config_fields=source_connection_data.config_fields,
+            )
 
         except Exception as e:
             raise SourceCreationError(short_name, f"token provider setup failed: {e}") from e
@@ -725,3 +747,15 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
             if key not in existing_config or existing_config[key] is None:
                 existing_config[key] = value
         source_connection_data.config_fields = existing_config
+
+
+def _credentials_have_access_token(creds: object) -> bool:
+    """Check whether credentials contain a usable access_token field.
+
+    TODO: Remove this once we have proper named integration credentials.
+    """
+    if isinstance(creds, dict):
+        return bool(creds.get("access_token"))
+    if hasattr(creds, "access_token"):
+        return bool(getattr(creds, "access_token", None))
+    return False

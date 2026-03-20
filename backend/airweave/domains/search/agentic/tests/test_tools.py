@@ -38,7 +38,7 @@ class TestSearchTool:
         executor = FakeSearchPlanExecutor()
         executor.seed_result(SearchResults(results=[r1, r2]))
 
-        tool = SearchTool(executor=executor, user_filter=[], collection_id="col-1")
+        tool = SearchTool(executor=executor, user_filter=[], collection_id="col-1", db=AsyncMock(), ctx=AsyncMock(), collection_readable_id="col-readable")
         state = make_state()
         result = await tool.execute(
             {
@@ -64,7 +64,7 @@ class TestSearchTool:
         executor.seed_result(SearchResults(results=[r1, r2]))
 
         state = make_state(results={"ent-1": r1})
-        tool = SearchTool(executor=executor, user_filter=[], collection_id="col-1")
+        tool = SearchTool(executor=executor, user_filter=[], collection_id="col-1", db=AsyncMock(), ctx=AsyncMock(), collection_readable_id="col-readable")
         result = await tool.execute(
             {
                 "query": {"primary": "test"},
@@ -86,7 +86,7 @@ class TestSearchTool:
         executor.seed_result(SearchResults(results=[r1]))
 
         state = make_state()
-        tool = SearchTool(executor=executor, user_filter=[], collection_id="col-1")
+        tool = SearchTool(executor=executor, user_filter=[], collection_id="col-1", db=AsyncMock(), ctx=AsyncMock(), collection_readable_id="col-readable")
         await tool.execute(
             {
                 "query": {"primary": "test"},

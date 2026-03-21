@@ -631,11 +631,9 @@ class SyncOrchestrator:
             return
 
         if not self.runtime.cursor.cursor_data:
-            if self.sync_context.force_full_sync:
-                self.sync_context.logger.info(
-                    "📝 No cursor data to save from forced "
-                    "full sync (source may not support cursor tracking)"
-                )
+            self.sync_context.logger.info(
+                "📝 No cursor data to save (source may not support cursor tracking)"
+            )
             return
 
         try:
@@ -647,15 +645,9 @@ class SyncOrchestrator:
                     ctx=self.sync_context,
                     cursor_field=self.runtime.cursor.cursor_field,
                 )
-                if self.sync_context.force_full_sync:
-                    self.sync_context.logger.info(
-                        f"💾 Saved cursor data from"
-                        f"forced full sync for sync {self.sync_context.sync.id}"
-                    )
-                else:
-                    self.sync_context.logger.info(
-                        f"💾 Saved cursor data for sync {self.sync_context.sync.id}"
-                    )
+                self.sync_context.logger.info(
+                    f"💾 Saved cursor data for sync {self.sync_context.sync.id}"
+                )
         except Exception as e:
             self.sync_context.logger.error(
                 f"Failed to save cursor data for sync {self.sync_context.sync.id}: {e}",

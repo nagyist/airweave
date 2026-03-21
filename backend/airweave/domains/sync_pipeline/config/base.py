@@ -122,9 +122,12 @@ class SyncConfig(BaseSettings):
     ) -> "SyncConfig":
         """Build final config from all layers (defaults + env + overrides)."""
         config = cls()
-        for overrides in [collection_overrides, sync_overrides, job_overrides]:
-            if overrides:
-                config = config.merge_with(overrides.model_dump(exclude_unset=True))
+        if collection_overrides:
+            config = config.merge_with(collection_overrides.model_dump(exclude_unset=True))
+        if sync_overrides:
+            config = config.merge_with(sync_overrides.model_dump(exclude_unset=True))
+        if job_overrides:
+            config = config.merge_with(job_overrides.model_dump(exclude_unset=True))
         return config
 
     # ========================================================================

@@ -20,6 +20,7 @@ class FakeSyncContext:
     organization_id: object = field(default_factory=uuid4)
     source_connection_id: object = field(default_factory=uuid4)
     connection: object = field(default_factory=lambda: SimpleNamespace(short_name="slack"))
+    source_short_name: str = "slack"
     logger: object = field(default_factory=lambda: MagicMock())
 
 

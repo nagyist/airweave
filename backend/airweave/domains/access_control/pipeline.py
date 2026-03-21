@@ -369,9 +369,7 @@ class AccessControlPipeline:
                     member_type=change.member_type,
                     group_id=change.group_id,
                     group_name=change.group_name or "",
-                    organization_id=sync_context.organization_id,
-                    source_connection_id=sync_context.source_connection_id,
-                    source_name=getattr(source, "_short_name", "unknown"),
+                    ctx=sync_context,
                 )
                 adds += 1
 

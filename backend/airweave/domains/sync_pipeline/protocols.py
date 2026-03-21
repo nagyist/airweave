@@ -104,6 +104,7 @@ class SyncFactoryProtocol(Protocol):
         ctx: BaseContext,
         force_full_sync: bool = False,
         execution_config: Optional[SyncConfig] = None,
+        access_token: Optional[str] = None,
     ) -> SyncOrchestrator:
         """Create and return a fully-wired SyncOrchestrator."""
         ...

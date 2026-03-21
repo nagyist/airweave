@@ -443,6 +443,7 @@ class RunSyncActivity:
                 ctx=ctx,
                 force_full_sync=force_full_sync,
                 execution_config=execution_config,
+                access_token=access_token,
             )
         except NotFoundException as e:
             if "Source connection record not found" in str(e) or "Connection not found" in str(e):

@@ -18,14 +18,14 @@ class DestinationsContextBuilder:
     """Builds destinations context with all required configuration."""
 
     @classmethod
-    async def build_destinations_only(
+    async def build_destinations(
         cls,
         sync: schemas.Sync,
         collection: schemas.CollectionRecord,
         logger: ContextualLogger,
         execution_config: Optional[SyncConfig] = None,
     ) -> List[BaseDestination]:
-        """Build destinations without entity map (entity map built by factory via DI)."""
+        """Build destinations."""
         return await cls._create_destinations(
             sync=sync,
             collection=collection,

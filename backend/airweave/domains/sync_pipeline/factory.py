@@ -139,6 +139,7 @@ class SyncFactory(SyncFactoryProtocol):
         ctx: BaseContext,
         force_full_sync: bool = False,
         execution_config: Optional[SyncConfig] = None,
+        access_token: Optional[str] = None,
     ) -> SyncOrchestrator:
         """Create a dedicated orchestrator instance for a sync run."""
         init_start = time.time()
@@ -175,6 +176,7 @@ class SyncFactory(SyncFactoryProtocol):
             source_connection=sc,
             force_full_sync=force_full_sync,
             execution_config=resolved_config,
+            access_token=access_token,
         )
         destinations = await self._build_destinations(
             db=db,
@@ -333,6 +335,7 @@ class SyncFactory(SyncFactoryProtocol):
         source_connection: SourceConnection,
         force_full_sync: bool,
         execution_config: SyncConfig,
+        access_token: Optional[str] = None,
     ) -> SourceBuildResult:
         """Build source instance, cursor, file service, and node selections."""
         if execution_config and execution_config.behavior.replay_from_arf:
@@ -346,6 +349,7 @@ class SyncFactory(SyncFactoryProtocol):
             db=db,
             source_connection_id=source_connection_id,
             ctx=ctx,
+            access_token=access_token,
         )
 
         files = FileService(sync_job_id=sync_job.id, storage_backend=self._storage_backend)
@@ -396,11 +400,7 @@ class SyncFactory(SyncFactoryProtocol):
             original_short_name=original_short_name,
         )
 
-        if not await source.validate():
-            raise NotFoundException(
-                f"ARF data not found for sync {sync.id}. "
-                f"Cannot replay — ensure ARF capture was enabled for previous syncs."
-            )
+        await source.validate()
 
         cursor = SyncCursor(sync_id=sync.id, cursor_schema=None, cursor_data=None)
         return SourceBuildResult(source=source, cursor=cursor, files=None, node_selections=None)
@@ -505,7 +505,7 @@ class SyncFactory(SyncFactoryProtocol):
             },
         )
 
-        return await DestinationsContextBuilder.build_destinations_only(
+        return await DestinationsContextBuilder.build_destinations(
             sync=sync,
             collection=collection,
             logger=dest_logger,

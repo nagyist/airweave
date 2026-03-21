@@ -35,6 +35,7 @@ class FakeSyncContext:
 
     organization_id: object = field(default_factory=uuid4)
     source_connection_id: object = field(default_factory=uuid4)
+    connection: object = field(default_factory=lambda: SimpleNamespace(short_name="test_source"))
     logger: object = field(default_factory=lambda: MagicMock())
 
 
@@ -178,9 +179,7 @@ class TestApplyMembershipChanges:
             member_type="user",
             group_id="group-eng",
             group_name="Engineering",
-            organization_id=ctx.organization_id,
-            source_connection_id=ctx.source_connection_id,
-            source_name="sp2019v2",
+            ctx=ctx,
         )
 
     @pytest.mark.asyncio

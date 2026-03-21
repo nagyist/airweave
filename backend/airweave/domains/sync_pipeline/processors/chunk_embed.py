@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, Tuple
 
 from airweave.domains.converters.protocols import ConverterRegistryProtocol
 from airweave.domains.embedders.protocols import DenseEmbedderProtocol, SparseEmbedderProtocol
-from airweave.domains.sync_pipeline.exceptions import SyncFailureError
+from airweave.domains.sync_pipeline.exceptions import EntityProcessingError, SyncFailureError
 from airweave.domains.sync_pipeline.pipeline.text_builder import TextualRepresentationBuilder
 from airweave.domains.sync_pipeline.processors.utils import filter_empty_representations
 from airweave.platform.entities._base import BaseEntity, CodeFileEntity
@@ -229,7 +229,7 @@ class ChunkEmbedProcessor:
         dense_texts: list[str] = []
         for e in chunk_entities:
             if e.textual_representation is None:
-                raise SyncFailureError(
+                raise EntityProcessingError(
                     f"[ChunkEmbedProcessor] ChunkEntity {e.entity_id} has no textual_representation"
                 )
             dense_texts.append(e.textual_representation)

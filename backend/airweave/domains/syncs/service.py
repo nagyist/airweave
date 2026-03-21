@@ -39,6 +39,7 @@ class SyncService(SyncServiceProtocol):
         ctx: ApiContext,
         force_full_sync: bool = False,
         execution_config: Optional[SyncConfig] = None,
+        access_token: Optional[str] = None,
     ) -> schemas.Sync:
         """Run a sync."""
         try:
@@ -52,6 +53,7 @@ class SyncService(SyncServiceProtocol):
                     ctx=ctx,
                     force_full_sync=force_full_sync,
                     execution_config=execution_config,
+                    access_token=access_token,
                 )
         except Exception as e:
             ctx.logger.error(f"Error during sync orchestrator creation: {e}")

@@ -1,10 +1,11 @@
 """Protocols for the entities domain."""
 
-from typing import Any, Dict, List, Protocol, Tuple
+from typing import Dict, List, Protocol, Tuple
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from airweave.core.context import BaseContext
 from airweave.core.protocols.registry import RegistryProtocol
 from airweave.domains.entities.types import EntityDefinitionEntry
 from airweave.models.entity import Entity
@@ -51,7 +52,7 @@ class EntityRepositoryProtocol(Protocol):
         db: AsyncSession,
         *,
         objs: list,
-        ctx: Any,
+        ctx: BaseContext,
     ) -> List[Entity]:
         """Bulk-insert entity rows."""
         ...
@@ -70,7 +71,7 @@ class EntityRepositoryProtocol(Protocol):
         db: AsyncSession,
         *,
         ids: List[UUID],
-        ctx: Any,
+        ctx: BaseContext,
     ) -> List[Entity]:
         """Soft-delete entities by ID."""
         ...

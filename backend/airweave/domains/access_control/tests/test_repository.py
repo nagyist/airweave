@@ -5,6 +5,7 @@ We verify every method forwards arguments correctly.
 """
 
 from dataclasses import dataclass
+from types import SimpleNamespace
 from typing import Any, Callable, Dict, List
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
@@ -15,6 +16,13 @@ from airweave.domains.access_control.repository import AccessControlMembershipRe
 
 ORG_ID = uuid4()
 SC_ID = uuid4()
+
+# Fake SyncContext for bulk_create/upsert tests
+_FAKE_CTX = SimpleNamespace(
+    organization_id=ORG_ID,
+    source_connection_id=SC_ID,
+    connection=SimpleNamespace(short_name="slack"),
+)
 
 
 @dataclass
@@ -36,9 +44,7 @@ CASES = [
         args=[],
         kwargs=dict(
             memberships=["m1", "m2"],
-            organization_id=ORG_ID,
-            source_connection_id=SC_ID,
-            source_name="slack",
+            ctx=_FAKE_CTX,
         ),
         crud_method="bulk_create",
         expected_crud_args=[["m1", "m2"], ORG_ID, SC_ID, "slack"],
@@ -54,9 +60,7 @@ CASES = [
             member_type="user",
             group_id="g1",
             group_name="Engineering",
-            organization_id=ORG_ID,
-            source_connection_id=SC_ID,
-            source_name="slack",
+            ctx=_FAKE_CTX,
         ),
         crud_method="upsert",
         expected_crud_args=[],

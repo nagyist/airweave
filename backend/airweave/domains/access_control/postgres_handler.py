@@ -123,9 +123,7 @@ class ACPostgresHandler(ACActionHandler):
                 count = await self._acl_repo.bulk_create(
                     db=db,
                     memberships=batch,
-                    organization_id=sync_context.organization_id,
-                    source_connection_id=sync_context.source_connection_id,
-                    source_name=sync_context.connection.short_name,
+                    ctx=sync_context,
                 )
 
             total_count += count

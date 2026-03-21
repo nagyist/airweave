@@ -322,7 +322,12 @@ class TestBuildArfReplaySource:
         from airweave.core.exceptions import NotFoundException
 
         mock_source = AsyncMock()
-        mock_source.validate = AsyncMock(return_value=False)
+        mock_source.validate = AsyncMock(
+            side_effect=NotFoundException(
+                "ARF data not found for sync. "
+                "Cannot replay - ensure ARF capture was enabled for previous syncs."
+            )
+        )
 
         factory = _build_factory()
         db = AsyncMock()

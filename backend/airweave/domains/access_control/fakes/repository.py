@@ -6,6 +6,7 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave.domains.access_control.protocols import AccessControlMembershipRepositoryProtocol
+from airweave.domains.sync_pipeline.contexts import SyncContext
 from airweave.models.access_control_membership import AccessControlMembership
 
 
@@ -19,9 +20,7 @@ class FakeAccessControlMembershipRepository(AccessControlMembershipRepositoryPro
         self,
         db: AsyncSession,
         memberships: List,
-        organization_id: UUID,
-        source_connection_id: UUID,
-        source_name: str,
+        ctx: SyncContext,
     ) -> int:
         self._memberships.extend(memberships)
         return len(memberships)
@@ -34,9 +33,7 @@ class FakeAccessControlMembershipRepository(AccessControlMembershipRepositoryPro
         member_type: str,
         group_id: str,
         group_name: str,
-        organization_id: UUID,
-        source_connection_id: UUID,
-        source_name: str,
+        ctx: SyncContext,
     ) -> None:
         pass
 

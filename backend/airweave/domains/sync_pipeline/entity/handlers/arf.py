@@ -4,9 +4,11 @@ Stores raw entity data to the storage backend (local filesystem or cloud storage
 for debugging, replay, and audit purposes.
 """
 
-from typing import TYPE_CHECKING, List
+from typing import List
 
 from airweave.domains.arf.protocols import ArfServiceProtocol
+from airweave.domains.sync_pipeline.contexts import SyncContext
+from airweave.domains.sync_pipeline.contexts.runtime import SyncRuntime
 from airweave.domains.sync_pipeline.entity.actions import (
     EntityActionBatch,
     EntityDeleteAction,
@@ -15,11 +17,7 @@ from airweave.domains.sync_pipeline.entity.actions import (
 )
 from airweave.domains.sync_pipeline.entity.handlers.protocol import EntityActionHandler
 from airweave.domains.sync_pipeline.exceptions import SyncFailureError
-
-if TYPE_CHECKING:
-    from airweave.domains.sync_pipeline.contexts import SyncContext
-    from airweave.domains.sync_pipeline.contexts.runtime import SyncRuntime
-    from airweave.platform.entities import BaseEntity
+from airweave.platform.entities._base import BaseEntity
 
 
 class ArfHandler(EntityActionHandler):
@@ -47,7 +45,7 @@ class ArfHandler(EntityActionHandler):
     def name(self) -> str:
         return "arf"
 
-    async def _ensure_manifest(self, sync_context: "SyncContext", runtime: "SyncRuntime") -> None:
+    async def _ensure_manifest(self, sync_context: SyncContext, runtime: SyncRuntime) -> None:
         """Ensure manifest exists for this sync (called once per sync)."""
         if self._manifest_initialized:
             return
@@ -67,8 +65,8 @@ class ArfHandler(EntityActionHandler):
     async def handle_batch(
         self,
         batch: EntityActionBatch,
-        sync_context: "SyncContext",
-        runtime: "SyncRuntime",
+        sync_context: SyncContext,
+        runtime: SyncRuntime,
     ) -> None:
         if batch.deletes:
             await self.handle_deletes(batch.deletes, sync_context)
@@ -80,8 +78,8 @@ class ArfHandler(EntityActionHandler):
     async def handle_inserts(
         self,
         actions: List[EntityInsertAction],
-        sync_context: "SyncContext",
-        runtime: "SyncRuntime",
+        sync_context: SyncContext,
+        runtime: SyncRuntime,
     ) -> None:
         if not actions:
             return
@@ -92,8 +90,8 @@ class ArfHandler(EntityActionHandler):
     async def handle_updates(
         self,
         actions: List[EntityUpdateAction],
-        sync_context: "SyncContext",
-        runtime: "SyncRuntime",
+        sync_context: SyncContext,
+        runtime: SyncRuntime,
     ) -> None:
         if not actions:
             return
@@ -104,7 +102,7 @@ class ArfHandler(EntityActionHandler):
     async def handle_deletes(
         self,
         actions: List[EntityDeleteAction],
-        sync_context: "SyncContext",
+        sync_context: SyncContext,
     ) -> None:
         if not actions:
             return
@@ -114,7 +112,7 @@ class ArfHandler(EntityActionHandler):
     async def handle_orphan_cleanup(
         self,
         orphan_entity_ids: List[str],
-        sync_context: "SyncContext",
+        sync_context: SyncContext,
     ) -> None:
         if not orphan_entity_ids:
             return
@@ -126,9 +124,9 @@ class ArfHandler(EntityActionHandler):
 
     async def _do_upsert(
         self,
-        entities: List["BaseEntity"],
+        entities: List[BaseEntity],
         operation: str,
-        sync_context: "SyncContext",
+        sync_context: SyncContext,
     ) -> None:
         try:
             count = await self._arf_service.upsert_entities(
@@ -144,7 +142,7 @@ class ArfHandler(EntityActionHandler):
         self,
         entity_ids: List[str],
         operation: str,
-        sync_context: "SyncContext",
+        sync_context: SyncContext,
     ) -> None:
         try:
             deleted = await self._arf_service.delete_entities(

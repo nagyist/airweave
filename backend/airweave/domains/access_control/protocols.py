@@ -27,9 +27,7 @@ class AccessControlMembershipRepositoryProtocol(Protocol):
         self,
         db: AsyncSession,
         memberships: List,
-        organization_id: UUID,
-        source_connection_id: UUID,
-        source_name: str,
+        ctx: SyncContext,
     ) -> int:
         """Bulk-insert membership rows."""
         ...
@@ -42,9 +40,7 @@ class AccessControlMembershipRepositoryProtocol(Protocol):
         member_type: str,
         group_id: str,
         group_name: str,
-        organization_id: UUID,
-        source_connection_id: UUID,
-        source_name: str,
+        ctx: SyncContext,
     ) -> None:
         """Insert or update a single membership."""
         ...

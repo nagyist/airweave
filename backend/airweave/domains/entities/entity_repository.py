@@ -1,11 +1,12 @@
 """Entity repository wrapping crud.entity for sync pipeline usage."""
 
-from typing import Any, Dict, List, Tuple
+from typing import Dict, List, Tuple
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import crud
+from airweave.core.context import BaseContext
 from airweave.domains.entities.protocols import EntityRepositoryProtocol
 from airweave.models.entity import Entity
 from airweave.schemas.entity import EntityCreate
@@ -35,7 +36,7 @@ class EntityRepository(EntityRepositoryProtocol):
         db: AsyncSession,
         *,
         objs: List[EntityCreate],
-        ctx: Any,
+        ctx: BaseContext,
     ) -> List[Entity]:
         """Bulk-insert entity rows."""
         return await crud.entity.bulk_create(db, objs=objs, ctx=ctx)
@@ -54,7 +55,7 @@ class EntityRepository(EntityRepositoryProtocol):
         db: AsyncSession,
         *,
         ids: List[UUID],
-        ctx: Any,
+        ctx: BaseContext,
     ) -> List[Entity]:
         """Soft-delete entities by ID."""
         return await crud.entity.bulk_remove(db, ids=ids, ctx=ctx)

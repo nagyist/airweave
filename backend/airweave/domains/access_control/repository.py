@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import crud
 from airweave.domains.access_control.protocols import AccessControlMembershipRepositoryProtocol
+from airweave.domains.sync_pipeline.contexts import SyncContext
 from airweave.models.access_control_membership import AccessControlMembership
 
 
@@ -17,13 +18,15 @@ class AccessControlMembershipRepository(AccessControlMembershipRepositoryProtoco
         self,
         db: AsyncSession,
         memberships: List,
-        organization_id: UUID,
-        source_connection_id: UUID,
-        source_name: str,
+        ctx: SyncContext,
     ) -> int:
         """Bulk-insert membership rows."""
         return await crud.access_control_membership.bulk_create(
-            db, memberships, organization_id, source_connection_id, source_name
+            db,
+            memberships,
+            ctx.organization_id,
+            ctx.source_connection_id,
+            ctx.connection.short_name,
         )
 
     async def upsert(
@@ -34,9 +37,7 @@ class AccessControlMembershipRepository(AccessControlMembershipRepositoryProtoco
         member_type: str,
         group_id: str,
         group_name: str,
-        organization_id: UUID,
-        source_connection_id: UUID,
-        source_name: str,
+        ctx: SyncContext,
     ) -> None:
         """Insert or update a single membership."""
         return await crud.access_control_membership.upsert(
@@ -45,9 +46,9 @@ class AccessControlMembershipRepository(AccessControlMembershipRepositoryProtoco
             member_type=member_type,
             group_id=group_id,
             group_name=group_name,
-            organization_id=organization_id,
-            source_connection_id=source_connection_id,
-            source_name=source_name,
+            organization_id=ctx.organization_id,
+            source_connection_id=ctx.source_connection_id,
+            source_name=ctx.connection.short_name,
         )
 
     async def delete_by_key(

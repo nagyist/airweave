@@ -102,12 +102,10 @@ class ToolDispatcher:
             )
         try:
             return await tool.execute(tc.arguments, state, tool_call_id=tc.id)
-        except ToolError:
-            raise
-        except (SearchError, EmbedderError, VectorDBError):
-            # Infrastructure errors (FederatedSearchError, EmbedderError,
-            # VectorDBError) propagate to the agent loop → SearchFailedEvent
-            # → user sees error. The LLM can't fix these.
+        except (ToolError, SearchError, EmbedderError, VectorDBError):
+            # ToolError subclasses and infrastructure errors propagate directly.
+            # Infrastructure errors (SearchError, EmbedderError, VectorDBError)
+            # reach the agent loop → SearchFailedEvent. The LLM can't fix these.
             raise
         except ValidationError as e:
             raise ToolValidationError(f"Invalid arguments for '{tc.name}': {e}") from e

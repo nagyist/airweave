@@ -69,11 +69,13 @@ class TestDispatcher:
         class Dummy(BaseModel):
             x: int
 
+        error: ValidationError | None = None
         try:
             Dummy(x="not_an_int")  # type: ignore[arg-type]
         except ValidationError as ve:
             error = ve
 
+        assert error is not None, "Expected ValidationError was not raised"
         tool = _FakeTool(error=error)
         dispatcher = ToolDispatcher({"bad_tool": tool})
         state = make_state()

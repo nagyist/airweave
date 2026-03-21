@@ -16,7 +16,7 @@ import os
 import re
 from typing import Any, AsyncGenerator, Dict, List, Optional, Union
 
-import pyarrow.parquet as pq
+import pyarrow.parquet as pq  # type: ignore[import-untyped]
 
 from airweave.platform.configs.auth import EnronAuthConfig
 from airweave.platform.configs.config import EnronConfig
@@ -25,7 +25,6 @@ from airweave.platform.entities._base import BaseEntity
 from airweave.platform.entities.enron import EnronEmailEntity
 from airweave.platform.sources._base import BaseSource
 from airweave.schemas.source_connection import AuthenticationMethod
-
 
 _CTRL_CHAR_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 
@@ -57,7 +56,7 @@ class EnronSource(BaseSource):
     message_ids match without transformation.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the Enron source."""
         super().__init__()
         self.data_dir: str = ""

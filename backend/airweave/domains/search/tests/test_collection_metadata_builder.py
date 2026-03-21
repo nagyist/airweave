@@ -81,10 +81,10 @@ class TestCollectionMetadataBuilder:
         entity_def = _make_entity_definition_entry("SlackMessageEntity", "SlackMessageEntity")
         entity_count = _make_entity_count("SlackMessageEntity", 42)
 
-        builder._collection_repo.get_by_readable_id.return_value = collection
-        builder._sc_repo.get_by_collection_ids.return_value = [sc]
-        builder._entity_definition_registry.list_for_source.return_value = [entity_def]
-        builder._entity_count_repo.get_counts_per_sync_and_type.return_value = [entity_count]
+        builder._collection_repo.get_by_readable_id.return_value = collection  # type: ignore[attr-defined]
+        builder._sc_repo.get_by_collection_ids.return_value = [sc]  # type: ignore[attr-defined]
+        builder._entity_definition_registry.list_for_source.return_value = [entity_def]  # type: ignore[attr-defined]
+        builder._entity_count_repo.get_counts_per_sync_and_type.return_value = [entity_count]  # type: ignore[attr-defined]
 
         db = AsyncMock()
         ctx = MagicMock()
@@ -104,7 +104,7 @@ class TestCollectionMetadataBuilder:
     @pytest.mark.asyncio
     async def test_build_collection_not_found(self, builder: CollectionMetadataBuilder) -> None:
         """Raises ValueError when collection is not found."""
-        builder._collection_repo.get_by_readable_id.return_value = None
+        builder._collection_repo.get_by_readable_id.return_value = None  # type: ignore[attr-defined]
 
         db = AsyncMock()
         ctx = MagicMock()
@@ -117,8 +117,8 @@ class TestCollectionMetadataBuilder:
     async def test_build_no_source_connections(self, builder: CollectionMetadataBuilder) -> None:
         """Returns empty sources when collection has no source connections."""
         collection = _make_collection()
-        builder._collection_repo.get_by_readable_id.return_value = collection
-        builder._sc_repo.get_by_collection_ids.return_value = []
+        builder._collection_repo.get_by_readable_id.return_value = collection  # type: ignore[attr-defined]
+        builder._sc_repo.get_by_collection_ids.return_value = []  # type: ignore[attr-defined]
 
         db = AsyncMock()
         ctx = MagicMock()
@@ -135,11 +135,11 @@ class TestCollectionMetadataBuilder:
         sc = _make_source_connection("slack")
         entity_def = _make_entity_definition_entry("SlackMessageEntity", "SlackMessageEntity")
 
-        builder._collection_repo.get_by_readable_id.return_value = collection
-        builder._sc_repo.get_by_collection_ids.return_value = [sc]
-        builder._entity_definition_registry.list_for_source.return_value = [entity_def]
+        builder._collection_repo.get_by_readable_id.return_value = collection  # type: ignore[attr-defined]
+        builder._sc_repo.get_by_collection_ids.return_value = [sc]  # type: ignore[attr-defined]
+        builder._entity_definition_registry.list_for_source.return_value = [entity_def]  # type: ignore[attr-defined]
         # No counts for this entity type
-        builder._entity_count_repo.get_counts_per_sync_and_type.return_value = []
+        builder._entity_count_repo.get_counts_per_sync_and_type.return_value = []  # type: ignore[attr-defined]
 
         db = AsyncMock()
         ctx = MagicMock()

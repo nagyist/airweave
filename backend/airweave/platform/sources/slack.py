@@ -47,7 +47,7 @@ _SLACK_MRKDWN_PATTERN = re.compile(
 def _clean_slack_mrkdwn(text: str) -> str:
     """Strip Slack mrkdwn markup, replacing mentions and links with display text."""
 
-    def _replace(m: re.Match) -> str:
+    def _replace(m: re.Match[str]) -> str:
         if m.group(1):
             # Mention (user/channel/special) — use the label
             return m.group(1)

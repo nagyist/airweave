@@ -29,7 +29,7 @@ from airweave.schemas.source_connection import AuthenticationMethod
 class HerbMeetingsSource(BaseSource):
     """Source that syncs meeting transcripts and chats from the HERB benchmark dataset."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the HERB meetings source."""
         super().__init__()
         self.data_dir: str = ""

@@ -26,7 +26,7 @@ from airweave.schemas.source_connection import AuthenticationMethod
 class HerbMessagingSource(BaseSource):
     """Source that syncs Slack messages from the HERB benchmark dataset."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the HERB messaging source."""
         super().__init__()
         self.data_dir: str = ""

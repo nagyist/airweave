@@ -26,7 +26,7 @@ from airweave.schemas.source_connection import AuthenticationMethod
 class HerbDocumentsSource(BaseSource):
     """Source that syncs documents (PRDs, vision docs, etc.) from the HERB benchmark dataset."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the HERB documents source."""
         super().__init__()
         self.data_dir: str = ""

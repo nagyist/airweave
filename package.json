@@ -1,0 +1,5 @@
+{
+  "dependencies": {
+    "@airweave/cli": "^0.1.9"
+  }
+}

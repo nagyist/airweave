@@ -69,7 +69,6 @@ Emitted once per iteration after the LLM responds. `thinking` contains extended 
 ```json
 {
   "type": "thinking",
-  "request_id": "req-abc123",
   "thinking": "The user is asking about authentication methods. I should search for docs about auth, SSO, API keys...",
   "text": "Searching for authentication documentation...",
   "duration_ms": 2340,
@@ -82,13 +81,13 @@ Emitted once per iteration after the LLM responds. `thinking` contains extended 
 ```
 </Accordion>
 
-<Accordion title="tool_called">
+<Accordion title="tool_call">
 Emitted after each tool the agent calls. `diagnostics.arguments` has the full tool input, `diagnostics.stats` has the output. The stats shape depends on which tool was called:
 
 <Accordion title="search">
 ```json
 {
-  "type": "tool_called",
+  "type": "tool_call",
   "tool_name": "search",
   "duration_ms": 156,
   "diagnostics": {
@@ -125,7 +124,7 @@ Emitted after each tool the agent calls. `diagnostics.arguments` has the full to
 <Accordion title="read">
 ```json
 {
-  "type": "tool_called",
+  "type": "tool_call",
   "tool_name": "read",
   "duration_ms": 42,
   "diagnostics": {
@@ -155,7 +154,7 @@ Emitted after each tool the agent calls. `diagnostics.arguments` has the full to
 <Accordion title="add_to_results">
 ```json
 {
-  "type": "tool_called",
+  "type": "tool_call",
   "tool_name": "add_to_results",
   "duration_ms": 1,
   "diagnostics": {
@@ -178,7 +177,7 @@ Emitted after each tool the agent calls. `diagnostics.arguments` has the full to
 <Accordion title="remove_from_results">
 ```json
 {
-  "type": "tool_called",
+  "type": "tool_call",
   "tool_name": "remove_from_results",
   "duration_ms": 1,
   "diagnostics": {
@@ -201,7 +200,7 @@ Emitted after each tool the agent calls. `diagnostics.arguments` has the full to
 <Accordion title="count">
 ```json
 {
-  "type": "tool_called",
+  "type": "tool_call",
   "tool_name": "count",
   "duration_ms": 23,
   "diagnostics": {
@@ -231,7 +230,7 @@ Emitted after each tool the agent calls. `diagnostics.arguments` has the full to
 <Accordion title="get_children">
 ```json
 {
-  "type": "tool_called",
+  "type": "tool_call",
   "tool_name": "get_children",
   "duration_ms": 67,
   "diagnostics": {
@@ -261,7 +260,7 @@ Emitted after each tool the agent calls. `diagnostics.arguments` has the full to
 <Accordion title="get_siblings">
 ```json
 {
-  "type": "tool_called",
+  "type": "tool_call",
   "tool_name": "get_siblings",
   "duration_ms": 55,
   "diagnostics": {
@@ -291,7 +290,7 @@ Emitted after each tool the agent calls. `diagnostics.arguments` has the full to
 <Accordion title="get_parent">
 ```json
 {
-  "type": "tool_called",
+  "type": "tool_call",
   "tool_name": "get_parent",
   "duration_ms": 18,
   "diagnostics": {
@@ -320,7 +319,7 @@ Emitted after each tool the agent calls. `diagnostics.arguments` has the full to
 <Accordion title="review_results">
 ```json
 {
-  "type": "tool_called",
+  "type": "tool_call",
   "tool_name": "review_results",
   "duration_ms": 2,
   "diagnostics": {
@@ -348,7 +347,7 @@ Emitted after each tool the agent calls. `diagnostics.arguments` has the full to
 <Accordion title="return_results_to_user">
 ```json
 {
-  "type": "tool_called",
+  "type": "tool_call",
   "tool_name": "return_results_to_user",
   "duration_ms": 1,
   "diagnostics": {
@@ -373,7 +372,6 @@ Emitted after the agent's collected results are reranked for final ordering.
 ```json
 {
   "type": "reranking",
-  "request_id": "req-abc123",
   "duration_ms": 890,
   "diagnostics": {
     "input_count": 12,
@@ -401,7 +399,6 @@ Final event. Contains the full result set and run diagnostics.
 ```json
 {
   "type": "done",
-  "request_id": "req-abc123",
   "results": ["..."],
   "duration_ms": 34521,
   "diagnostics": {
@@ -427,7 +424,6 @@ Emitted when the search fails. Also terminates the stream.
 ```json
 {
   "type": "error",
-  "request_id": "req-abc123",
   "message": "Context window too full for useful work after emergency compression",
   "duration_ms": 15230
 }

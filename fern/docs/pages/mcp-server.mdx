@@ -253,9 +253,11 @@ The primary search tool. The tool name includes the collection ID so the AI assi
 | `query` | string | Yes | - | The search query text |
 | `limit` | number | No | 100 | Maximum results to return (1-1000) |
 | `offset` | number | No | 0 | Results to skip for pagination |
-| `retrieval_strategy` | `"hybrid"` \| `"semantic"` \| `"keyword"` | No | `"hybrid"` | Retrieval strategy |
+| `search_method` | `"hybrid"` \| `"neural"` \| `"keyword"` | No | `"hybrid"` | Search strategy |
 
-See the [Search documentation](/search) for details on retrieval strategies and the full search API.
+<Note>
+The MCP server uses **legacy** parameter names (`search_method`, `response_type`, etc.) for backwards compatibility with existing AI assistant integrations. See the [Search documentation](/search) for the current API.
+</Note>
 
 ### `get-config`
 

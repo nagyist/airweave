@@ -284,27 +284,6 @@ class SyncFactory:
 
         files = FileService(sync_job_id=sync_job.id, storage_backend=self._storage_backend)
 
-        # TODO(@felix): add pre-sync validation
-        # short_name = source.source_name
-        # try:
-        #     is_valid = await source.validate()
-        #     if not is_valid:
-        #         raise SourceValidationError(short_name, "validate() returned False")
-        # except SourceValidationError:
-        #     raise
-        # except Exception as exc:
-        #     raise SourceValidationError(
-        #         short_name, f"pre-sync validation raised: {exc}"
-        #     ) from exc
-
-        # TODO(@felix): pause temporal schedule
-        # schedule so we stop burning runs while creds are broken.
-        # Needs: inject TemporalScheduleService into SyncFactory, then:
-        #   schedule_id = sync.temporal_schedule_id
-        #   if schedule_id:
-        #       await self._temporal_schedule_service.pause_schedule(schedule_id)
-        # Also update source_connection status to NEEDS_REAUTH here.
-
         cursor = await self._create_cursor(
             db=db,
             sync=sync,

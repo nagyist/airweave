@@ -58,7 +58,7 @@ class HerbDocumentsSource(BaseSource):
         """Create a new HERB documents source instance."""
         instance = cls(auth=auth, logger=logger, http_client=http_client)
         if config:
-            instance.data_dir = config.data_dir if hasattr(config, 'data_dir') else ""
+            instance.data_dir = config.data_dir if hasattr(config, "data_dir") else ""
         return instance
 
     def _load_employees(self) -> None:
@@ -138,9 +138,8 @@ class HerbDocumentsSource(BaseSource):
     async def validate(self) -> None:
         """Validate that the HERB data directory exists and contains product files."""
         products_dir = os.path.join(self.data_dir, "products")
-        if not (os.path.isdir(products_dir) and any(
-            f.endswith(".json") for f in os.listdir(products_dir)
-        )):
-            raise ValueError(
-                f"HERB data dir '{products_dir}' missing or has no product JSON files"
-            )
+        if not (
+            os.path.isdir(products_dir)
+            and any(f.endswith(".json") for f in os.listdir(products_dir))
+        ):
+            raise ValueError(f"HERB data dir '{products_dir}' missing or has no product JSON files")

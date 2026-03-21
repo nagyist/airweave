@@ -279,9 +279,7 @@ class GitHubPullRequestEntity(BaseEntity):
 
         labels = [lbl["name"] for lbl in data.get("labels", []) if lbl.get("name")]
         assignees = [a["login"] for a in data.get("assignees", []) if a.get("login")]
-        reviewers = [
-            r["login"] for r in data.get("requested_reviewers", []) if r.get("login")
-        ]
+        reviewers = [r["login"] for r in data.get("requested_reviewers", []) if r.get("login")]
 
         return cls(
             breadcrumbs=breadcrumbs,
@@ -382,9 +380,7 @@ class GitHubPRCommentEntity(BaseEntity):
             label_parts.append(author)
         if path:
             label_parts.append(path)
-        label = (
-            f"Comment by {' on '.join(label_parts)}" if label_parts else f"Comment {comment_id}"
-        )
+        label = f"Comment by {' on '.join(label_parts)}" if label_parts else f"Comment {comment_id}"
 
         full_repo = f"{repo_owner}/{repo_name}"
         return cls(

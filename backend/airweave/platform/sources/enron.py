@@ -87,7 +87,7 @@ class EnronSource(BaseSource):
         """Create a new Enron source instance."""
         instance = cls(auth=auth, logger=logger, http_client=http_client)
         if config:
-            instance.data_dir = config.data_dir if hasattr(config, 'data_dir') else ""
+            instance.data_dir = config.data_dir if hasattr(config, "data_dir") else ""
         return instance
 
     async def generate_entities(
@@ -99,13 +99,9 @@ class EnronSource(BaseSource):
     ) -> AsyncGenerator[BaseEntity, None]:
         """Read parquet files and yield EnronEmailEntity instances."""
         data_dir = os.path.join(self.data_dir, "data")
-        parquet_files = sorted(
-            f for f in os.listdir(data_dir) if f.endswith(".parquet")
-        )
+        parquet_files = sorted(f for f in os.listdir(data_dir) if f.endswith(".parquet"))
 
-        self.logger.info(
-            f"Reading {len(parquet_files)} parquet files from {data_dir}"
-        )
+        self.logger.info(f"Reading {len(parquet_files)} parquet files from {data_dir}")
 
         total = 0
         for fname in parquet_files:
@@ -138,10 +134,6 @@ class EnronSource(BaseSource):
         """Validate that the data directory contains parquet files."""
         data_dir = os.path.join(self.data_dir, "data")
         if not os.path.isdir(data_dir):
-            raise ValueError(
-                f"Enron data directory '{data_dir}' does not exist"
-            )
+            raise ValueError(f"Enron data directory '{data_dir}' does not exist")
         if not any(f.endswith(".parquet") for f in os.listdir(data_dir)):
-            raise ValueError(
-                f"Enron data directory '{data_dir}' contains no parquet files"
-            )
+            raise ValueError(f"Enron data directory '{data_dir}' contains no parquet files")

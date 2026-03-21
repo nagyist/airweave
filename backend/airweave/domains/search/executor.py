@@ -215,9 +215,7 @@ class SearchPlanExecutor(SearchPlanExecutorProtocol):
                 )
                 federated_sources.append(source_instance)
             except Exception as e:
-                raise FederatedSearchError(
-                    [(sc.short_name, e)]
-                ) from e
+                raise FederatedSearchError([(sc.short_name, e)]) from e
 
         return federated_sources
 
@@ -284,8 +282,7 @@ class SearchPlanExecutor(SearchPlanExecutorProtocol):
             try:
                 entities = await source.search(query, limit=limit)  # type: ignore[misc]
                 ctx.logger.debug(
-                    f"[FederatedSearch] {source_name} returned "
-                    f"{len(entities)} results"  # type: ignore[arg-type]
+                    f"[FederatedSearch] {source_name} returned {len(entities)} results"  # type: ignore[arg-type]
                 )
                 break
             except Exception as e:

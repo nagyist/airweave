@@ -56,7 +56,7 @@ class HerbPeopleSource(BaseSource):
         """Create a new HERB people source instance."""
         instance = cls(auth=auth, logger=logger, http_client=http_client)
         if config:
-            instance.data_dir = config.data_dir if hasattr(config, 'data_dir') else ""
+            instance.data_dir = config.data_dir if hasattr(config, "data_dir") else ""
         return instance
 
     async def generate_entities(
@@ -117,9 +117,8 @@ class HerbPeopleSource(BaseSource):
     async def validate(self) -> None:
         """Validate that the HERB metadata directory exists."""
         metadata_dir = os.path.join(self.data_dir, "metadata")
-        if not (os.path.isdir(metadata_dir) and os.path.exists(
-            os.path.join(metadata_dir, "employee.json")
-        )):
-            raise ValueError(
-                f"HERB metadata dir '{metadata_dir}' missing or no employee.json"
-            )
+        if not (
+            os.path.isdir(metadata_dir)
+            and os.path.exists(os.path.join(metadata_dir, "employee.json"))
+        ):
+            raise ValueError(f"HERB metadata dir '{metadata_dir}' missing or no employee.json")

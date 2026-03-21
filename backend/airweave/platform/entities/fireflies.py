@@ -130,9 +130,7 @@ class FirefliesTranscriptEntity(BaseEntity):
         summary = data.get("summary") or {}
         sentences = data.get("sentences") or []
         content_parts = [
-            raw
-            for s in sentences
-            if (raw := (s.get("raw_text") or s.get("text") or "").strip())
+            raw for s in sentences if (raw := (s.get("raw_text") or s.get("text") or "").strip())
         ]
         content = "\n".join(content_parts) if content_parts else None
 

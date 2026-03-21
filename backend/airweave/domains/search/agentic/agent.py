@@ -215,7 +215,9 @@ class Agent:
             # 1. Call LLM
             llm_start = time.monotonic()
             response = await self._llm.chat(
-                messages, ALL_TOOL_DEFINITIONS, system_prompt,
+                messages,
+                ALL_TOOL_DEFINITIONS,
+                system_prompt,
                 thinking=thinking_enabled,
                 max_tokens=context_mgr.max_output_tokens(messages),
             )
@@ -498,8 +500,12 @@ class Agent:
         # Divide budget fairly among large tool calls (search, read, navigate).
         # Small tools (collect, count, finish, error) use negligible tokens.
         _LARGE_TOOLS = {
-            ToolName.SEARCH, ToolName.READ, ToolName.GET_CHILDREN,
-            ToolName.GET_SIBLINGS, ToolName.GET_PARENT, ToolName.REVIEW_RESULTS,
+            ToolName.SEARCH,
+            ToolName.READ,
+            ToolName.GET_CHILDREN,
+            ToolName.GET_SIBLINGS,
+            ToolName.GET_PARENT,
+            ToolName.REVIEW_RESULTS,
         }
         large_count = sum(1 for tc in tool_calls if tc.name in _LARGE_TOOLS)
         total_available = context_mgr.available_budget(messages)

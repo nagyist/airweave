@@ -18,8 +18,7 @@ class EnronEmailEntity(BaseEntity):
     message_id: str = AirweaveField(
         ...,
         description=(
-            "RFC 822 Message-ID header "
-            "(e.g. '<17407857.1075840601283.JavaMail.evans@thyme>')"
+            "RFC 822 Message-ID header (e.g. '<17407857.1075840601283.JavaMail.evans@thyme>')"
         ),
         is_entity_id=True,
     )

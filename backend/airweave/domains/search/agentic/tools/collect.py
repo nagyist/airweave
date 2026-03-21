@@ -6,6 +6,7 @@ from typing import Any
 
 from airweave.domains.search.agentic.exceptions import ToolValidationError
 from airweave.domains.search.agentic.state import AgentState
+from airweave.domains.search.agentic.tools.dispatcher import Tool
 from airweave.domains.search.agentic.tools.types import CollectToolResult
 
 ADD_TO_RESULTS_TOOL: dict[str, Any] = {
@@ -60,7 +61,7 @@ REMOVE_FROM_RESULTS_TOOL: dict[str, Any] = {
 }
 
 
-class AddToResultsTool:
+class AddToResultsTool(Tool):
     """Add entities to the collected result set."""
 
     async def execute(
@@ -84,7 +85,7 @@ class AddToResultsTool:
         )
 
 
-class RemoveFromResultsTool:
+class RemoveFromResultsTool(Tool):
     """Remove entities from the collected result set."""
 
     async def execute(

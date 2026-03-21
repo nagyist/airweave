@@ -10,6 +10,7 @@ from typing import Any
 from airweave.domains.search.adapters.vector_db.protocol import VectorDBProtocol
 from airweave.domains.search.agentic.exceptions import ToolValidationError
 from airweave.domains.search.agentic.state import AgentState
+from airweave.domains.search.agentic.tools.dispatcher import Tool
 from airweave.domains.search.agentic.tools.types import ReadToolResult, RenderedResult
 from airweave.domains.search.types.filters import (
     FilterableField,
@@ -43,7 +44,7 @@ READ_TOOL: dict[str, Any] = {
 }
 
 
-class ReadTool:
+class ReadTool(Tool):
     """Fetches full content for entities, including surrounding chunks for context."""
 
     def __init__(

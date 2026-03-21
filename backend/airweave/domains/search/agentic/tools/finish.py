@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from airweave.domains.search.agentic.state import AgentState
+from airweave.domains.search.agentic.tools.dispatcher import Tool
 from airweave.domains.search.agentic.tools.types import (
     FinishToolResult,
     RenderedResult,
@@ -45,7 +46,7 @@ RETURN_RESULTS_TOOL: dict[str, Any] = {
 }
 
 
-class ReviewResultsTool:
+class ReviewResultsTool(Tool):
     """Show all collected results — full content for verification."""
 
     async def execute(
@@ -66,7 +67,7 @@ class ReviewResultsTool:
         )
 
 
-class ReturnResultsTool:
+class ReturnResultsTool(Tool):
     """End the search and return results to the user."""
 
     async def execute(

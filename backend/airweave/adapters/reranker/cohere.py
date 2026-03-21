@@ -6,6 +6,7 @@ import cohere
 
 from airweave.adapters.reranker.exceptions import RerankerError
 from airweave.adapters.reranker.types import RerankerResult
+from airweave.core.protocols.reranker import RerankerProtocol
 
 COHERE_RERANK_MODEL = "rerank-v4.0-pro"
 COHERE_MAX_DOCUMENTS = 1000
@@ -16,7 +17,7 @@ COHERE_MAX_DOCUMENTS = 1000
 COHERE_MAX_TOKENS_PER_DOC = 8192
 
 
-class CohereReranker:
+class CohereReranker(RerankerProtocol):
     """Reranker using Cohere's rerank API."""
 
     def __init__(self, api_key: str) -> None:

@@ -6,11 +6,12 @@ from pydantic import BaseModel
 
 from airweave.adapters.llm.registry import LLMModelSpec
 from airweave.adapters.llm.tool_response import LLMResponse
+from airweave.core.protocols.llm import LLMProtocol
 
 T = TypeVar("T", bound=BaseModel)
 
 
-class FakeLLM:
+class FakeLLM(LLMProtocol):
     """In-memory fake for LLMProtocol.
 
     Seed responses before use. Calls are recorded for verification.

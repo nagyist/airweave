@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave.api.context import ApiContext
 from airweave.domains.search.agentic.state import AgentState
+from airweave.domains.search.agentic.tools.dispatcher import Tool
 from airweave.domains.search.agentic.tools.types import RenderedResult, SearchToolResult
 from airweave.domains.search.protocols import SearchPlanExecutorProtocol
 from airweave.domains.search.types import FilterGroup, SearchPlan
@@ -31,7 +32,7 @@ SEARCH_TOOL: dict[str, Any] = {
 }
 
 
-class SearchTool:
+class SearchTool(Tool):
     """Validates LLM args as a SearchPlan and executes via the shared executor."""
 
     def __init__(

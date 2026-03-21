@@ -1,9 +1,10 @@
 """In-memory fake for RerankerProtocol."""
 
 from airweave.adapters.reranker.types import RerankerResult
+from airweave.core.protocols.reranker import RerankerProtocol
 
 
-class FakeReranker:
+class FakeReranker(RerankerProtocol):
     """In-memory fake for RerankerProtocol.
 
     Returns pre-seeded reranking results. Supports error injection.

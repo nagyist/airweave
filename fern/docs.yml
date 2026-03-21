@@ -183,11 +183,13 @@ navigation:
     contents:
     - GET /collections
     - GET /collections/{readable_id}
-    - GET /collections/{readable_id}/search
-    - POST /collections/{readable_id}/search
     - POST /collections
     - PATCH /collections/{readable_id}
     - DELETE /collections/{readable_id}
+    - POST /collections/{readable_id}/search/instant
+    - POST /collections/{readable_id}/search/classic
+    - POST /collections/{readable_id}/search/agentic
+    - POST /collections/{readable_id}/search/agentic/stream
   - section: Source Connections
     contents:
     - GET /source-connections

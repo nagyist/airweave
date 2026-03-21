@@ -6,6 +6,7 @@ from typing import Any
 
 from airweave.domains.search.adapters.vector_db.protocol import VectorDBProtocol
 from airweave.domains.search.agentic.state import AgentState
+from airweave.domains.search.agentic.tools.dispatcher import Tool
 from airweave.domains.search.agentic.tools.types import CountToolResult
 from airweave.domains.search.types.filters import FilterGroup
 
@@ -38,7 +39,7 @@ COUNT_TOOL: dict[str, Any] = {
 }
 
 
-class CountTool:
+class CountTool(Tool):
     """Count entities matching filters without retrieving content."""
 
     def __init__(

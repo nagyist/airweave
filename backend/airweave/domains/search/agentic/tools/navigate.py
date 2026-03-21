@@ -11,6 +11,7 @@ from typing import Any
 from airweave.domains.search.adapters.vector_db.protocol import VectorDBProtocol
 from airweave.domains.search.agentic.exceptions import ToolValidationError
 from airweave.domains.search.agentic.state import AgentState
+from airweave.domains.search.agentic.tools.dispatcher import Tool
 from airweave.domains.search.agentic.tools.types import (
     NavigateToolResult,
     ReadToolResult,
@@ -99,7 +100,7 @@ GET_PARENT_TOOL: dict[str, Any] = {
 }
 
 
-class GetChildrenTool:
+class GetChildrenTool(Tool):
     """Find all direct children of an entity."""
 
     def __init__(self, vector_db: VectorDBProtocol, collection_id: str) -> None:
@@ -168,7 +169,7 @@ class GetChildrenTool:
         )
 
 
-class GetSiblingsTool:
+class GetSiblingsTool(Tool):
     """Find siblings (entities with the same parent)."""
 
     def __init__(self, vector_db: VectorDBProtocol, collection_id: str) -> None:
@@ -250,7 +251,7 @@ class GetSiblingsTool:
         )
 
 
-class GetParentTool:
+class GetParentTool(Tool):
     """Fetch the parent entity — returns full content (like a read)."""
 
     def __init__(self, vector_db: VectorDBProtocol, collection_id: str) -> None:

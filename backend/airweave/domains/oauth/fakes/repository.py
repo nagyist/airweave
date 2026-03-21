@@ -8,11 +8,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave.api.context import ApiContext
 from airweave.db.unit_of_work import UnitOfWork
+from airweave.domains.oauth.protocols import (
+    OAuthInitSessionRepositoryProtocol,
+    OAuthRedirectSessionRepositoryProtocol,
+)
 from airweave.models.connection_init_session import ConnectionInitSession
 from airweave.models.redirect_session import RedirectSession
 
 
-class FakeOAuthRedirectSessionRepository:
+class FakeOAuthRedirectSessionRepository(OAuthRedirectSessionRepositoryProtocol):
     """In-memory fake for OAuthRedirectSessionRepositoryProtocol."""
 
     def __init__(self) -> None:
@@ -27,7 +31,9 @@ class FakeOAuthRedirectSessionRepository:
         self._calls.append(("get_by_code", db, code))
         return self._store.get(code)
 
-    async def consume(self, db: AsyncSession, code: str) -> Optional[RedirectSession]:
+    async def consume(
+        self, db: AsyncSession, code: str, *, uow: Optional[UnitOfWork] = None
+    ) -> Optional[RedirectSession]:
         self._calls.append(("consume", db, code))
         return self._store.pop(code, None)
 
@@ -44,18 +50,20 @@ class FakeOAuthRedirectSessionRepository:
         expires_at: datetime,
         ctx: ApiContext,
         uow: Optional[UnitOfWork] = None,
-    ) -> Any:
+    ) -> RedirectSession:
         self._calls.append(("create", code, final_url))
-
-        class _FakeRedirect:
-            id = uuid4()
-
-        obj = _FakeRedirect()
+        obj = RedirectSession(
+            id=uuid4(),
+            code=code,
+            final_url=final_url,
+            expires_at=expires_at,
+            organization_id=ctx.organization.id,
+        )
         self._store[code] = obj
         return obj
 
 
-class FakeOAuthInitSessionRepository:
+class FakeOAuthInitSessionRepository(OAuthInitSessionRepositoryProtocol):
     """In-memory fake for OAuthInitSessionRepositoryProtocol."""
 
     def __init__(self) -> None:
@@ -102,7 +110,10 @@ class FakeOAuthInitSessionRepository:
         uow: UnitOfWork,
     ) -> ConnectionInitSession:
         self._calls.append(("create", obj_in))
-        return obj_in
+        obj = ConnectionInitSession(id=uuid4(), **obj_in)
+        if hasattr(obj, "id") and obj.id:
+            self._store_by_id[cast(UUID, obj.id)] = obj
+        return obj
 
     async def mark_completed(
         self,

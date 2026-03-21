@@ -114,9 +114,7 @@ class GitLabProjectEntity(BaseEntity):
             name=data["name"],
             created_at=_require_gl_datetime(data.get("created_at"), "project.created_at"),
             last_activity_at=_require_gl_datetime(
-                data.get("last_activity_at")
-                or data.get("updated_at")
-                or data.get("created_at"),
+                data.get("last_activity_at") or data.get("updated_at") or data.get("created_at"),
                 "project.last_activity_at",
             ),
             path=data["path"],

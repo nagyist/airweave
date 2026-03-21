@@ -116,7 +116,5 @@ class SyncContextBuilder:
             db, sync_id=sync.id, ctx=ctx
         )
         if not source_connection_obj:
-            raise NotFoundException(
-                f"Source connection record not found for sync {sync.id}"
-            )
+            raise NotFoundException(f"Source connection record not found for sync {sync.id}")
         return UUID(str(source_connection_obj.id))

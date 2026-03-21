@@ -9,7 +9,6 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave.core.context import BaseContext
-from airweave.core.datetime_utils import utc_now
 from airweave.db.unit_of_work import UnitOfWork
 from airweave.models.redirect_session import RedirectSession
 
@@ -85,7 +84,13 @@ class CRUDRedirectSession:
         res = await db.execute(q)
         return res.scalar_one_or_none()
 
-    async def consume(self, db: AsyncSession, code: str) -> Optional[RedirectSession]:
+    async def consume(
+        self,
+        db: AsyncSession,
+        code: str,
+        *,
+        uow: Optional[UnitOfWork] = None,
+    ) -> Optional[RedirectSession]:
         """Atomically delete and return a redirect session (one-time use).
 
         Uses DELETE ... RETURNING so the first concurrent caller gets the row
@@ -94,6 +99,7 @@ class CRUDRedirectSession:
         Args:
             db: Database session
             code: The unique code to consume
+            uow: Optional unit of work for transaction management
 
         Returns:
             The consumed RedirectSession (detached from the session), or None
@@ -105,20 +111,9 @@ class CRUDRedirectSession:
         row = result.scalar_one_or_none()
         if row is not None:
             db.expunge(row)
-        await db.commit()
+        if not uow:
+            await db.commit()
         return row
-
-    @staticmethod
-    def is_expired(rs: RedirectSession) -> bool:
-        """Check if a redirect session has expired.
-
-        Args:
-            rs: The RedirectSession instance to check
-
-        Returns:
-            True if the session has expired, False otherwise
-        """
-        return rs.expires_at <= utc_now()
 
 
 redirect_session = CRUDRedirectSession()

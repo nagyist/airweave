@@ -198,9 +198,7 @@ class FreshdeskConversationEntity(BaseEntity):
         """Build from a Freshdesk API conversation object."""
         conv_id = data["id"]
         body_text = (
-            data.get("body_text")
-            or (data.get("body") or "").strip()
-            or f"Conversation {conv_id}"
+            data.get("body_text") or (data.get("body") or "").strip() or f"Conversation {conv_id}"
         )
         created_at = _parse_datetime(data.get("created_at")) or _now()
         updated_at = _parse_datetime(data.get("updated_at")) or created_at

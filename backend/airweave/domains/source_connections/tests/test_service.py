@@ -156,11 +156,13 @@ async def test_maps_all_fields():
 
 async def test_preserves_order():
     repo = FakeSourceConnectionRepository()
-    repo.seed_stats([
-        _make_stats(name="A", short_name="slack"),
-        _make_stats(name="B", short_name="github"),
-        _make_stats(name="C", short_name="notion"),
-    ])
+    repo.seed_stats(
+        [
+            _make_stats(name="A", short_name="slack"),
+            _make_stats(name="B", short_name="github"),
+            _make_stats(name="C", short_name="notion"),
+        ]
+    )
     svc = _build_service(sc_repo=repo)
 
     items = await svc.list(AsyncMock(), ctx=_make_ctx())
@@ -174,10 +176,12 @@ async def test_preserves_order():
 
 async def test_collection_filter_delegated():
     repo = FakeSourceConnectionRepository()
-    repo.seed_stats([
-        _make_stats(name="A", collection_id="col-1"),
-        _make_stats(name="B", collection_id="col-2"),
-    ])
+    repo.seed_stats(
+        [
+            _make_stats(name="A", collection_id="col-1"),
+            _make_stats(name="B", collection_id="col-2"),
+        ]
+    )
     svc = _build_service(sc_repo=repo)
 
     items = await svc.list(AsyncMock(), ctx=_make_ctx(), readable_collection_id="col-1")
@@ -245,12 +249,20 @@ class StatusCase:
 
 
 STATUS_CASES = [
-    StatusCase("unauthenticated → PENDING_AUTH", False, True, None, SourceConnectionStatus.PENDING_AUTH),
+    StatusCase(
+        "unauthenticated → PENDING_AUTH", False, True, None, SourceConnectionStatus.PENDING_AUTH
+    ),
     StatusCase("inactive → INACTIVE", True, False, None, SourceConnectionStatus.INACTIVE),
-    StatusCase("running → SYNCING", True, True, SyncJobStatus.RUNNING, SourceConnectionStatus.SYNCING),
-    StatusCase("cancelling → SYNCING", True, True, SyncJobStatus.CANCELLING, SourceConnectionStatus.SYNCING),
+    StatusCase(
+        "running → SYNCING", True, True, SyncJobStatus.RUNNING, SourceConnectionStatus.SYNCING
+    ),
+    StatusCase(
+        "cancelling → SYNCING", True, True, SyncJobStatus.CANCELLING, SourceConnectionStatus.SYNCING
+    ),
     StatusCase("failed → ERROR", True, True, SyncJobStatus.FAILED, SourceConnectionStatus.ERROR),
-    StatusCase("completed → ACTIVE", True, True, SyncJobStatus.COMPLETED, SourceConnectionStatus.ACTIVE),
+    StatusCase(
+        "completed → ACTIVE", True, True, SyncJobStatus.COMPLETED, SourceConnectionStatus.ACTIVE
+    ),
     StatusCase("no job → ACTIVE", True, True, None, SourceConnectionStatus.ACTIVE),
 ]
 
@@ -263,7 +275,9 @@ async def test_computed_status(case: StatusCase):
         else None
     )
     item = await _list_single(
-        _make_stats(is_authenticated=case.is_authenticated, is_active=case.is_active, last_job=last_job)
+        _make_stats(
+            is_authenticated=case.is_authenticated, is_active=case.is_active, last_job=last_job
+        )
     )
     assert item.status == case.expect
 

@@ -246,8 +246,8 @@ class ArfService(ArfServiceProtocol):
 
     async def upsert_manifest(
         self,
-        sync_context: "SyncContext",
-        runtime: "SyncRuntime",
+        sync_context: SyncContext,
+        runtime: SyncRuntime,
     ) -> None:
         """Create or update manifest for a sync job."""
         sync_id = str(sync_context.sync.id)

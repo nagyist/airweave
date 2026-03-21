@@ -76,11 +76,13 @@ class ConverterRegistry:
         # Image extensions only available when OCR is configured
         if ocr_provider is not None:
             ocr_adapter = OcrConverterAdapter(ocr_provider)
-            self._extension_map.update({
-                ".jpg": ocr_adapter,
-                ".jpeg": ocr_adapter,
-                ".png": ocr_adapter,
-            })
+            self._extension_map.update(
+                {
+                    ".jpg": ocr_adapter,
+                    ".jpeg": ocr_adapter,
+                    ".png": ocr_adapter,
+                }
+            )
 
     def for_extension(self, ext: str) -> Optional[BaseTextConverter]:
         """Return the converter for a given file extension, or None."""

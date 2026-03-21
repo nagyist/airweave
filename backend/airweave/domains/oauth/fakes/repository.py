@@ -2,7 +2,7 @@
 
 from datetime import datetime
 from typing import Any, Dict, Optional, cast
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -53,6 +53,7 @@ class FakeOAuthRedirectSessionRepository(OAuthRedirectSessionRepositoryProtocol)
     ) -> RedirectSession:
         self._calls.append(("create", code, final_url))
         obj = RedirectSession(
+            id=uuid4(),
             code=code,
             final_url=final_url,
             expires_at=expires_at,

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Dict, Optional
 
-from airweave.domains.converters._base import BaseTextConverter
+from airweave.domains.converters._base import BaseTextConverter, OcrConverterAdapter
 from airweave.domains.converters.code import CodeConverter
 from airweave.domains.converters.docx import DocxConverter
 from airweave.domains.converters.html import HtmlConverter
@@ -38,10 +38,6 @@ class ConverterRegistry:
             ".pdf": pdf,
             ".docx": docx,
             ".pptx": pptx,
-            # Images — direct OCR (ocr_provider itself implements convert_batch)
-            ".jpg": ocr_provider,
-            ".jpeg": ocr_provider,
-            ".png": ocr_provider,
             # Spreadsheets
             ".xlsx": xlsx,
             # HTML
@@ -76,6 +72,15 @@ class ConverterRegistry:
             ".tf": code,
             ".tfvars": code,
         }
+
+        # Image extensions only available when OCR is configured
+        if ocr_provider is not None:
+            ocr_adapter = OcrConverterAdapter(ocr_provider)
+            self._extension_map.update({
+                ".jpg": ocr_adapter,
+                ".jpeg": ocr_adapter,
+                ".png": ocr_adapter,
+            })
 
     def for_extension(self, ext: str) -> Optional[BaseTextConverter]:
         """Return the converter for a given file extension, or None."""

@@ -1,5 +1,8 @@
 """Tests for ConverterRegistry."""
 
+from unittest.mock import AsyncMock
+
+from airweave.domains.converters._base import BaseTextConverter, OcrConverterAdapter
 from airweave.domains.converters.code import CodeConverter
 from airweave.domains.converters.html import HtmlConverter
 from airweave.domains.converters.pdf import PdfConverter
@@ -30,7 +33,19 @@ class TestConverterRegistry:
         registry = ConverterRegistry(ocr_provider=None)
         assert isinstance(registry.for_web(), WebConverter)
 
-    def test_image_extensions_use_ocr_provider(self):
+    def test_image_extensions_absent_without_ocr(self):
         registry = ConverterRegistry(ocr_provider=None)
         assert registry.for_extension(".jpg") is None
+        assert registry.for_extension(".jpeg") is None
         assert registry.for_extension(".png") is None
+
+    def test_image_extensions_return_adapter_with_ocr(self):
+        mock_ocr = AsyncMock()
+        mock_ocr.convert_batch = AsyncMock(return_value={})
+        registry = ConverterRegistry(ocr_provider=mock_ocr)
+
+        for ext in (".jpg", ".jpeg", ".png"):
+            converter = registry.for_extension(ext)
+            assert converter is not None, f"{ext} should have a converter"
+            assert isinstance(converter, BaseTextConverter), f"{ext} converter should be BaseTextConverter"
+            assert isinstance(converter, OcrConverterAdapter), f"{ext} converter should be OcrConverterAdapter"

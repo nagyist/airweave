@@ -133,3 +133,13 @@ class HybridDocumentConverter(BaseTextConverter):
                 results.update(ocr_results)
 
         return results
+
+
+class OcrConverterAdapter(BaseTextConverter):
+    """Adapts an OcrProvider to the BaseTextConverter interface."""
+
+    def __init__(self, ocr: OcrProvider) -> None:
+        self._ocr = ocr
+
+    async def convert_batch(self, file_paths: List[str]) -> Dict[str, Optional[str]]:
+        return await self._ocr.convert_batch(file_paths)

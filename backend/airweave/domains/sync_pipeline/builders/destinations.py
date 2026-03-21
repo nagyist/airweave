@@ -1,10 +1,9 @@
 """Destinations context builder for sync operations.
 
-Handles destination creation and entity definition map loading.
 Vespa is the sole destination; class is referenced directly.
 """
 
-from typing import Dict, List, Optional
+from typing import List, Optional
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -16,46 +15,10 @@ from airweave.core.logging import ContextualLogger
 from airweave.domains.sync_pipeline.config import SyncConfig
 from airweave.platform.destinations._base import BaseDestination
 from airweave.platform.destinations.vespa import VespaDestination
-from airweave.platform.entities._base import BaseEntity
 
 
 class DestinationsContextBuilder:
     """Builds destinations context with all required configuration."""
-
-    @classmethod
-    async def build(
-        cls,
-        db: AsyncSession,
-        sync: schemas.Sync,
-        collection: schemas.CollectionRecord,
-        ctx: BaseContext,
-        logger: ContextualLogger,
-        execution_config: Optional[SyncConfig] = None,
-    ) -> tuple:
-        """Build destinations and entity map.
-
-        Args:
-            db: Database session
-            sync: Sync configuration
-            collection: Target collection
-            ctx: Base context (provides org identity for CRUD)
-            logger: Contextual logger
-            execution_config: Optional execution config for filtering
-
-        Returns:
-            Tuple of (destinations, entity_map).
-        """
-        destinations = await cls._create_destinations(
-            db=db,
-            sync=sync,
-            collection=collection,
-            ctx=ctx,
-            logger=logger,
-            execution_config=execution_config,
-        )
-        entity_map = cls._get_entity_definition_map()
-
-        return destinations, entity_map
 
     @classmethod
     async def build_destinations_only(
@@ -76,65 +39,6 @@ class DestinationsContextBuilder:
             logger=logger,
             execution_config=execution_config,
         )
-
-    @classmethod
-    async def build_for_collection(
-        cls,
-        db: AsyncSession,
-        sync: schemas.Sync,
-        collection: schemas.CollectionRecord,
-        ctx: BaseContext,
-        logger: ContextualLogger,
-    ) -> tuple:
-        """Build destinations for collection-level operations.
-
-        Simplified version without execution_config filtering.
-
-        Args:
-            db: Database session
-            sync: Sync configuration
-            collection: Target collection
-            ctx: Base context
-            logger: Contextual logger
-
-        Returns:
-            Tuple of (destinations, entity_map).
-        """
-        return await cls.build(
-            db=db,
-            sync=sync,
-            collection=collection,
-            ctx=ctx,
-            logger=logger,
-            execution_config=None,
-        )
-
-    @classmethod
-    async def build_for_cleanup(
-        cls,
-        db: AsyncSession,
-        collection: schemas.CollectionRecord,
-        logger: ContextualLogger,
-    ) -> List[BaseDestination]:
-        """Build destinations for cleanup operations (no sync required).
-
-        Args:
-            db: Database session
-            collection: Target collection
-            logger: Logger for operations
-
-        Returns:
-            List of destination instances ready for deletion operations.
-        """
-        destinations = []
-        try:
-            dest = await cls._create_vespa(collection, logger)
-            if dest:
-                destinations.append(dest)
-        except Exception as e:
-            logger.warning(f"Failed to create Vespa destination: {e}")
-
-        return destinations
 
     # -------------------------------------------------------------------------
     # Private: Destination Creation
@@ -223,21 +127,6 @@ class DestinationsContextBuilder:
         )
         logger.info("Created native Vespa destination")
         return destination
-
-    # -------------------------------------------------------------------------
-    # Private: Entity Definition Map
-    # -------------------------------------------------------------------------
-
-    @classmethod
-    def _get_entity_definition_map(cls) -> Dict[type[BaseEntity], str]:
-        """Get entity definition map (entity class -> entity_definition_short_name)."""
-        # [code blue] todo: remove container import
-        from airweave.core.container import container as app_container
-
-        return {
-            entry.entity_class_ref: entry.short_name
-            for entry in app_container.entity_definition_registry.list_all()
-        }
 
     # -------------------------------------------------------------------------
     # Private: Helpers

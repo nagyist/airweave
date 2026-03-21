@@ -424,20 +424,24 @@ def create_container(settings: Settings) -> Container:
     # Sync factory + service
     # -----------------------------------------------------------------
     sync_factory = SyncFactory(
+        # Repositories
         sc_repo=source_deps["sc_repo"],
+        entity_repo=sync_deps["entity_repo"],
+        acl_repo=acl_membership_repo,
+        selection_repo=node_selection_repo,
+        # Registries
+        entity_definition_registry=source_deps["entity_definition_registry"],
+        source_registry=source_deps["source_registry"],
+        # Services
+        source_lifecycle_service=source_deps["source_lifecycle_service"],
+        sync_cursor_service=source_deps["sync_cursor_service"],
+        processor=chunk_embed_processor,
+        arf_service=arf_service,
+        # Infrastructure
         event_bus=event_bus,
         usage_checker=usage_checker,
         usage_ledger=usage_ledger,
-        entity_repo=sync_deps["entity_repo"],
-        entity_definition_registry=source_deps["entity_definition_registry"],
-        acl_repo=acl_membership_repo,
-        processor=chunk_embed_processor,
-        source_lifecycle_service=source_deps["source_lifecycle_service"],
         storage_backend=storage_backend,
-        selection_repo=node_selection_repo,
-        arf_service=arf_service,
-        sync_cursor_service=source_deps["sync_cursor_service"],
-        source_registry=source_deps["source_registry"],
     )
 
     sync_service = SyncService(

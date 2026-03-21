@@ -10,9 +10,9 @@ Instance-based with injected deps (code blue architecture).
 All container imports eliminated — deps flow through constructor.
 """
 
-import asyncio
 import time
-from typing import Any, Dict, List, Optional, Tuple
+from dataclasses import dataclass
+from typing import Dict, List, Optional
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -37,6 +37,7 @@ from airweave.domains.source_connections.protocols import SourceConnectionReposi
 from airweave.domains.sources.lifecycle import SourceLifecycleService
 from airweave.domains.sources.protocols import SourceRegistryProtocol
 from airweave.domains.storage.file_service import FileService
+from airweave.domains.storage.protocols import StorageBackend
 from airweave.domains.sync_pipeline.builders import SyncContextBuilder
 from airweave.domains.sync_pipeline.builders.destinations import DestinationsContextBuilder
 from airweave.domains.sync_pipeline.config import SyncConfig
@@ -58,6 +59,16 @@ from .entity.pipeline import EntityPipeline
 from .entity.resolver import EntityActionResolver
 
 
+@dataclass(frozen=True, slots=True)
+class SourceBuildResult:
+    """Result of building a source for a sync run."""
+
+    source: BaseSource
+    cursor: Optional[SyncCursor]
+    files: Optional[FileService]
+    node_selections: Optional[List[NodeSelectionData]]
+
+
 class SyncFactory:
     """Factory for sync orchestrator.
 
@@ -67,36 +78,47 @@ class SyncFactory:
 
     def __init__(
         self,
+        # Repositories
         sc_repo: SourceConnectionRepositoryProtocol,
+        entity_repo: EntityRepositoryProtocol,
+        acl_repo: AccessControlMembershipRepositoryProtocol,
+        selection_repo: NodeSelectionRepositoryProtocol,
+        # Registries
+        entity_definition_registry: EntityDefinitionRegistry,
+        source_registry: SourceRegistryProtocol,
+        # Services
+        source_lifecycle_service: SourceLifecycleService,
+        sync_cursor_service: SyncCursorService,
+        processor: ChunkEmbedProcessorProtocol,
+        arf_service: ArfServiceProtocol,
+        # Infrastructure
         event_bus: EventBus,
         usage_checker: UsageLimitCheckerProtocol,
         usage_ledger: UsageLedgerProtocol,
-        entity_repo: EntityRepositoryProtocol,
-        entity_definition_registry: EntityDefinitionRegistry,
-        acl_repo: AccessControlMembershipRepositoryProtocol,
-        processor: ChunkEmbedProcessorProtocol,
-        source_lifecycle_service: SourceLifecycleService,
-        storage_backend: Any,
-        selection_repo: NodeSelectionRepositoryProtocol,
-        arf_service: Optional[ArfServiceProtocol] = None,
-        sync_cursor_service: Optional[SyncCursorService] = None,
-        source_registry: Optional[SourceRegistryProtocol] = None,
+        storage_backend: StorageBackend,
     ) -> None:
         """Initialize with all required service and repository dependencies."""
+        # Repositories
         self._sc_repo = sc_repo
+        self._entity_repo = entity_repo
+        self._acl_repo = acl_repo
+        self._selection_repo = selection_repo
+
+        # Registries
+        self._entity_definition_registry = entity_definition_registry
+        self._source_registry = source_registry
+
+        # Services
+        self._source_lifecycle_service = source_lifecycle_service
+        self._sync_cursor_service = sync_cursor_service
+        self._processor = processor
+        self._arf_service = arf_service
+
+        # Infrastructure
         self._event_bus = event_bus
         self._usage_checker = usage_checker
         self._usage_ledger = usage_ledger
-        self._entity_repo = entity_repo
-        self._entity_definition_registry = entity_definition_registry
-        self._acl_repo = acl_repo
-        self._processor = processor
-        self._source_lifecycle_service = source_lifecycle_service
         self._storage_backend = storage_backend
-        self._selection_repo = selection_repo
-        self._arf_service = arf_service
-        self._sync_cursor_service = sync_cursor_service
-        self._source_registry = source_registry
 
     async def create_orchestrator(
         self,
@@ -113,6 +135,7 @@ class SyncFactory:
         init_start = time.time()
         logger.info("Creating sync orchestrator...")
 
+        # 1. Resolve config
         resolved_config = SyncConfig.build(
             collection_overrides=collection.sync_config,
             sync_overrides=sync.sync_config,
@@ -123,11 +146,9 @@ class SyncFactory:
             f"destinations={resolved_config.destinations.model_dump()}"
         )
 
-        sc = await self._sc_repo.get_by_sync_id(db, sync_id=sync.id, ctx=ctx)
-        if not sc:
-            raise NotFoundException(f"Source connection record not found for sync {sync.id}")
-        source_connection_id = sc.id
+        sc = await self._resolve_source_connection(db, sync, ctx)
 
+        # 2. Build source, destinations, tracker
         sync_logger = LoggerConfigurator.configure_logger(
             "airweave.platform.sync.source_build",
             dimensions={
@@ -136,35 +157,36 @@ class SyncFactory:
             },
         )
 
-        source_result, destinations_result, entity_tracker = await asyncio.gather(
-            self._build_source(
-                db=db,
-                sync=sync,
-                sync_job=sync_job,
-                ctx=ctx,
-                logger=sync_logger,
-                source_connection=sc,
-                force_full_sync=force_full_sync,
-                execution_config=resolved_config,
-            ),
-            self._build_destinations(
-                db=db,
-                sync=sync,
-                collection=collection,
-                ctx=ctx,
-                execution_config=resolved_config,
-            ),
-            self._build_entity_tracker(
-                db=db,
-                sync=sync,
-                sync_job=sync_job,
-                ctx=ctx,
-            ),
+        source_result = await self._build_source(
+            db=db,
+            sync=sync,
+            sync_job=sync_job,
+            ctx=ctx,
+            logger=sync_logger,
+            source_connection=sc,
+            force_full_sync=force_full_sync,
+            execution_config=resolved_config,
+        )
+        destinations = await self._build_destinations(
+            db=db,
+            sync=sync,
+            collection=collection,
+            ctx=ctx,
+            execution_config=resolved_config,
+        )
+        entity_tracker = await self._build_entity_tracker(
+            db=db,
+            sync=sync,
+            sync_job=sync_job,
+            ctx=ctx,
         )
 
-        source, cursor, files, node_selections = source_result
-        destinations, entity_map = destinations_result
+        entity_map: Dict[type[BaseEntity], str] = {
+            entry.entity_class_ref: entry.short_name
+            for entry in self._entity_definition_registry.list_all()
+        }
 
+        # 3. Assemble context + runtime
         sync_context = await SyncContextBuilder.build(
             db=db,
             sync=sync,
@@ -172,72 +194,33 @@ class SyncFactory:
             collection=collection,
             connection=connection,
             ctx=ctx,
-            source_connection_id=source_connection_id,
-            source_short_name=getattr(source, "short_name", "") or "",
+            source_connection_id=sc.id,
+            source_short_name=getattr(source_result.source, "short_name", "") or "",
             entity_map=entity_map,
             force_full_sync=force_full_sync,
             execution_config=resolved_config,
         )
 
         runtime = SyncRuntime(
-            source=source,
-            cursor=cursor,
+            source=source_result.source,
+            cursor=source_result.cursor,
             entity_tracker=entity_tracker,
             destinations=destinations,
         )
 
         logger.debug(f"Context + runtime built in {time.time() - init_start:.2f}s")
 
-        dispatcher_builder = EntityDispatcherBuilder(
-            processor=self._processor,
-            entity_repo=self._entity_repo,
-            arf_service=self._arf_service,
+        # 4. Wire pipelines
+        entity_pipeline = self._build_entity_pipeline(
+            sync_context, runtime, destinations, resolved_config
         )
-        dispatcher = dispatcher_builder.build(
-            destinations=runtime.destinations,
-            execution_config=resolved_config,
-            logger=sync_context.logger,
-        )
+        access_control_pipeline = self._build_access_control_pipeline(sync_context)
+        stream = self._build_stream(runtime, source_result, sync_context)
 
-        action_resolver = EntityActionResolver(
-            entity_map=sync_context.entity_map,
-            entity_repo=self._entity_repo,
-        )
-
-        entity_pipeline = EntityPipeline(
-            entity_tracker=runtime.entity_tracker,
-            event_bus=self._event_bus,
-            action_resolver=action_resolver,
-            action_dispatcher=dispatcher,
-            entity_repo=self._entity_repo,
-        )
-
-        access_control_pipeline = AccessControlPipeline(
-            resolver=ACActionResolver(),
-            dispatcher=ACActionDispatcher(handlers=[ACPostgresHandler(acl_repo=self._acl_repo)]),
-            tracker=ACLMembershipTracker(
-                source_connection_id=sync_context.source_connection_id,
-                organization_id=sync_context.organization_id,
-                logger=sync_context.logger,
-            ),
-            acl_repo=self._acl_repo,
-        )
-
-        worker_pool = AsyncWorkerPool(logger=sync_context.logger)
-
-        stream = AsyncSourceStream(
-            source_generator=runtime.source.generate_entities(
-                cursor=runtime.cursor,
-                files=files,
-                node_selections=node_selections,
-            ),
-            queue_size=10000,
-            logger=sync_context.logger,
-        )
-
+        # 5. Create orchestrator
         orchestrator = SyncOrchestrator(
             entity_pipeline=entity_pipeline,
-            worker_pool=worker_pool,
+            worker_pool=AsyncWorkerPool(logger=sync_context.logger),
             stream=stream,
             sync_context=sync_context,
             runtime=runtime,
@@ -250,6 +233,84 @@ class SyncFactory:
 
         logger.info(f"Total orchestrator initialization took {time.time() - init_start:.2f}s")
         return orchestrator
+
+    # -------------------------------------------------------------------------
+    # Private: Orchestrator assembly helpers
+    # -------------------------------------------------------------------------
+
+    async def _resolve_source_connection(
+        self,
+        db: AsyncSession,
+        sync: schemas.Sync,
+        ctx: BaseContext,
+    ) -> SourceConnection:
+        """Look up the source connection for a sync, or raise NotFoundException."""
+        sc = await self._sc_repo.get_by_sync_id(db, sync_id=sync.id, ctx=ctx)
+        if not sc:
+            raise NotFoundException(f"Source connection record not found for sync {sync.id}")
+        return sc
+
+    def _build_entity_pipeline(
+        self,
+        sync_context: "SyncContextBuilder",
+        runtime: SyncRuntime,
+        destinations: list,
+        resolved_config: SyncConfig,
+    ) -> EntityPipeline:
+        """Build entity pipeline with dispatcher and action resolver."""
+        dispatcher_builder = EntityDispatcherBuilder(
+            processor=self._processor,
+            entity_repo=self._entity_repo,
+            arf_service=self._arf_service,
+        )
+        dispatcher = dispatcher_builder.build(
+            destinations=destinations,
+            execution_config=resolved_config,
+            logger=sync_context.logger,
+        )
+        action_resolver = EntityActionResolver(
+            entity_map=sync_context.entity_map,
+            entity_repo=self._entity_repo,
+        )
+        return EntityPipeline(
+            entity_tracker=runtime.entity_tracker,
+            event_bus=self._event_bus,
+            action_resolver=action_resolver,
+            action_dispatcher=dispatcher,
+            entity_repo=self._entity_repo,
+        )
+
+    def _build_access_control_pipeline(
+        self, sync_context: "SyncContextBuilder"
+    ) -> AccessControlPipeline:
+        """Build access control pipeline with resolver, dispatcher, and tracker."""
+        return AccessControlPipeline(
+            resolver=ACActionResolver(),
+            dispatcher=ACActionDispatcher(handlers=[ACPostgresHandler(acl_repo=self._acl_repo)]),
+            tracker=ACLMembershipTracker(
+                source_connection_id=sync_context.source_connection_id,
+                organization_id=sync_context.organization_id,
+                logger=sync_context.logger,
+            ),
+            acl_repo=self._acl_repo,
+        )
+
+    def _build_stream(
+        self,
+        runtime: SyncRuntime,
+        source_result: SourceBuildResult,
+        sync_context: "SyncContextBuilder",
+    ) -> AsyncSourceStream:
+        """Build the async source stream from the source generator."""
+        return AsyncSourceStream(
+            source_generator=runtime.source.generate_entities(
+                cursor=runtime.cursor,
+                files=source_result.files,
+                node_selections=source_result.node_selections,
+            ),
+            queue_size=10000,
+            logger=sync_context.logger,
+        )
 
     # -------------------------------------------------------------------------
     # Private: Source building
@@ -265,10 +326,8 @@ class SyncFactory:
         source_connection: SourceConnection,
         force_full_sync: bool,
         execution_config: SyncConfig,
-    ) -> Tuple[
-        BaseSource, Optional[SyncCursor], Optional[FileService], Optional[List[NodeSelectionData]]
-    ]:
-        """Build source instance and cursor. Returns (source, cursor, files, node_selections)."""
+    ) -> SourceBuildResult:
+        """Build source instance, cursor, file service, and node selections."""
         if execution_config and execution_config.behavior.replay_from_arf:
             return await self._build_arf_replay_source(db=db, sync=sync, ctx=ctx, logger=logger)
 
@@ -298,7 +357,9 @@ class SyncFactory:
         if node_selections:
             logger.info(f"Loaded {len(node_selections)} node selections for targeted sync")
 
-        return source, cursor, files, node_selections
+        return SourceBuildResult(
+            source=source, cursor=cursor, files=files, node_selections=node_selections
+        )
 
     async def _build_arf_replay_source(
         self,
@@ -306,9 +367,7 @@ class SyncFactory:
         sync: schemas.Sync,
         ctx: BaseContext,
         logger: ContextualLogger,
-    ) -> Tuple[
-        BaseSource, Optional[SyncCursor], Optional[FileService], Optional[List[NodeSelectionData]]
-    ]:
+    ) -> SourceBuildResult:
         """Build source context for ARF replay mode."""
         from airweave.domains.arf.replay_source import ArfReplaySource
 
@@ -337,7 +396,7 @@ class SyncFactory:
             )
 
         cursor = SyncCursor(sync_id=sync.id, cursor_schema=None, cursor_data=None)
-        return source, cursor, None, None
+        return SourceBuildResult(source=source, cursor=cursor, files=None, node_selections=None)
 
     @staticmethod
     def _validate_not_completed_snapshot(source_connection_obj: SourceConnection) -> None:
@@ -429,8 +488,8 @@ class SyncFactory:
         collection: schemas.CollectionRecord,
         ctx: BaseContext,
         execution_config: SyncConfig,
-    ) -> Tuple[List[Any], Dict[type[BaseEntity], str]]:
-        """Build destinations and entity map."""
+    ) -> list:
+        """Build destination instances for the sync."""
         dest_logger = LoggerConfigurator.configure_logger(
             "airweave.platform.sync.dest_build",
             dimensions={
@@ -439,7 +498,7 @@ class SyncFactory:
             },
         )
 
-        destinations = await DestinationsContextBuilder.build_destinations_only(
+        return await DestinationsContextBuilder.build_destinations_only(
             db=db,
             sync=sync,
             collection=collection,
@@ -447,13 +506,6 @@ class SyncFactory:
             logger=dest_logger,
             execution_config=execution_config,
         )
-
-        entity_map: Dict[type[BaseEntity], str] = {
-            entry.entity_class_ref: entry.short_name
-            for entry in self._entity_definition_registry.list_all()
-        }
-
-        return destinations, entity_map
 
     # -------------------------------------------------------------------------
     # Private: Entity tracker (inlined from TrackingContextBuilder)

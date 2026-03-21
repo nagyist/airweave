@@ -6,25 +6,30 @@ from uuid import uuid4
 
 import pytest
 
-from airweave.domains.sync_pipeline.factory import SyncFactory
+from airweave.domains.sync_pipeline.factory import SourceBuildResult, SyncFactory
 
 
 def _build_factory(**overrides):
     """Build a SyncFactory with mock deps, accepting per-test overrides."""
     defaults = {
+        # Repositories
         "sc_repo": MagicMock(),
+        "entity_repo": MagicMock(),
+        "acl_repo": MagicMock(),
+        "selection_repo": MagicMock(),
+        # Registries
+        "entity_definition_registry": MagicMock(),
+        "source_registry": MagicMock(),
+        # Services
+        "source_lifecycle_service": MagicMock(),
+        "sync_cursor_service": MagicMock(),
+        "processor": MagicMock(),
+        "arf_service": MagicMock(),
+        # Infrastructure
         "event_bus": MagicMock(),
         "usage_checker": MagicMock(),
         "usage_ledger": MagicMock(),
-        "entity_repo": MagicMock(),
-        "entity_definition_registry": MagicMock(),
-        "acl_repo": MagicMock(),
-        "processor": MagicMock(),
-        "source_lifecycle_service": MagicMock(),
         "storage_backend": MagicMock(),
-        "selection_repo": MagicMock(),
-        "sync_cursor_service": MagicMock(),
-        "source_registry": MagicMock(),
     }
     defaults.update(overrides)
     return SyncFactory(**defaults)
@@ -38,34 +43,40 @@ def _build_factory(**overrides):
 def test_constructor_stores_all_deps():
     """All injected deps are stored on the instance."""
     deps = {
+        # Repositories
         "sc_repo": MagicMock(),
+        "entity_repo": MagicMock(),
+        "acl_repo": MagicMock(),
+        "selection_repo": MagicMock(),
+        # Registries
+        "entity_definition_registry": MagicMock(),
+        "source_registry": MagicMock(),
+        # Services
+        "source_lifecycle_service": MagicMock(),
+        "sync_cursor_service": MagicMock(),
+        "processor": MagicMock(),
+        "arf_service": MagicMock(),
+        # Infrastructure
         "event_bus": MagicMock(),
         "usage_checker": MagicMock(),
         "usage_ledger": MagicMock(),
-        "entity_repo": MagicMock(),
-        "entity_definition_registry": MagicMock(),
-        "acl_repo": MagicMock(),
-        "processor": MagicMock(),
-        "source_lifecycle_service": MagicMock(),
         "storage_backend": MagicMock(),
-        "selection_repo": MagicMock(),
-        "sync_cursor_service": MagicMock(),
-        "source_registry": MagicMock(),
     }
     f = SyncFactory(**deps)
     assert f._sc_repo is deps["sc_repo"]
+    assert f._entity_repo is deps["entity_repo"]
+    assert f._acl_repo is deps["acl_repo"]
+    assert f._selection_repo is deps["selection_repo"]
+    assert f._entity_definition_registry is deps["entity_definition_registry"]
+    assert f._source_registry is deps["source_registry"]
+    assert f._source_lifecycle_service is deps["source_lifecycle_service"]
+    assert f._sync_cursor_service is deps["sync_cursor_service"]
+    assert f._processor is deps["processor"]
+    assert f._arf_service is deps["arf_service"]
     assert f._event_bus is deps["event_bus"]
     assert f._usage_checker is deps["usage_checker"]
     assert f._usage_ledger is deps["usage_ledger"]
-    assert f._entity_repo is deps["entity_repo"]
-    assert f._entity_definition_registry is deps["entity_definition_registry"]
-    assert f._acl_repo is deps["acl_repo"]
-    assert f._processor is deps["processor"]
-    assert f._source_lifecycle_service is deps["source_lifecycle_service"]
     assert f._storage_backend is deps["storage_backend"]
-    assert f._selection_repo is deps["selection_repo"]
-    assert f._sync_cursor_service is deps["sync_cursor_service"]
-    assert f._source_registry is deps["source_registry"]
 
 
 # ---------------------------------------------------------------------------
@@ -158,8 +169,10 @@ async def test_create_orchestrator_passes_entity_repo_to_pipeline():
     ):
         mock_source = MagicMock()
         mock_source.generate_entities = MagicMock(return_value=AsyncMock())
-        mock_build_source.return_value = (mock_source, MagicMock(), MagicMock(), [])
-        mock_build_destinations.return_value = ([], {})
+        mock_build_source.return_value = SourceBuildResult(
+            source=mock_source, cursor=MagicMock(), files=MagicMock(), node_selections=[]
+        )
+        mock_build_destinations.return_value = []
         mock_build_tracker.return_value = MagicMock()
         mock_sc_builder.build = AsyncMock(return_value=MagicMock())
         mock_disp_builder_instance = MagicMock()
@@ -237,7 +250,7 @@ class TestBuildSource:
             ),
             patch("airweave.domains.sync_pipeline.factory.FileService"),
         ):
-            source, cursor, files, node_selections = await factory._build_source(
+            result = await factory._build_source(
                 db=db,
                 sync=sync,
                 sync_job=sync_job,
@@ -248,10 +261,10 @@ class TestBuildSource:
                 execution_config=None,
             )
 
-        assert source is mock_source
-        assert cursor is not None
-        assert files is not None
-        assert node_selections == []
+        assert result.source is mock_source
+        assert result.cursor is not None
+        assert result.files is not None
+        assert result.node_selections == []
 
     @pytest.mark.asyncio
     async def test_returns_node_selections_when_present(self):
@@ -286,7 +299,7 @@ class TestBuildSource:
             ),
             patch("airweave.domains.sync_pipeline.factory.FileService"),
         ):
-            source, cursor, files, node_selections = await factory._build_source(
+            result = await factory._build_source(
                 db=db,
                 sync=sync,
                 sync_job=sync_job,
@@ -297,7 +310,7 @@ class TestBuildSource:
                 execution_config=None,
             )
 
-        assert node_selections == [fake_selection]
+        assert result.node_selections == [fake_selection]
 
 
 class TestBuildArfReplaySource:
@@ -331,7 +344,7 @@ class TestBuildArfReplaySource:
                 )
 
     @pytest.mark.asyncio
-    async def test_success_returns_4_tuple(self):
+    async def test_success_returns_source_build_result(self):
         mock_source = AsyncMock()
         mock_source.validate = AsyncMock(return_value=True)
 
@@ -352,14 +365,14 @@ class TestBuildArfReplaySource:
                 return_value=mock_source,
             ),
         ):
-            source, cursor, files, node_selections = await factory._build_arf_replay_source(
+            result = await factory._build_arf_replay_source(
                 db=db, sync=sync, ctx=ctx, logger=MagicMock()
             )
 
-        assert source is mock_source
-        assert cursor.sync_id == sync.id
-        assert files is None
-        assert node_selections is None
+        assert result.source is mock_source
+        assert result.cursor.sync_id == sync.id
+        assert result.files is None
+        assert result.node_selections is None
 
 
 class TestValidateNotCompletedSnapshot:

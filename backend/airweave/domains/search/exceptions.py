@@ -14,6 +14,7 @@ class FederatedSearchError(SearchError):
     """
 
     def __init__(self, source_errors: list[tuple[str, Exception]]) -> None:
+        """Initialize with per-source error details."""
         self.source_errors = source_errors
         summary = "; ".join(f"{name}: {err}" for name, err in source_errors)
         super().__init__(f"Federated search failed: {summary}")

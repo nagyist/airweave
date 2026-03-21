@@ -739,7 +739,7 @@ class TestExecutorFederated:
         sc_repo = FakeSourceConnectionRepository()
         sc_repo.seed(sc_slack.id, sc_slack)
         sc_repo.seed(sc_github.id, sc_github)
-        sc_repo._by_collection = {"my-collection": [sc_slack, sc_github]}
+        sc_repo._by_collection = {"my-collection": [sc_slack, sc_github]}  # type: ignore[attr-defined]
 
         source_registry = FakeSourceRegistry()
         source_registry.seed(

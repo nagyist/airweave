@@ -128,6 +128,23 @@ def _validate_iso_timestamp(value: str) -> None:
         )
 
 
+def _validate_numeric_value(field: FilterableField, value: Any) -> None:
+    """Raise ValueError when a non-numeric value is used on a numeric field."""
+    if isinstance(value, int):
+        return
+    if isinstance(value, str):
+        try:
+            float(value)
+        except ValueError:
+            raise ValueError(
+                f"Field '{field.value}' is numeric — expected a number, got '{value}'."
+            )
+    elif isinstance(value, bool):
+        raise ValueError(
+            f"Field '{field.value}' is numeric — expected a number, got boolean {value}."
+        )
+
+
 class FilterCondition(BaseModel):
     """A single filter condition.
 
@@ -237,19 +254,7 @@ class FilterCondition(BaseModel):
         # 5. Numeric fields must receive a numeric value
         #    e.g. chunk_index = "boat"
         if f in _NUMERIC_FIELDS and not isinstance(v, list):
-            if isinstance(v, int):
-                pass  # fine
-            elif isinstance(v, str):
-                try:
-                    float(v)
-                except ValueError:
-                    raise ValueError(
-                        f"Field '{f.value}' is numeric — expected a number, got '{v}'."
-                    )
-            elif isinstance(v, bool):
-                raise ValueError(
-                    f"Field '{f.value}' is numeric — expected a number, got boolean {v}."
-                )
+            _validate_numeric_value(f, v)
 
         # 6. Date fields must receive a valid ISO 8601 timestamp
         #    e.g. created_at > "not-a-date" → reject

@@ -1156,14 +1156,15 @@ def _build_llm_chain(
             "Configure at least one API key from SearchConfig.LLM_FALLBACK_CHAIN."
         )
 
-    # Single provider: use default retries (no fallback chain to handle them).
-    # Multiple providers: max_retries=0 per provider, the chain handles failover.
-    use_retries = 0 if len(available) > 1 else None  # None = use class default
-
+    # Single provider: use default retries.
+    # Multiple providers: max_retries=0 for all except the last provider,
+    # which gets default retries since there's nothing to fall back to.
     llm_providers = []
-    for provider, model, model_spec, provider_cls in available:
+    for idx, (provider, model, model_spec, provider_cls) in enumerate(available):
+        is_last = idx == len(available) - 1
+        retries = None if (len(available) == 1 or is_last) else 0
         try:
-            llm_providers.append(provider_cls(model_spec=model_spec, max_retries=use_retries))
+            llm_providers.append(provider_cls(model_spec=model_spec, max_retries=retries))
             logger.info(
                 f"[SearchFactory] Added {provider.value}/{model.value} "
                 f"({model_spec.api_model_name})"

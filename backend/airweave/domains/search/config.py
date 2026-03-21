@@ -39,11 +39,8 @@ class SearchConfig:
     # provider. For example, to use GPT_OSS_120B on Cerebras instead of GLM:
     #   (LLMProvider.CEREBRAS, LLMModel.GPT_OSS_120B),
     LLM_FALLBACK_CHAIN: list[tuple[LLMProvider, LLMModel]] = [
-        # (LLMProvider.ANTHROPIC, LLMModel.CLAUDE_SONNET_4_6),
         (LLMProvider.TOGETHER, LLMModel.ZAI_GLM_5),
-        # (LLMProvider.TOGETHER, LLMModel.QWEN_3_5),
-        # (LLMProvider.TOGETHER, LLMModel.MINIMAX_M2_5),
-        # (LLMProvider.TOGETHER, LLMModel.KIMI_K2_5),
+        (LLMProvider.ANTHROPIC, LLMModel.CLAUDE_SONNET_4_6),
     ]
 
     # Tokenizer

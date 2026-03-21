@@ -160,11 +160,14 @@ class AnthropicLLM(BaseLLM):
             "tools": anthropic_tools,
         }
 
-        # Enable thinking when requested
+        # Sonnet 4.6 defaults to adaptive thinking when the parameter is
+        # omitted — explicitly disable when not requested.
         if thinking:
             kwargs["thinking"] = {"type": "adaptive"}
             if self._effort:
                 kwargs["output_config"] = {"effort": self._effort}
+        else:
+            kwargs["thinking"] = {"type": "disabled"}
 
         api_start = time.monotonic()
         response = await self._client.messages.create(**kwargs)

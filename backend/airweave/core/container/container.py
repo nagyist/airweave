@@ -13,8 +13,6 @@ Design principles:
 from dataclasses import dataclass, replace
 from typing import Any, Optional
 
-from airweave.domains.syncs.cursors.service import SyncCursorService
-
 from airweave.core.protocols import (
     CircuitBreaker,
     ContextCache,
@@ -48,7 +46,10 @@ from airweave.domains.collections.protocols import (
 )
 from airweave.domains.connect.protocols import ConnectServiceProtocol
 from airweave.domains.connections.protocols import ConnectionRepositoryProtocol
-from airweave.domains.credentials.protocols import IntegrationCredentialRepositoryProtocol
+from airweave.domains.credentials.protocols import (
+    IntegrationCredentialRepositoryProtocol,
+    IntegrationCredentialServiceProtocol,
+)
 from airweave.domains.embedders.protocols import (
     DenseEmbedderProtocol,
     DenseEmbedderRegistryProtocol,
@@ -79,6 +80,7 @@ from airweave.domains.sources.protocols import (
     SourceServiceProtocol,
 )
 from airweave.domains.storage.protocols import StorageBackend, SyncFileManagerProtocol
+from airweave.domains.syncs.cursors.service import SyncCursorService
 from airweave.domains.syncs.protocols import (
     SyncCursorRepositoryProtocol,
     SyncJobRepositoryProtocol,
@@ -163,6 +165,7 @@ class Container:
     collection_repo: CollectionRepositoryProtocol
     conn_repo: ConnectionRepositoryProtocol
     cred_repo: IntegrationCredentialRepositoryProtocol
+    credential_service: IntegrationCredentialServiceProtocol
     user_org_repo: UserOrganizationRepositoryProtocol
 
     # OAuth services

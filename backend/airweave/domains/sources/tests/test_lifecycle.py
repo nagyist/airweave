@@ -8,24 +8,24 @@ constructor) are patched when needed.
 from dataclasses import dataclass, field
 from typing import Any, Optional
 from unittest.mock import AsyncMock, MagicMock, patch
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 import pytest
 
-from airweave.domains.connections.fakes.repository import FakeConnectionRepository
-from airweave.domains.credentials.fakes.repository import FakeIntegrationCredentialRepository
-from airweave.domains.oauth.fakes.oauth2_service import FakeOAuth2Service
-from airweave.domains.source_connections.fakes.repository import FakeSourceConnectionRepository
 from airweave.core.exceptions import NotFoundException
 from airweave.domains.auth_provider.fake import FakeAuthProviderRegistry
 from airweave.domains.auth_provider.types import AuthProviderRegistryEntry
+from airweave.domains.connections.fakes.repository import FakeConnectionRepository
+from airweave.domains.credentials.fakes.service import FakeIntegrationCredentialService
+from airweave.domains.credentials.types import DecryptedCredential
+from airweave.domains.oauth.fakes.oauth2_service import FakeOAuth2Service
+from airweave.domains.source_connections.fakes.repository import FakeSourceConnectionRepository
 from airweave.domains.sources.exceptions import SourceNotFoundError, SourceValidationError
 from airweave.domains.sources.fakes.registry import FakeSourceRegistry
 from airweave.domains.sources.lifecycle import SourceLifecycleService
 from airweave.domains.sources.tests.conftest import _make_ctx, _make_entry
 from airweave.domains.sources.types import AuthConfig, SourceConnectionData
 from airweave.platform.configs._base import Fields
-
 
 # ---------------------------------------------------------------------------
 # Stub source classes
@@ -133,7 +133,7 @@ def _make_service(
     auth_provider_entries=None,
     sc_repo=None,
     conn_repo=None,
-    cred_repo=None,
+    credential_service=None,
     oauth2_service=None,
 ) -> SourceLifecycleService:
     """Build a SourceLifecycleService with fakes."""
@@ -150,7 +150,7 @@ def _make_service(
         auth_provider_registry=auth_provider_registry,
         sc_repo=sc_repo or FakeSourceConnectionRepository(),
         conn_repo=conn_repo or FakeConnectionRepository(),
-        cred_repo=cred_repo or FakeIntegrationCredentialRepository(),
+        credential_service=credential_service or FakeIntegrationCredentialService(),
         oauth2_service=oauth2_service or FakeOAuth2Service(),
     )
 
@@ -475,13 +475,19 @@ DB_CRED_TABLE = [
 @pytest.mark.parametrize("case", DB_CRED_TABLE, ids=lambda c: c.id)
 @pytest.mark.asyncio
 async def test_get_database_credentials(case: DBCredCase):
-    cred = _mock_credential()
     cred_id = uuid4()
-    cred_repo = FakeIntegrationCredentialRepository()
+    cred_svc = FakeIntegrationCredentialService()
     if case.cred_found:
-        cred_repo.seed(cred_id, cred)
+        dc = DecryptedCredential(
+            credential_id=cred_id,
+            integration_short_name="test-source",
+            raw={"access_token": "decrypted", "api_key": "sk"},
+        )
+        record = MagicMock()
+        record.id = cred_id
+        cred_svc.seed(dc, record)
 
-    service = _make_service(cred_repo=cred_repo)
+    service = _make_service(credential_service=cred_svc)
     ctx = _make_ctx()
     data = _sc_data(auth_config_class=case.auth_config_class)
     data.integration_credential_id = cred_id if case.has_cred_id else None
@@ -492,27 +498,23 @@ async def test_get_database_credentials(case: DBCredCase):
                 db=MagicMock(), source_connection_data=data, ctx=ctx, logger=ctx.logger
             )
     elif case.auth_config_class:
-        with (
-            patch("airweave.domains.sources.lifecycle.credentials") as mock_creds,
-            patch.object(service, "_handle_auth_config_credentials",
-                         new_callable=AsyncMock) as mock_handle,
-        ):
-            mock_creds.decrypt.return_value = {"api_key": "sk"}
+        with patch.object(service, "_handle_auth_config_credentials",
+                         new_callable=AsyncMock) as mock_handle:
             mock_handle.return_value = {"api_key": "sk"}
             result = await service._get_database_credentials(
                 db=MagicMock(), source_connection_data=data, ctx=ctx, logger=ctx.logger
             )
         assert isinstance(result, AuthConfig)
         assert result.credentials == {"api_key": "sk"}
+        assert result.decrypted_credential is not None
         mock_handle.assert_called_once()
     else:
-        with patch("airweave.domains.sources.lifecycle.credentials") as mock_creds:
-            mock_creds.decrypt.return_value = {"access_token": "decrypted"}
-            result = await service._get_database_credentials(
-                db=MagicMock(), source_connection_data=data, ctx=ctx, logger=ctx.logger
-            )
+        result = await service._get_database_credentials(
+            db=MagicMock(), source_connection_data=data, ctx=ctx, logger=ctx.logger
+        )
         assert isinstance(result, AuthConfig)
-        assert result.credentials == {"access_token": "decrypted"}
+        assert result.credentials == {"access_token": "decrypted", "api_key": "sk"}
+        assert result.decrypted_credential is not None
 
 
 # ===========================================================================
@@ -792,40 +794,42 @@ async def test_create_auth_provider_instance(case: AuthProviderInstanceCase):
     conn = _mock_connection()
     if not case.has_cred_id:
         conn.integration_credential_id = None
-    cred = _mock_credential()
 
     conn_repo = FakeConnectionRepository()
     if case.conn_found:
         conn_repo.seed_readable("pd-1", conn)
 
-    cred_repo = FakeIntegrationCredentialRepository()
+    cred_svc = FakeIntegrationCredentialService()
     if case.cred_found and case.has_cred_id:
-        cred_repo.seed(conn.integration_credential_id, cred)
+        dc = DecryptedCredential(
+            credential_id=conn.integration_credential_id,
+            integration_short_name=conn.short_name,
+            raw={"token": "d"},
+        )
+        record = MagicMock()
+        record.id = conn.integration_credential_id
+        cred_svc.seed(dc, record)
 
     ap_entries = []
     if case.in_ap_registry:
         ap_entries.append(_make_auth_provider_entry(
             short_name=conn.short_name, provider_class_ref=_StubProvider))
 
-    service = _make_service(conn_repo=conn_repo, cred_repo=cred_repo,
+    service = _make_service(conn_repo=conn_repo, credential_service=cred_svc,
                             auth_provider_entries=ap_entries)
     ctx = _make_ctx()
 
     if case.expect_error:
-        with patch("airweave.domains.sources.lifecycle.credentials") as mock_creds:
-            mock_creds.decrypt.return_value = {"token": "d"}
-            with pytest.raises(case.expect_error, match=case.error_match):
-                await service._create_auth_provider_instance(
-                    db=MagicMock(), readable_auth_provider_id="pd-1",
-                    auth_provider_config={}, ctx=ctx, logger=ctx.logger,
-                )
-    else:
-        with patch("airweave.domains.sources.lifecycle.credentials") as mock_creds:
-            mock_creds.decrypt.return_value = {"token": "d"}
-            result = await service._create_auth_provider_instance(
+        with pytest.raises(case.expect_error, match=case.error_match):
+            await service._create_auth_provider_instance(
                 db=MagicMock(), readable_auth_provider_id="pd-1",
-                auth_provider_config={"env": "prd"}, ctx=ctx, logger=ctx.logger,
+                auth_provider_config={}, ctx=ctx, logger=ctx.logger,
             )
+    else:
+        result = await service._create_auth_provider_instance(
+            db=MagicMock(), readable_auth_provider_id="pd-1",
+            auth_provider_config={"env": "prd"}, ctx=ctx, logger=ctx.logger,
+        )
         assert result is mock_provider_instance
         _StubProvider.create.assert_called_once()
 
@@ -854,27 +858,31 @@ CREATE_TABLE = [
 async def test_create(case: CreateCase):
     sc = _mock_source_connection(short_name="src")
     conn = _mock_connection()
-    cred = _mock_credential()
     entry = _entry_with_class("src", _StubSourceValid)
 
     sc_repo = FakeSourceConnectionRepository()
     sc_repo.seed(sc.id, sc)
     conn_repo = FakeConnectionRepository()
     conn_repo.seed(sc.connection_id, conn)
-    cred_repo = FakeIntegrationCredentialRepository()
-    cred_repo.seed(conn.integration_credential_id, cred)
+
+    cred_svc = FakeIntegrationCredentialService()
+    dc = DecryptedCredential(
+        credential_id=conn.integration_credential_id,
+        integration_short_name="src",
+        raw={"access_token": "tok"},
+    )
+    record = MagicMock()
+    record.id = conn.integration_credential_id
+    cred_svc.seed(dc, record)
 
     service = _make_service(source_entries=[entry], sc_repo=sc_repo,
-                            conn_repo=conn_repo, cred_repo=cred_repo)
+                            conn_repo=conn_repo, credential_service=cred_svc)
     ctx = _make_ctx()
 
-    with patch("airweave.domains.sources.lifecycle.credentials") as mock_creds:
-        mock_creds.decrypt.return_value = {"access_token": "tok"}
-
-        source = await service.create(
-            db=MagicMock(), source_connection_id=sc.id, ctx=ctx,
-            access_token=case.access_token,
-        )
+    source = await service.create(
+        db=MagicMock(), source_connection_id=sc.id, ctx=ctx,
+        access_token=case.access_token,
+    )
 
     assert isinstance(source, _StubSourceValid)
     if case.expect_logger:

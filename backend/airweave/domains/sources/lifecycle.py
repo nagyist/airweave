@@ -18,16 +18,13 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave.api.context import ApiContext
-from airweave.core import credentials
 from airweave.core.exceptions import NotFoundException
 from airweave.core.logging import ContextualLogger, LoggerConfigurator
 from airweave.core.shared_models import FeatureFlag
 from airweave.domains.auth_provider._base import BaseAuthProvider
 from airweave.domains.auth_provider.protocols import AuthProviderRegistryProtocol
 from airweave.domains.connections.protocols import ConnectionRepositoryProtocol
-from airweave.domains.credentials.protocols import (
-    IntegrationCredentialRepositoryProtocol,
-)
+from airweave.domains.credentials.protocols import IntegrationCredentialServiceProtocol
 from airweave.domains.oauth.protocols import OAuth2ServiceProtocol
 from airweave.domains.source_connections.protocols import (
     SourceConnectionRepositoryProtocol,
@@ -65,7 +62,7 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
         auth_provider_registry: AuthProviderRegistryProtocol,
         sc_repo: SourceConnectionRepositoryProtocol,
         conn_repo: ConnectionRepositoryProtocol,
-        cred_repo: IntegrationCredentialRepositoryProtocol,
+        credential_service: IntegrationCredentialServiceProtocol,
         oauth2_service: OAuth2ServiceProtocol,
     ) -> None:
         """Initialize with all required dependencies."""
@@ -73,7 +70,7 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
         self._auth_provider_registry = auth_provider_registry
         self._sc_repo = sc_repo
         self._conn_repo = conn_repo
-        self._cred_repo = cred_repo
+        self._credential_service = credential_service
         self._oauth2_service = oauth2_service
 
         from airweave.core.redis_client import redis_client
@@ -377,30 +374,28 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
         if not source_connection_data.integration_credential_id:
             raise NotFoundException("Source connection has no integration credential")
 
-        credential = await self._cred_repo.get(
+        decrypted = await self._credential_service.get(
             db, source_connection_data.integration_credential_id, ctx
         )
-        if not credential:
-            raise NotFoundException("Source integration credential not found")
-
-        decrypted_credential = credentials.decrypt(credential.encrypted_credentials)
 
         if source_connection_data.auth_config_class:
             processed = await self._handle_auth_config_credentials(
                 db=db,
                 source_connection_data=source_connection_data,
-                decrypted_credential=decrypted_credential,
+                decrypted_credential=decrypted.raw,
                 ctx=ctx,
                 connection_id=source_connection_data.connection_id,
             )
             return AuthConfig(
                 credentials=processed,
                 auth_provider_instance=None,
+                decrypted_credential=decrypted,
             )
 
         return AuthConfig(
-            credentials=decrypted_credential,
+            credentials=decrypted.raw,
             auth_provider_instance=None,
+            decrypted_credential=decrypted,
         )
 
     # ------------------------------------------------------------------
@@ -433,13 +428,10 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
                 f"has no integration credential"
             )
 
-        credential = await self._cred_repo.get(
+        decrypted = await self._credential_service.get(
             db, auth_provider_connection.integration_credential_id, ctx
         )
-        if not credential:
-            raise NotFoundException("Auth provider integration credential not found")
-
-        decrypted_credentials = credentials.decrypt(credential.encrypted_credentials)
+        decrypted_credentials = decrypted.raw
 
         # Resolve auth provider class from registry (replaces resource_locator)
         provider_short_name = auth_provider_connection.short_name
@@ -607,8 +599,6 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
         if access_token is not None:
             return StaticTokenProvider(access_token, source_short_name=short_name)
 
-        # Normalize credentials: convert raw dicts to typed auth config models
-        # so sources that use attribute access (e.g. auth.credentials.api_key) work
         entry = self._source_registry.get(short_name)
         source_credentials = self._normalize_credentials(source_credentials, entry, logger)
 
@@ -645,8 +635,16 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
                     )
                 return DirectCredentialProvider(source_credentials, source_short_name=short_name)
 
+            # For OAuth sources without auth_config_class, normalization strips
+            # the dict down to just the access_token string. Use the full
+            # DecryptedCredential.raw so OAuthTokenProvider retains refresh_token.
+            oauth_creds = (
+                auth_config.decrypted_credential.raw
+                if auth_config.decrypted_credential
+                else source_credentials
+            )
             return OAuthTokenProvider(
-                credentials=source_credentials,
+                credentials=oauth_creds,
                 oauth_type=oauth_type,
                 oauth2_service=self._oauth2_service,
                 source_short_name=short_name,

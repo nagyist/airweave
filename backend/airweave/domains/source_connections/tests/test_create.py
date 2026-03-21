@@ -12,16 +12,15 @@ from pydantic import ValidationError
 from airweave.api.context import ApiContext
 from airweave.core.exceptions import NotFoundException
 from airweave.core.shared_models import AuthMethod
+from airweave.domains.auth_provider.fake import FakeAuthProviderService
 from airweave.domains.collections.fakes.repository import FakeCollectionRepository
 from airweave.domains.connections.fakes.repository import FakeConnectionRepository
-from airweave.domains.credentials.fakes.repository import FakeIntegrationCredentialRepository
+from airweave.domains.credentials.fakes.service import FakeIntegrationCredentialService
 from airweave.domains.oauth.fakes.flow_service import FakeOAuthFlowService
 from airweave.domains.oauth.types import OAuthBrowserInitiationResult
-from airweave.domains.auth_provider.fake import FakeAuthProviderService
 from airweave.domains.source_connections.create import SourceConnectionCreationService
 from airweave.domains.source_connections.fakes.repository import FakeSourceConnectionRepository
 from airweave.domains.source_connections.fakes.response import FakeResponseBuilder
-from airweave.domains.source_connections.fakes.service import FakeSourceConnectionService
 from airweave.domains.sources.exceptions import SourceValidationError
 from airweave.domains.sources.fakes.lifecycle import FakeSourceLifecycleService
 from airweave.domains.sources.fakes.registry import FakeSourceRegistry
@@ -38,7 +37,6 @@ from airweave.schemas.source_connection import (
     OAuthTokenAuthentication,
     SourceConnectionCreate,
 )
-
 
 NOW = datetime.now(timezone.utc)
 
@@ -83,7 +81,7 @@ def _service(entry) -> SourceConnectionCreationService:
         sc_repo=FakeSourceConnectionRepository(),
         collection_repo=FakeCollectionRepository(),
         connection_repo=FakeConnectionRepository(),
-        credential_repo=FakeIntegrationCredentialRepository(),
+        credential_service=FakeIntegrationCredentialService(),
         source_registry=registry,
         source_validation=FakeSourceValidationService(),
         source_lifecycle=FakeSourceLifecycleService(),
@@ -91,7 +89,6 @@ def _service(entry) -> SourceConnectionCreationService:
         sync_record_service=FakeSyncRecordService(),
         response_builder=FakeResponseBuilder(),
         oauth_flow_service=FakeOAuthFlowService(),
-        credential_encryptor=MagicMock(),
         temporal_workflow_service=FakeTemporalWorkflowService(),
         event_bus=AsyncMock(),
         auth_provider_service=FakeAuthProviderService(),

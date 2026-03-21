@@ -56,6 +56,7 @@ from airweave.domains.collections.vector_db_deployment_metadata_repository impor
 )
 from airweave.domains.connections.repository import ConnectionRepository
 from airweave.domains.credentials.repository import IntegrationCredentialRepository
+from airweave.domains.credentials.service import IntegrationCredentialService
 from airweave.domains.embedders.config import (
     DENSE_EMBEDDER,
     EMBEDDING_DIMENSIONS,
@@ -318,7 +319,7 @@ def create_container(settings: Settings) -> Container:
         sc_repo=source_deps["sc_repo"],
         collection_repo=source_deps["collection_repo"],
         connection_repo=source_deps["conn_repo"],
-        credential_repo=source_deps["cred_repo"],
+        credential_service=source_deps["credential_service"],
         source_registry=source_deps["source_registry"],
         source_validation=source_validation,
         source_lifecycle=source_deps["source_lifecycle_service"],
@@ -326,7 +327,6 @@ def create_container(settings: Settings) -> Container:
         sync_record_service=sync_deps["sync_record_service"],
         response_builder=sync_deps["response_builder"],
         oauth_flow_service=oauth_flow_svc,
-        credential_encryptor=encryptor,
         temporal_workflow_service=sync_deps["temporal_workflow_service"],
         event_bus=event_bus,
         auth_provider_service=auth_provider_service,
@@ -475,6 +475,7 @@ def create_container(settings: Settings) -> Container:
         collection_repo=source_deps["collection_repo"],
         conn_repo=source_deps["conn_repo"],
         cred_repo=source_deps["cred_repo"],
+        credential_service=source_deps["credential_service"],
         user_org_repo=user_org_repo,
         oauth1_service=source_deps["oauth1_service"],
         oauth2_service=source_deps["oauth2_service"],
@@ -739,6 +740,8 @@ def _create_source_services(settings: Settings) -> dict:
     collection_repo = CollectionRepository(source_registry=source_registry, sc_repo=sc_repo)
     conn_repo = ConnectionRepository()
     cred_repo = IntegrationCredentialRepository()
+    encryptor = FernetCredentialEncryptor(settings.ENCRYPTION_KEY)
+    credential_service = IntegrationCredentialService(repo=cred_repo, encryptor=encryptor)
     sync_repo = SyncRepository()
     sync_cursor_repo = SyncCursorRepository()
     sync_job_repo = SyncJobRepository()
@@ -749,7 +752,7 @@ def _create_source_services(settings: Settings) -> dict:
         settings=settings,
         conn_repo=conn_repo,
         cred_repo=cred_repo,
-        encryptor=FernetCredentialEncryptor(settings.ENCRYPTION_KEY),
+        encryptor=encryptor,
         source_registry=source_registry,
     )
 
@@ -762,7 +765,7 @@ def _create_source_services(settings: Settings) -> dict:
         auth_provider_registry=auth_provider_registry,
         sc_repo=sc_repo,
         conn_repo=conn_repo,
-        cred_repo=cred_repo,
+        credential_service=credential_service,
         oauth2_service=oauth2_svc,
     )
 
@@ -775,6 +778,7 @@ def _create_source_services(settings: Settings) -> dict:
         "collection_repo": collection_repo,
         "conn_repo": conn_repo,
         "cred_repo": cred_repo,
+        "credential_service": credential_service,
         "oauth1_service": oauth1_svc,
         "oauth2_service": oauth2_svc,
         "redirect_session_repo": redirect_session_repo,

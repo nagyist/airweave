@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Optional
 from uuid import UUID
 
 from airweave.core.protocols.registry import BaseRegistryEntry
 from airweave.domains.auth_provider._base import BaseAuthProvider
+from airweave.domains.credentials.types import DecryptedCredential
 from airweave.models.connection import Connection
 from airweave.models.source_connection import SourceConnection
 from airweave.platform.configs._base import BaseConfig, Fields
@@ -83,8 +84,10 @@ class SourceConnectionData:
 class AuthConfig:
     """Resolved auth configuration returned by _get_auth_configuration().
 
-    Carries credentials and auth provider instance.
+    Carries credentials, auth provider instance, and the original
+    DecryptedCredential (when loaded from the database).
     """
 
     credentials: Any
     auth_provider_instance: Optional[BaseAuthProvider]
+    decrypted_credential: Optional[DecryptedCredential] = field(default=None)

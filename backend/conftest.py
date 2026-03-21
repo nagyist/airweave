@@ -257,6 +257,14 @@ def fake_cred_repo():
 
 
 @pytest.fixture
+def fake_credential_service():
+    """Fake IntegrationCredentialService."""
+    from airweave.domains.credentials.fakes.service import FakeIntegrationCredentialService
+
+    return FakeIntegrationCredentialService()
+
+
+@pytest.fixture
 def fake_user_org_repo():
     """Fake UserOrganizationRepository."""
     from airweave.domains.organizations.fakes.repository import FakeUserOrganizationRepository
@@ -620,6 +628,7 @@ def test_container(
     fake_collection_repo,
     fake_conn_repo,
     fake_cred_repo,
+    fake_credential_service,
     fake_oauth1_service,
     fake_oauth2_service,
     fake_redirect_session_repo,
@@ -700,6 +709,7 @@ def test_container(
         collection_repo=fake_collection_repo,
         conn_repo=fake_conn_repo,
         cred_repo=fake_cred_repo,
+        credential_service=fake_credential_service,
         user_org_repo=fake_user_org_repo,
         oauth1_service=fake_oauth1_service,
         oauth2_service=fake_oauth2_service,

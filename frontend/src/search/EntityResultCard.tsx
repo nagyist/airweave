@@ -138,7 +138,7 @@ const EntityResultCardComponent: React.FC<EntityResultCardProps> = ({
             className={cn(
                 "pl-3 pr-2 py-2.5 font-mono relative",
                 index > 0 && "border-t-2",
-                isDark ? "border-t-gray-800" : "border-t-gray-200"
+                isDark ? "border-t-gray-700" : "border-t-gray-300"
             )}
         >
             {/* ── Copy raw — top right ── */}
@@ -164,7 +164,7 @@ const EntityResultCardComponent: React.FC<EntityResultCardProps> = ({
                         {fields.name}
                     </span>
                 </div>
-                <div className={cn("flex items-center gap-0 mt-0.5 ml-6 text-[10px]", muted)}>
+                <div className={cn("flex items-center gap-0 mt-0.5 text-[10px]", muted)}>
                     <span className={val}>{fields.sourceName}</span>
                     <span className={cn("mx-1", label)}>·</span>
                     <span className={val}>{fields.entityType}</span>
@@ -175,7 +175,7 @@ const EntityResultCardComponent: React.FC<EntityResultCardProps> = ({
 
             {/* ── Section 2: Links ── */}
             {hasLinks && (
-                <div className={cn("mt-1 pt-1 ml-6 border-t", sectionBorder)}>
+                <div className={cn("mt-1 pt-1 border-t", sectionBorder)}>
                     <span className={cn("text-[10px] font-mono font-semibold", val)}>links</span>
                     <div className="flex items-center gap-3 mt-0.5">
                         {fields.webUrl && (
@@ -206,7 +206,7 @@ const EntityResultCardComponent: React.FC<EntityResultCardProps> = ({
 
             {/* ── Section 3: Breadcrumbs (tree) ── */}
             {fields.breadcrumbs.length > 0 && (
-                <div className={cn("mt-1 pt-1 ml-6 border-t", sectionBorder)}>
+                <div className={cn("mt-1 pt-1 border-t", sectionBorder)}>
                     <span className={cn("text-[10px] font-mono font-semibold", val)}>path</span>
                     <div className={cn("text-[10px] font-mono mt-0.5", muted)}>
                         {fields.breadcrumbs.map((crumb, i) => {
@@ -231,7 +231,7 @@ const EntityResultCardComponent: React.FC<EntityResultCardProps> = ({
 
             {/* ── Section 4: Timestamps ── */}
             {hasTimestamps && (
-                <div className={cn("mt-1 pt-1 ml-6 border-t", sectionBorder)}>
+                <div className={cn("mt-1 pt-1 border-t", sectionBorder)}>
                     <span className={cn("text-[10px] font-mono font-semibold", val)}>dates</span>
                     <div className={cn("flex items-center gap-3 text-[10px] font-mono mt-0.5", muted)}>
                         {fields.createdAt && (
@@ -255,7 +255,7 @@ const EntityResultCardComponent: React.FC<EntityResultCardProps> = ({
 
             {/* ── Section 5: Content expander ── */}
             {fields.textualRepresentation && (
-                <div className={cn("mt-1 pt-1 ml-6 border-t", sectionBorder)}>
+                <div className={cn("mt-1 pt-1 border-t", sectionBorder)}>
                     <button
                         onClick={() => setContentExpanded(!contentExpanded)}
                         className={cn(

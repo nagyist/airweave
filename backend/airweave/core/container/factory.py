@@ -427,6 +427,7 @@ def create_container(settings: Settings) -> Container:
         # Repositories
         sc_repo=source_deps["sc_repo"],
         entity_repo=sync_deps["entity_repo"],
+        entity_count_repo=sync_deps["entity_count_repo"],
         acl_repo=acl_membership_repo,
         selection_repo=node_selection_repo,
         # Registries
@@ -1025,6 +1026,7 @@ def _create_sync_services(
         "temporal_schedule_service": temporal_schedule_service,
         "response_builder": response_builder,
         "entity_repo": entity_repo,
+        "entity_count_repo": entity_count_repo,
     }
 
 

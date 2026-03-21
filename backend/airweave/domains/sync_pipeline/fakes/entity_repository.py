@@ -5,10 +5,11 @@ from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from airweave.domains.entities.protocols import EntityRepositoryProtocol
 from airweave.models.entity import Entity
 
 
-class FakeEntityRepository:
+class FakeEntityRepository(EntityRepositoryProtocol):
     """In-memory fake for EntityRepositoryProtocol."""
 
     def __init__(self) -> None:

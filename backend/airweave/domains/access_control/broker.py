@@ -5,12 +5,15 @@ from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from airweave.domains.access_control.protocols import AccessControlMembershipRepositoryProtocol
+from airweave.domains.access_control.protocols import (
+    AccessBrokerProtocol,
+    AccessControlMembershipRepositoryProtocol,
+)
 from airweave.domains.access_control.schemas import AccessContext
 from airweave.platform.entities._base import AccessControl
 
 
-class AccessBroker:
+class AccessBroker(AccessBrokerProtocol):
     """Resolves user access context by expanding group memberships."""
 
     def __init__(self, acl_repo: AccessControlMembershipRepositoryProtocol) -> None:

@@ -15,6 +15,7 @@ def _build_factory(**overrides):
         # Repositories
         "sc_repo": MagicMock(),
         "entity_repo": MagicMock(),
+        "entity_count_repo": MagicMock(),
         "acl_repo": MagicMock(),
         "selection_repo": MagicMock(),
         # Registries
@@ -46,6 +47,7 @@ def test_constructor_stores_all_deps():
         # Repositories
         "sc_repo": MagicMock(),
         "entity_repo": MagicMock(),
+        "entity_count_repo": MagicMock(),
         "acl_repo": MagicMock(),
         "selection_repo": MagicMock(),
         # Registries
@@ -65,6 +67,7 @@ def test_constructor_stores_all_deps():
     f = SyncFactory(**deps)
     assert f._sc_repo is deps["sc_repo"]
     assert f._entity_repo is deps["entity_repo"]
+    assert f._entity_count_repo is deps["entity_count_repo"]
     assert f._acl_repo is deps["acl_repo"]
     assert f._selection_repo is deps["selection_repo"]
     assert f._entity_definition_registry is deps["entity_definition_registry"]
@@ -510,14 +513,13 @@ class TestBuildEntityTracker:
             count=5,
         )
 
-        with patch(
-            "airweave.domains.sync_pipeline.factory.crud.entity_count.get_counts_per_sync_and_type",
-            new_callable=AsyncMock,
-            return_value=[count_row],
-        ):
-            tracker = await SyncFactory._build_entity_tracker(
-                db=db, sync=sync, sync_job=sync_job, ctx=ctx
-            )
+        entity_count_repo = MagicMock()
+        entity_count_repo.get_counts_per_sync_and_type = AsyncMock(return_value=[count_row])
+        factory = _build_factory(entity_count_repo=entity_count_repo)
+
+        tracker = await factory._build_entity_tracker(
+            db=db, sync=sync, sync_job=sync_job, ctx=ctx
+        )
 
         assert tracker is not None
         assert tracker.job_id == sync_job.id
@@ -529,14 +531,13 @@ class TestBuildEntityTracker:
         sync_job = _make_sync_job()
         ctx = _make_ctx()
 
-        with patch(
-            "airweave.domains.sync_pipeline.factory.crud.entity_count.get_counts_per_sync_and_type",
-            new_callable=AsyncMock,
-            return_value={},
-        ):
-            tracker = await SyncFactory._build_entity_tracker(
-                db=db, sync=sync, sync_job=sync_job, ctx=ctx
-            )
+        entity_count_repo = MagicMock()
+        entity_count_repo.get_counts_per_sync_and_type = AsyncMock(return_value={})
+        factory = _build_factory(entity_count_repo=entity_count_repo)
+
+        tracker = await factory._build_entity_tracker(
+            db=db, sync=sync, sync_job=sync_job, ctx=ctx
+        )
 
         assert tracker is not None
 

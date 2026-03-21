@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Dict, List, Optional
 
 from airweave.domains.converters._base import BaseTextConverter
+from airweave.domains.converters.protocols import ConverterRegistryProtocol
 
 
 class _StubConverter(BaseTextConverter):
@@ -17,7 +18,7 @@ class _StubConverter(BaseTextConverter):
         return {p: self._text for p in file_paths}
 
 
-class FakeConverterRegistry:
+class FakeConverterRegistry(ConverterRegistryProtocol):
     """In-memory registry returning stub converters for all lookups."""
 
     def __init__(self, text: str = "fake-markdown") -> None:

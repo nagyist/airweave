@@ -6,10 +6,11 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import crud
+from airweave.domains.access_control.protocols import AccessControlMembershipRepositoryProtocol
 from airweave.models.access_control_membership import AccessControlMembership
 
 
-class AccessControlMembershipRepository:
+class AccessControlMembershipRepository(AccessControlMembershipRepositoryProtocol):
     """Delegates to the crud.access_control_membership singleton."""
 
     async def bulk_create(

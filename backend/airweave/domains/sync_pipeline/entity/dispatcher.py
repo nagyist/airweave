@@ -10,13 +10,14 @@ from typing import TYPE_CHECKING, List, Optional
 from airweave.domains.sync_pipeline.entity.actions import EntityActionBatch
 from airweave.domains.sync_pipeline.entity.handlers.protocol import EntityActionHandler
 from airweave.domains.sync_pipeline.exceptions import SyncFailureError
+from airweave.domains.sync_pipeline.protocols import EntityActionDispatcherProtocol
 
 if TYPE_CHECKING:
     from airweave.domains.sync_pipeline.contexts import SyncContext
     from airweave.domains.sync_pipeline.contexts.runtime import SyncRuntime
 
 
-class EntityActionDispatcher:
+class EntityActionDispatcher(EntityActionDispatcherProtocol):
     """Dispatches entity actions to all registered handlers concurrently.
 
     Implements all-or-nothing semantics:

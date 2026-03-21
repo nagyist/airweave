@@ -6,11 +6,12 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import crud
+from airweave.domains.entities.protocols import EntityRepositoryProtocol
 from airweave.models.entity import Entity
 from airweave.schemas.entity import EntityCreate
 
 
-class EntityRepository:
+class EntityRepository(EntityRepositoryProtocol):
     """Delegates to the crud.entity singleton."""
 
     async def get_by_sync_id(self, db: AsyncSession, sync_id: UUID) -> List[Entity]:

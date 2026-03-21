@@ -5,10 +5,11 @@ from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from airweave.domains.access_control.protocols import AccessControlMembershipRepositoryProtocol
 from airweave.models.access_control_membership import AccessControlMembership
 
 
-class FakeAccessControlMembershipRepository:
+class FakeAccessControlMembershipRepository(AccessControlMembershipRepositoryProtocol):
     """In-memory fake for AccessControlMembershipRepositoryProtocol."""
 
     def __init__(self) -> None:
@@ -22,6 +23,7 @@ class FakeAccessControlMembershipRepository:
         source_connection_id: UUID,
         source_name: str,
     ) -> int:
+        self._memberships.extend(memberships)
         return len(memberships)
 
     async def upsert(

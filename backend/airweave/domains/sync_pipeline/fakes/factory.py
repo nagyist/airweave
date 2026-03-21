@@ -8,9 +8,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from airweave import schemas
 from airweave.core.context import BaseContext
 from airweave.domains.sync_pipeline.config import SyncConfig
+from airweave.domains.sync_pipeline.protocols import SyncFactoryProtocol
 
 
-class FakeSyncFactory:
+class FakeSyncFactory(SyncFactoryProtocol):
     """In-memory fake for SyncFactoryProtocol."""
 
     def __init__(self) -> None:

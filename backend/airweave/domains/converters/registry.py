@@ -10,13 +10,14 @@ from airweave.domains.converters.docx import DocxConverter
 from airweave.domains.converters.html import HtmlConverter
 from airweave.domains.converters.pdf import PdfConverter
 from airweave.domains.converters.pptx import PptxConverter
+from airweave.domains.converters.protocols import ConverterRegistryProtocol
 from airweave.domains.converters.txt import TxtConverter
 from airweave.domains.converters.web import WebConverter
 from airweave.domains.converters.xlsx import XlsxConverter
 from airweave.domains.ocr.protocols import OcrProvider
 
 
-class ConverterRegistry:
+class ConverterRegistry(ConverterRegistryProtocol):
     """Concrete registry that creates and owns all converter instances.
 
     Built once by the container factory with the resolved OCR provider.

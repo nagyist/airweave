@@ -5,11 +5,12 @@ from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from airweave.domains.access_control.protocols import AccessBrokerProtocol
 from airweave.domains.access_control.schemas import AccessContext
 from airweave.platform.entities._base import AccessControl
 
 
-class FakeAccessBroker:
+class FakeAccessBroker(AccessBrokerProtocol):
     """In-memory fake for AccessBrokerProtocol.
 
     Returns a simple access context with just the user principal.

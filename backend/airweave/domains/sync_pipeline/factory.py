@@ -31,7 +31,10 @@ from airweave.domains.access_control.resolver import ACActionResolver
 from airweave.domains.arf.protocols import ArfServiceProtocol
 from airweave.domains.browse_tree.protocols import NodeSelectionRepositoryProtocol
 from airweave.domains.browse_tree.types import NodeSelectionData
-from airweave.domains.entities.protocols import EntityRepositoryProtocol
+from airweave.domains.entities.protocols import (
+    EntityCountRepositoryProtocol,
+    EntityRepositoryProtocol,
+)
 from airweave.domains.entities.registry import EntityDefinitionRegistry
 from airweave.domains.source_connections.protocols import SourceConnectionRepositoryProtocol
 from airweave.domains.sources.lifecycle import SourceLifecycleService
@@ -46,7 +49,10 @@ from airweave.domains.sync_pipeline.contexts.sync import SyncContext
 from airweave.domains.sync_pipeline.entity.dispatcher_builder import EntityDispatcherBuilder
 from airweave.domains.sync_pipeline.orchestrator import SyncOrchestrator
 from airweave.domains.sync_pipeline.pipeline.entity_tracker import EntityTracker
-from airweave.domains.sync_pipeline.protocols import ChunkEmbedProcessorProtocol
+from airweave.domains.sync_pipeline.protocols import (
+    ChunkEmbedProcessorProtocol,
+    SyncFactoryProtocol,
+)
 from airweave.domains.sync_pipeline.stream import AsyncSourceStream
 from airweave.domains.sync_pipeline.worker_pool import AsyncWorkerPool
 from airweave.domains.syncs.cursors.cursor import SyncCursor
@@ -70,7 +76,7 @@ class SourceBuildResult:
     node_selections: Optional[List[NodeSelectionData]]
 
 
-class SyncFactory:
+class SyncFactory(SyncFactoryProtocol):
     """Factory for sync orchestrator.
 
     Builds SyncContext (data), SyncRuntime (services), and wires them
@@ -82,6 +88,7 @@ class SyncFactory:
         # Repositories
         sc_repo: SourceConnectionRepositoryProtocol,
         entity_repo: EntityRepositoryProtocol,
+        entity_count_repo: EntityCountRepositoryProtocol,
         acl_repo: AccessControlMembershipRepositoryProtocol,
         selection_repo: NodeSelectionRepositoryProtocol,
         # Registries
@@ -102,6 +109,7 @@ class SyncFactory:
         # Repositories
         self._sc_repo = sc_repo
         self._entity_repo = entity_repo
+        self._entity_count_repo = entity_count_repo
         self._acl_repo = acl_repo
         self._selection_repo = selection_repo
 
@@ -508,8 +516,8 @@ class SyncFactory:
     # Private: Entity tracker (inlined from TrackingContextBuilder)
     # -------------------------------------------------------------------------
 
-    @staticmethod
     async def _build_entity_tracker(
+        self,
         db: AsyncSession,
         sync: schemas.Sync,
         sync_job: schemas.SyncJob,
@@ -524,7 +532,7 @@ class SyncFactory:
             },
         )
 
-        initial_counts = await crud.entity_count.get_counts_per_sync_and_type(db, sync.id)
+        initial_counts = await self._entity_count_repo.get_counts_per_sync_and_type(db, sync.id)
         track_logger.info(f"Loaded initial entity counts: {len(initial_counts)} entity types")
 
         return EntityTracker(

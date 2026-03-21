@@ -37,6 +37,10 @@ os.environ.setdefault("POSTGRES_PASSWORD", "test_password")
 os.environ.setdefault("POSTGRES_DB", "test_db")
 os.environ.setdefault("TESTING", "true")
 os.environ.setdefault("AUTH_ENABLED", "false")
+os.environ.setdefault(
+    "SVIX_JWT_SECRET",
+    "test-svix-jwt-secret-minimum-32-characters-long",
+)
 os.environ.setdefault("DENSE_EMBEDDER", "openai_text_embedding_3_small")
 os.environ.setdefault("EMBEDDING_DIMENSIONS", "1536")
 os.environ.setdefault("SPARSE_EMBEDDER", "fastembed_bm25")

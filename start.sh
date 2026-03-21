@@ -356,7 +356,7 @@ if [[ -n $ACTION_DESTROY ]]; then
     fi
 
     log_info "Stopping and removing containers and volumes..."
-    $COMPOSE_CMD -f "$COMPOSE_FILE" down --volumes --remove-orphans 2>/dev/null || true
+    $COMPOSE_CMD --env-file .env -f "$COMPOSE_FILE" down --volumes --remove-orphans 2>/dev/null || true
 
     log_success "All Airweave resources removed"
     echo ""
@@ -367,20 +367,20 @@ fi
 # Handle --recreate: Remove containers and volumes, then continue with fresh start
 if [[ -n $ACTION_RECREATE ]]; then
     log_info "Recreating containers..."
-    $COMPOSE_CMD -f "$COMPOSE_FILE" down --volumes --remove-orphans 2>/dev/null || true
+    $COMPOSE_CMD --env-file .env -f "$COMPOSE_FILE" down --volumes --remove-orphans 2>/dev/null || true
     log_success "Old containers and volumes removed"
 fi
 
 # Handle --restart: Restart existing containers and skip to health checks
 if [[ -n $ACTION_RESTART ]]; then
     # Validate containers exist before attempting restart
-    if [[ -z $($COMPOSE_CMD -f "$COMPOSE_FILE" ps -a -q 2>/dev/null) ]]; then
+    if [[ -z $($COMPOSE_CMD --env-file .env -f "$COMPOSE_FILE" ps -a -q 2>/dev/null) ]]; then
         log_error "No containers to restart. Run '$SCRIPT_NAME' first."
         exit 1
     fi
 
     log_info "Restarting services..."
-    $COMPOSE_CMD -f "$COMPOSE_FILE" restart
+    $COMPOSE_CMD --env-file .env -f "$COMPOSE_FILE" restart
     log_success "Services restarted"
 
     # Skip container creation and env setup, but still do health checks
@@ -395,11 +395,11 @@ fi
 # Handle existing containers (normal startup without action flags)
 if [[ -z $ACTION_RECREATE && -z $ACTION_RESTART && -z $SKIP_CONTAINER_CREATION ]]; then
     # Use compose to detect containers managed by this compose file
-    existing_containers=$($COMPOSE_CMD -f "$COMPOSE_FILE" ps -a -q 2>/dev/null)
+    existing_containers=$($COMPOSE_CMD --env-file .env -f "$COMPOSE_FILE" ps -a -q 2>/dev/null)
 
     if [[ -n $existing_containers ]]; then
         # Check if containers are running
-        running_containers=$($COMPOSE_CMD -f "$COMPOSE_FILE" ps -q 2>/dev/null)
+        running_containers=$($COMPOSE_CMD --env-file .env -f "$COMPOSE_FILE" ps -q 2>/dev/null)
 
         if [[ -n $running_containers ]]; then
             # Containers are already running - just show status
@@ -413,7 +413,7 @@ if [[ -z $ACTION_RECREATE && -z $ACTION_RESTART && -z $SKIP_CONTAINER_CREATION ]
             log_info "Starting existing containers..."
 
             # Start the existing containers
-            $COMPOSE_CMD -f "$COMPOSE_FILE" up -d
+            $COMPOSE_CMD --env-file .env -f "$COMPOSE_FILE" up -d
             log_success "Containers started"
             SKIP_CONTAINER_CREATION=1
             SKIP_ENV_SETUP=1
@@ -454,6 +454,50 @@ if [[ -z $SKIP_ENV_SETUP ]]; then
         new_secret=$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))' 2>/dev/null || openssl rand -base64 32)
         set_env_value "STATE_SECRET" "$new_secret"
         log_success "STATE_SECRET generated"
+    fi
+
+    # Generate SVIX_JWT_SECRET if needed
+    existing_svix_secret=$(get_env_value "SVIX_JWT_SECRET")
+    if [[ -n $existing_svix_secret ]]; then
+        log_success "SVIX_JWT_SECRET configured"
+    else
+        new_svix_secret=$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))' 2>/dev/null || openssl rand -base64 32)
+        set_env_value "SVIX_JWT_SECRET" "$new_svix_secret"
+        log_success "SVIX_JWT_SECRET generated"
+    fi
+
+    # Generate FIRST_SUPERUSER_PASSWORD if needed
+    existing_su_password=$(get_env_value "FIRST_SUPERUSER_PASSWORD")
+    if [[ -n $existing_su_password ]]; then
+        log_success "FIRST_SUPERUSER_PASSWORD configured"
+    else
+        new_su_password=$(python3 -c 'import secrets; print(secrets.token_urlsafe(16))' 2>/dev/null || openssl rand -base64 16)
+        set_env_value "FIRST_SUPERUSER_PASSWORD" "$new_su_password"
+        log_success "FIRST_SUPERUSER_PASSWORD generated"
+    fi
+
+    # Generate POSTGRES_PASSWORD if needed
+    existing_pg_password=$(get_env_value "POSTGRES_PASSWORD")
+    if [[ -n $existing_pg_password ]]; then
+        log_success "POSTGRES_PASSWORD configured"
+    else
+        new_pg_password=$(python3 -c 'import secrets; print(secrets.token_urlsafe(16))' 2>/dev/null || openssl rand -base64 16)
+        set_env_value "POSTGRES_PASSWORD" "$new_pg_password"
+        log_success "POSTGRES_PASSWORD generated"
+    fi
+
+    # Set default FIRST_SUPERUSER if needed
+    existing_su_email=$(get_env_value "FIRST_SUPERUSER")
+    if [[ -n $existing_su_email ]]; then
+        log_success "FIRST_SUPERUSER configured"
+    else
+        set_env_value "FIRST_SUPERUSER" "admin@example.com"
+        log_success "FIRST_SUPERUSER set to admin@example.com"
+    fi
+
+    # Set default POSTGRES_USER if needed
+    if ensure_env_value "POSTGRES_USER" "airweave"; then
+        log_debug "Added POSTGRES_USER=airweave"
     fi
 
     # Add SKIP_AZURE_STORAGE for faster local startup
@@ -571,7 +615,7 @@ fi
 # -----------------------------------------------------------------------------
 if [[ -z $SKIP_CONTAINER_CREATION ]]; then
     # Build compose command with profiles
-    compose_args=(-f docker/docker-compose.yml)
+    compose_args=(--env-file .env -f docker/docker-compose.yml)
     [[ $USE_LOCAL_EMBEDDINGS == true ]] && compose_args+=(--profile local-embeddings)
     [[ $USE_FRONTEND == true ]] && compose_args+=(--profile frontend)
     [[ $USE_CONNECT == true ]] && compose_args+=(--profile connect)

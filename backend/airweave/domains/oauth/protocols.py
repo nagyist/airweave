@@ -15,6 +15,7 @@ from airweave.domains.oauth.types import (
     RefreshResult,
 )
 from airweave.models.connection_init_session import ConnectionInitSession
+from airweave.models.redirect_session import RedirectSession
 from airweave.platform.auth.schemas import OAuth1Settings, OAuth2Settings, OAuth2TokenResponse
 from airweave.schemas.source_connection import SourceConnection as SourceConnectionSchema
 
@@ -212,12 +213,18 @@ class OAuthRedirectSessionRepositoryProtocol(Protocol):
         expires_at: datetime,
         ctx: ApiContext,
         uow: Optional[UnitOfWork] = None,
-    ) -> Any:
+    ) -> RedirectSession:
         """Persist a new redirect session and return it."""
         ...
 
-    async def get_by_code(self, db: AsyncSession, code: str) -> Optional[Any]:
+    async def get_by_code(self, db: AsyncSession, code: str) -> Optional[RedirectSession]:
         """Get a redirect session by its unique code."""
+        ...
+
+    async def consume(
+        self, db: AsyncSession, code: str, *, uow: Optional[UnitOfWork] = None
+    ) -> Optional[RedirectSession]:
+        """Atomically delete and return a redirect session (one-time use)."""
         ...
 
 

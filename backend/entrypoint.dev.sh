@@ -10,8 +10,8 @@ import os
 
 @retry(stop=stop_after_attempt(5), wait=wait_fixed(2))
 def check_db():
-    user = os.getenv('POSTGRES_USER', 'airweave')
-    password = os.getenv('POSTGRES_PASSWORD', 'airweave1234!')
+    user = os.environ['POSTGRES_USER']
+    password = os.environ['POSTGRES_PASSWORD']
     host = os.getenv('POSTGRES_HOST', 'db')
     db = os.getenv('POSTGRES_DB', 'airweave')
     port = os.getenv('POSTGRES_PORT', '5432')

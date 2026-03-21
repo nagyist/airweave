@@ -6,6 +6,7 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave.api.context import ApiContext
+from airweave.core.datetime_utils import utc_now
 from airweave.core.exceptions import NotFoundException
 from airweave.domains.auth_provider.protocols import AuthProviderRegistryProtocol
 from airweave.domains.collections.protocols import CollectionRepositoryProtocol
@@ -177,8 +178,15 @@ class SourceConnectionService(SourceConnectionServiceProtocol):
         return {"sync_id": str(source_connection.sync_id)}
 
     async def get_redirect_url(self, db: AsyncSession, *, code: str) -> str:
-        """Resolve a short redirect code to its final OAuth authorization URL."""
-        redirect_info = await self._redirect_session_repo.get_by_code(db, code=code)
+        """Resolve a short redirect code to its final OAuth authorization URL.
+
+        The redirect session is atomically consumed (deleted) on lookup,
+        enforcing one-time use per CASA Requirement #23.
+        """
+        redirect_info = await self._redirect_session_repo.consume(db, code=code)
         if not redirect_info:
+            raise NotFoundException("Authorization link expired or invalid")
+        # Check expiry *after* consume so expired tokens can't be replayed.
+        if redirect_info.expires_at <= utc_now():
             raise NotFoundException("Authorization link expired or invalid")
         return redirect_info.final_url

@@ -105,6 +105,7 @@ jobs:
           FIRST_SUPERUSER_PASSWORD: "testpassword"
           ENCRYPTION_KEY: "test-encryption-key-for-ci-only"
           STATE_SECRET: "test-state-secret-for-ci-only-must-be-32-chars-long"
+          SVIX_JWT_SECRET: "test-svix-jwt-secret-for-ci-only-32-chars-long"
           POSTGRES_HOST: "localhost"
           POSTGRES_USER: "test"
           POSTGRES_PASSWORD: "test"

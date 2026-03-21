@@ -11,11 +11,15 @@ from airweave.api.context import ApiContext
 from airweave.core.context import BaseContext
 from airweave.crud import connection_init_session, redirect_session
 from airweave.db.unit_of_work import UnitOfWork
+from airweave.domains.oauth.protocols import (
+    OAuthInitSessionRepositoryProtocol,
+    OAuthRedirectSessionRepositoryProtocol,
+)
 from airweave.models.connection_init_session import ConnectionInitSession
 from airweave.models.redirect_session import RedirectSession
 
 
-class OAuthInitSessionRepository:
+class OAuthInitSessionRepository(OAuthInitSessionRepositoryProtocol):
     """Delegates to crud.connection_init_session."""
 
     async def get_by_state_no_auth(
@@ -65,7 +69,7 @@ class OAuthInitSessionRepository:
         )
 
 
-class OAuthRedirectSessionRepository:
+class OAuthRedirectSessionRepository(OAuthRedirectSessionRepositoryProtocol):
     """Delegates to crud.redirect_session."""
 
     async def generate_unique_code(self, db: AsyncSession, *, length: int) -> str:
@@ -81,7 +85,7 @@ class OAuthRedirectSessionRepository:
         expires_at: datetime,
         ctx: ApiContext,
         uow: Optional[UnitOfWork] = None,
-    ) -> Any:
+    ) -> RedirectSession:
         """Create a new redirect session."""
         return await redirect_session.create(
             db, code=code, final_url=final_url, expires_at=expires_at, ctx=ctx, uow=uow
@@ -90,3 +94,9 @@ class OAuthRedirectSessionRepository:
     async def get_by_code(self, db: AsyncSession, code: str) -> Optional[RedirectSession]:
         """Look up a redirect session by its code."""
         return await crud.redirect_session.get_by_code(db, code)
+
+    async def consume(
+        self, db: AsyncSession, code: str, *, uow: Optional[UnitOfWork] = None
+    ) -> Optional[RedirectSession]:
+        """Atomically consume a redirect session (one-time use)."""
+        return await redirect_session.consume(db, code, uow=uow)

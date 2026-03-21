@@ -89,6 +89,8 @@ services:
       - POSTGRES_USER=airweave
       - POSTGRES_PASSWORD=airweave1234!
       - POSTGRES_DB=airweave
+      # DEV/TEST ONLY: default superuser for local development and testing.
+      # NEVER use these credentials in production.
       - FIRST_SUPERUSER=admin@example.com
       - FIRST_SUPERUSER_PASSWORD=admin
       - ENCRYPTION_KEY="SpgLrrEEgJ/7QdhSMSvagL1juEY5eoyCG0tZN7OSQV0="
@@ -96,6 +98,7 @@ services:
       - AUTH_ENABLED=false
       # Svix configuration
       - SVIX_URL=http://svix:8071
+      - STATE_SECRET=test-state-secret-key-minimum-32-characters-long
       - SVIX_JWT_SECRET=test_signing_secret_change_me!!!
       - SVIX_AUTH_TOKEN=
 

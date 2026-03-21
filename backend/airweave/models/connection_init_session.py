@@ -1,12 +1,13 @@
 """Ephemeral session model for unified source-connection initiation flow."""
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Optional
 from uuid import UUID
 
 from sqlalchemy import JSON, DateTime, ForeignKey, Index, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from airweave.core.datetime_utils import utc_now
 from airweave.models._base import OrganizationBase
 
 if TYPE_CHECKING:
@@ -83,4 +84,4 @@ class ConnectionInitSession(OrganizationBase):
     @staticmethod
     def default_expires_at(minutes: int = 5) -> datetime:
         """Return a UTC expiry timestamp ``minutes`` from now."""
-        return datetime.now(timezone.utc) + timedelta(minutes=minutes)
+        return utc_now() + timedelta(minutes=minutes)

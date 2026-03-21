@@ -7,13 +7,14 @@ Uses table-driven tests wherever possible.
 """
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta
 from typing import Optional
 from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
 import pytest
 
+from airweave.core.datetime_utils import utc_now
 from airweave.core.exceptions import NotFoundException
 
 from airweave.api.context import ApiContext
@@ -37,7 +38,7 @@ from airweave.domains.syncs.fakes.sync_lifecycle_service import FakeSyncLifecycl
 from airweave.schemas.organization import Organization
 from airweave.schemas.source_connection import AuthenticationMethod, SourceConnectionListItem
 
-NOW = datetime.now(timezone.utc)
+NOW = utc_now()
 ORG_ID = uuid4()
 
 
@@ -155,11 +156,13 @@ async def test_maps_all_fields():
 
 async def test_preserves_order():
     repo = FakeSourceConnectionRepository()
-    repo.seed_stats([
-        _make_stats(name="A", short_name="slack"),
-        _make_stats(name="B", short_name="github"),
-        _make_stats(name="C", short_name="notion"),
-    ])
+    repo.seed_stats(
+        [
+            _make_stats(name="A", short_name="slack"),
+            _make_stats(name="B", short_name="github"),
+            _make_stats(name="C", short_name="notion"),
+        ]
+    )
     svc = _build_service(sc_repo=repo)
 
     items = await svc.list(AsyncMock(), ctx=_make_ctx())
@@ -173,10 +176,12 @@ async def test_preserves_order():
 
 async def test_collection_filter_delegated():
     repo = FakeSourceConnectionRepository()
-    repo.seed_stats([
-        _make_stats(name="A", collection_id="col-1"),
-        _make_stats(name="B", collection_id="col-2"),
-    ])
+    repo.seed_stats(
+        [
+            _make_stats(name="A", collection_id="col-1"),
+            _make_stats(name="B", collection_id="col-2"),
+        ]
+    )
     svc = _build_service(sc_repo=repo)
 
     items = await svc.list(AsyncMock(), ctx=_make_ctx(), readable_collection_id="col-1")
@@ -244,12 +249,20 @@ class StatusCase:
 
 
 STATUS_CASES = [
-    StatusCase("unauthenticated → PENDING_AUTH", False, True, None, SourceConnectionStatus.PENDING_AUTH),
+    StatusCase(
+        "unauthenticated → PENDING_AUTH", False, True, None, SourceConnectionStatus.PENDING_AUTH
+    ),
     StatusCase("inactive → INACTIVE", True, False, None, SourceConnectionStatus.INACTIVE),
-    StatusCase("running → SYNCING", True, True, SyncJobStatus.RUNNING, SourceConnectionStatus.SYNCING),
-    StatusCase("cancelling → SYNCING", True, True, SyncJobStatus.CANCELLING, SourceConnectionStatus.SYNCING),
+    StatusCase(
+        "running → SYNCING", True, True, SyncJobStatus.RUNNING, SourceConnectionStatus.SYNCING
+    ),
+    StatusCase(
+        "cancelling → SYNCING", True, True, SyncJobStatus.CANCELLING, SourceConnectionStatus.SYNCING
+    ),
     StatusCase("failed → ERROR", True, True, SyncJobStatus.FAILED, SourceConnectionStatus.ERROR),
-    StatusCase("completed → ACTIVE", True, True, SyncJobStatus.COMPLETED, SourceConnectionStatus.ACTIVE),
+    StatusCase(
+        "completed → ACTIVE", True, True, SyncJobStatus.COMPLETED, SourceConnectionStatus.ACTIVE
+    ),
     StatusCase("no job → ACTIVE", True, True, None, SourceConnectionStatus.ACTIVE),
 ]
 
@@ -262,7 +275,9 @@ async def test_computed_status(case: StatusCase):
         else None
     )
     item = await _list_single(
-        _make_stats(is_authenticated=case.is_authenticated, is_active=case.is_active, last_job=last_job)
+        _make_stats(
+            is_authenticated=case.is_authenticated, is_active=case.is_active, last_job=last_job
+        )
     )
     assert item.status == case.expect
 
@@ -347,11 +362,37 @@ async def test_get_redirect_url_returns_url():
     redirect_repo = FakeOAuthRedirectSessionRepository()
     session = MagicMock()
     session.final_url = "https://provider.example.com/auth?state=abc"
+    session.expires_at = utc_now() + timedelta(minutes=5)
     redirect_repo.seed("abc123", session)
     svc = _build_service(redirect_session_repo=redirect_repo)
 
     result = await svc.get_redirect_url(AsyncMock(), code="abc123")
     assert result == "https://provider.example.com/auth?state=abc"
+
+
+async def test_get_redirect_url_replay_raises():
+    redirect_repo = FakeOAuthRedirectSessionRepository()
+    session = MagicMock()
+    session.final_url = "https://provider.example.com/auth?state=abc"
+    session.expires_at = utc_now() + timedelta(minutes=5)
+    redirect_repo.seed("abc123", session)
+    svc = _build_service(redirect_session_repo=redirect_repo)
+
+    await svc.get_redirect_url(AsyncMock(), code="abc123")
+    with pytest.raises(NotFoundException, match="Authorization link expired or invalid"):
+        await svc.get_redirect_url(AsyncMock(), code="abc123")
+
+
+async def test_get_redirect_url_expired_raises():
+    redirect_repo = FakeOAuthRedirectSessionRepository()
+    session = MagicMock()
+    session.final_url = "https://provider.example.com/auth?state=abc"
+    session.expires_at = utc_now() - timedelta(minutes=1)
+    redirect_repo.seed("abc123", session)
+    svc = _build_service(redirect_session_repo=redirect_repo)
+
+    with pytest.raises(NotFoundException, match="Authorization link expired or invalid"):
+        await svc.get_redirect_url(AsyncMock(), code="abc123")
 
 
 async def test_get_redirect_url_missing_code_raises():

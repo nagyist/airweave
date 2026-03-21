@@ -160,7 +160,9 @@ class GoogleCalendarListEntity(BaseEntity):
         """Build from a Google Calendar API calendarList entry JSON object."""
         calendar_id = data["id"]
         name = data.get("summaryOverride") or data.get("summary") or "Untitled Calendar"
-        web_url = f"https://calendar.google.com/calendar/u/0/r?cid={urllib.parse.quote(calendar_id)}"
+        web_url = (
+            f"https://calendar.google.com/calendar/u/0/r?cid={urllib.parse.quote(calendar_id)}"
+        )
         return cls(
             breadcrumbs=[],
             calendar_key=calendar_id,

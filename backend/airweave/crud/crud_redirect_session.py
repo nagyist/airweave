@@ -2,7 +2,7 @@
 
 import secrets
 import string
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Optional
 
 from sqlalchemy import delete, select
@@ -84,31 +84,36 @@ class CRUDRedirectSession:
         res = await db.execute(q)
         return res.scalar_one_or_none()
 
-    async def consume(self, db: AsyncSession, code: str, uow: Optional[UnitOfWork] = None) -> None:
-        """Delete the mapping (one-time use).
+    async def consume(
+        self,
+        db: AsyncSession,
+        code: str,
+        *,
+        uow: Optional[UnitOfWork] = None,
+    ) -> Optional[RedirectSession]:
+        """Atomically delete and return a redirect session (one-time use).
+
+        Uses DELETE ... RETURNING so the first concurrent caller gets the row
+        and every subsequent caller sees None.
 
         Args:
             db: Database session
-            code: The unique code to delete
+            code: The unique code to consume
             uow: Optional unit of work for transaction management
-        """
-        q = delete(RedirectSession).where(RedirectSession.code == code)
-        await db.execute(q)
-        # Only commit if not part of a larger transaction
-        if not uow:
-            await db.commit()
-
-    @staticmethod
-    def is_expired(rs: RedirectSession) -> bool:
-        """Check if a redirect session has expired.
-
-        Args:
-            rs: The RedirectSession instance to check
 
         Returns:
-            True if the session has expired, False otherwise
+            The consumed RedirectSession (detached from the session), or None
+            if already consumed / missing.  The object is expunged before
+            commit, so only eagerly-loaded column attributes are safe to read.
         """
-        return rs.expires_at <= datetime.now(timezone.utc)
+        q = delete(RedirectSession).where(RedirectSession.code == code).returning(RedirectSession)
+        result = await db.execute(q)
+        row = result.scalar_one_or_none()
+        if row is not None:
+            db.expunge(row)
+        if not uow:
+            await db.commit()
+        return row
 
 
 redirect_session = CRUDRedirectSession()

@@ -5,7 +5,10 @@ and OAuth callback validation where no refresh is possible.
 """
 
 from airweave.domains.sources.token_providers.exceptions import TokenRefreshNotSupportedError
-from airweave.domains.sources.token_providers.protocol import AuthProviderKind, TokenProviderProtocol
+from airweave.domains.sources.token_providers.protocol import (
+    AuthProviderKind,
+    TokenProviderProtocol,
+)
 
 
 class StaticTokenProvider(TokenProviderProtocol):

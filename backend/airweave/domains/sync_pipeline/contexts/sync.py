@@ -1,13 +1,12 @@
 """Sync context - frozen data for sync operations."""
 
-from dataclasses import dataclass, field
-from typing import Dict, Optional
+from dataclasses import dataclass
+from typing import Optional
 from uuid import UUID
 
 from airweave import schemas
 from airweave.core.context import BaseContext
 from airweave.domains.sync_pipeline.config.base import SyncConfig
-from airweave.platform.entities._base import BaseEntity
 
 
 @dataclass
@@ -39,9 +38,6 @@ class SyncContext(BaseContext):
     force_full_sync: bool = False
     batch_size: int = 64
     max_batch_latency_ms: int = 200
-
-    # --- Lookups ---
-    entity_map: Dict[type[BaseEntity], str] = field(default_factory=dict)
 
     # --- Derived data (extracted from source at build time) ---
     source_short_name: str = ""

@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 from airweave import models
 from airweave.db.session import get_db_context
 from airweave.domains.entities.protocols import EntityRepositoryProtocol
+from airweave.domains.entities.registry import EntityDefinitionRegistry
 from airweave.domains.sync_pipeline.entity.actions import (
     EntityActionBatch,
     EntityDeleteAction,
@@ -33,11 +34,11 @@ class EntityActionResolver:
 
     def __init__(
         self,
-        entity_map: Dict[type, str],
+        entity_registry: EntityDefinitionRegistry,
         entity_repo: EntityRepositoryProtocol,
     ):
-        """Initialize with entity-type-to-short-name map and repository."""
-        self.entity_map = entity_map
+        """Initialize with entity definition registry and repository."""
+        self._entity_registry = entity_registry
         self._entity_repo = entity_repo
 
     # -------------------------------------------------------------------------
@@ -52,7 +53,7 @@ class EntityActionResolver:
         """Resolve entities to their appropriate actions.
 
         Raises:
-            SyncFailureError: If entity type not found in entity_map or missing hash
+            SyncFailureError: If entity type not found in entity registry or missing hash
         """
         if (
             sync_context.execution_config
@@ -91,7 +92,7 @@ class EntityActionResolver:
             if target_class:
                 entity_class = target_class
 
-        return self.entity_map.get(entity_class)
+        return self._entity_registry.get_short_name_by_class(entity_class)
 
     # -------------------------------------------------------------------------
     # Internal Methods
@@ -120,7 +121,7 @@ class EntityActionResolver:
         """Build entity requests for database lookup.
 
         Raises:
-            SyncFailureError: If entity type not found in entity_map
+            SyncFailureError: If entity type not found in entity registry
         """
         entity_requests = []
 
@@ -128,9 +129,11 @@ class EntityActionResolver:
             short_name = self.resolve_entity_definition_short_name(entity)
             if short_name is None:
                 sync_context.logger.error(
-                    f"Entity type {entity.__class__.__name__} not found in entity_map"
+                    f"Entity type {entity.__class__.__name__} not found in entity registry"
                 )
-                raise SyncFailureError(f"Entity type {entity.__class__.__name__} not in entity_map")
+                raise SyncFailureError(
+                    f"Entity type {entity.__class__.__name__} not in entity registry"
+                )
             entity_requests.append((entity.entity_id, short_name))
 
         return entity_requests
@@ -184,7 +187,7 @@ class EntityActionResolver:
         """Create action objects for all entities.
 
         Raises:
-            SyncFailureError: If entity has no hash or type not in entity_map
+            SyncFailureError: If entity has no hash or type not in entity registry
         """
         inserts: List[EntityInsertAction] = []
         updates: List[EntityUpdateAction] = []
@@ -221,7 +224,7 @@ class EntityActionResolver:
         """Resolve a non-delete entity to its action type.
 
         Raises:
-            SyncFailureError: If entity has no hash or type not in entity_map
+            SyncFailureError: If entity has no hash or type not in entity registry
         """
         if not entity.airweave_system_metadata or not entity.airweave_system_metadata.hash:
             raise SyncFailureError(
@@ -234,7 +237,9 @@ class EntityActionResolver:
 
         short_name = self.resolve_entity_definition_short_name(entity)
         if short_name is None:
-            raise SyncFailureError(f"Entity type {entity.__class__.__name__} not in entity_map")
+            raise SyncFailureError(
+                f"Entity type {entity.__class__.__name__} not in entity registry"
+            )
 
         db_key = (entity.entity_id, short_name)
         db_row = existing_map.get(db_key)
@@ -265,11 +270,13 @@ class EntityActionResolver:
         """Create a delete action for a DeletionEntity.
 
         Raises:
-            SyncFailureError: If entity type not in entity_map
+            SyncFailureError: If entity type not in entity registry
         """
         short_name = self.resolve_entity_definition_short_name(entity)
         if short_name is None:
-            raise SyncFailureError(f"Entity type {entity.__class__.__name__} not in entity_map")
+            raise SyncFailureError(
+                f"Entity type {entity.__class__.__name__} not in entity registry"
+            )
 
         db_key = (entity.entity_id, short_name)
         db_row = existing_map.get(db_key)
@@ -296,7 +303,7 @@ class EntityActionResolver:
                 short_name = self.resolve_entity_definition_short_name(entity)
                 if not short_name:
                     raise SyncFailureError(
-                        f"Entity type {entity.__class__.__name__} not in entity_map"
+                        f"Entity type {entity.__class__.__name__} not in entity registry"
                     )
                 inserts.append(
                     EntityInsertAction(entity=entity, entity_definition_short_name=short_name)

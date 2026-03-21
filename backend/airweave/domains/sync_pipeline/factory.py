@@ -12,7 +12,7 @@ All container imports eliminated — deps flow through constructor.
 
 import time
 from dataclasses import dataclass
-from typing import Dict, List, Optional
+from typing import List, Optional
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -59,7 +59,6 @@ from airweave.domains.syncs.cursors.cursor import SyncCursor
 from airweave.domains.syncs.cursors.service import SyncCursorService
 from airweave.domains.usage.protocols import UsageLedgerProtocol, UsageLimitCheckerProtocol
 from airweave.models.source_connection import SourceConnection
-from airweave.platform.entities._base import BaseEntity
 from airweave.platform.sources._base import BaseSource
 
 from .entity.pipeline import EntityPipeline
@@ -192,11 +191,6 @@ class SyncFactory(SyncFactoryProtocol):
             ctx=ctx,
         )
 
-        entity_map: Dict[type[BaseEntity], str] = {
-            entry.entity_class_ref: entry.short_name
-            for entry in self._entity_definition_registry.list_all()
-        }
-
         # 3. Assemble context + runtime
         sync_context = await SyncContextBuilder.build(
             db=db,
@@ -207,7 +201,6 @@ class SyncFactory(SyncFactoryProtocol):
             ctx=ctx,
             source_connection_id=sc.id,
             source_short_name=getattr(source_result.source, "short_name", "") or "",
-            entity_map=entity_map,
             force_full_sync=force_full_sync,
             execution_config=resolved_config,
         )
@@ -280,7 +273,7 @@ class SyncFactory(SyncFactoryProtocol):
             logger=sync_context.logger,
         )
         action_resolver = EntityActionResolver(
-            entity_map=sync_context.entity_map,
+            entity_registry=self._entity_definition_registry,
             entity_repo=self._entity_repo,
         )
         return EntityPipeline(

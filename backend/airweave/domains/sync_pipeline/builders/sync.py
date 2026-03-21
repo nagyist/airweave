@@ -33,7 +33,6 @@ class SyncContextBuilder:
         ctx: BaseContext,
         source_connection_id: UUID,
         source_short_name: str,
-        entity_map: dict,
         force_full_sync: bool = False,
         execution_config: Optional[SyncConfig] = None,
     ) -> SyncContext:
@@ -48,7 +47,6 @@ class SyncContextBuilder:
             ctx: The base context (provides org identity)
             source_connection_id: Pre-resolved source connection ID
             source_short_name: Source short name (extracted from source instance)
-            entity_map: Entity class to definition ID mapping
             force_full_sync: If True, forces a full sync
             execution_config: Optional execution config
 
@@ -75,7 +73,6 @@ class SyncContextBuilder:
             connection=connection,
             execution_config=execution_config,
             force_full_sync=force_full_sync,
-            entity_map=entity_map,
             source_short_name=source_short_name,
             logger=logger,
         )

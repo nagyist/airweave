@@ -204,6 +204,7 @@ class SyncFactory(SyncFactoryProtocol):
             source_short_name=getattr(source_result.source, "short_name", "") or "",
             force_full_sync=force_full_sync,
             execution_config=resolved_config,
+            authentication_method=getattr(sc, "authentication_method", "") or "",
         )
 
         runtime = SyncRuntime(

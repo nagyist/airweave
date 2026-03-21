@@ -92,6 +92,26 @@ class TemporalScheduleServiceProtocol(Protocol):
         """
         ...
 
+    async def pause_schedules_for_source_connection(
+        self,
+        source_connection_id: UUID,
+        db: AsyncSession,
+        ctx: ApiContext,
+        *,
+        reason: str = "",
+    ) -> None:
+        """Pause all schedules for a source connection (credential error)."""
+        ...
+
+    async def unpause_schedules_for_source_connection(
+        self,
+        source_connection_id: UUID,
+        db: AsyncSession,
+        ctx: ApiContext,
+    ) -> None:
+        """Unpause all schedules for a source connection (credential fixed)."""
+        ...
+
     async def ensure_system_schedules(self) -> None:
         """Create system-level singleton schedules if they don't already exist.
 

@@ -4,9 +4,14 @@ Assembles the rich SourceConnection and SourceConnectionListItem
 response schemas from multiple data sources.
 """
 
+from __future__ import annotations
+
 from datetime import datetime, timezone
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 from uuid import UUID
+
+if TYPE_CHECKING:
+    from airweave.domains.auth_provider.protocols import AuthProviderRegistryProtocol
 
 from croniter import croniter
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -51,6 +56,7 @@ class ResponseBuilder(ResponseBuilderProtocol):
         source_registry: SourceRegistryProtocol,
         entity_count_repo: EntityCountRepositoryProtocol,
         sync_job_repo: SyncJobRepositoryProtocol,
+        auth_provider_registry: Optional["AuthProviderRegistryProtocol"] = None,
     ) -> None:
         """Initialize with all dependencies."""
         self._sc_repo = sc_repo
@@ -59,6 +65,7 @@ class ResponseBuilder(ResponseBuilderProtocol):
         self._source_registry = source_registry
         self._entity_count_repo = entity_count_repo
         self._sync_job_repo = sync_job_repo
+        self._auth_provider_registry = auth_provider_registry
 
     # ------------------------------------------------------------------
     # Public API
@@ -89,8 +96,19 @@ class ResponseBuilder(ResponseBuilderProtocol):
         federated_search = self._get_federated_search(source_conn)
 
         last_job_status = None
+        last_job_error_category = None
+        last_job_error_message = None
         if sync_details and sync_details.last_job:
             last_job_status = sync_details.last_job.status
+            last_job_error_category = getattr(sync_details.last_job, "error_category", None)
+            last_job_error_message = sync_details.last_job.error
+
+        # Attach error_category so compute_status can read it
+        source_conn._error_category = last_job_error_category  # type: ignore[attr-defined]
+
+        provider_settings_url = None
+        if last_job_error_category and self._auth_provider_registry:
+            provider_settings_url = self._resolve_provider_settings_url(source_conn)
 
         return SourceConnectionSchema(
             id=source_conn.id,
@@ -108,12 +126,16 @@ class ResponseBuilder(ResponseBuilderProtocol):
             sync=sync_details,
             sync_id=source_conn.sync_id,
             entities=entities,
+            error_category=last_job_error_category,
+            error_message=last_job_error_message if last_job_error_category else None,
+            provider_settings_url=provider_settings_url,
             federated_search=federated_search,
         )
 
     def build_list_item(self, stats: SourceConnectionStats) -> SourceConnectionListItem:
         """Build a SourceConnectionListItem from a typed stats object."""
         last_job_status = stats.last_job.status if stats.last_job else None
+        last_job_error_category = stats.last_job.error_category if stats.last_job else None
 
         return SourceConnectionListItem(
             id=stats.id,
@@ -127,6 +149,7 @@ class ResponseBuilder(ResponseBuilderProtocol):
             entity_count=stats.entity_count,
             is_active=stats.is_active,
             last_job_status=last_job_status,
+            last_job_error_category=last_job_error_category,
             federated_search=stats.federated_search,
         )
 
@@ -148,6 +171,7 @@ class ResponseBuilder(ResponseBuilderProtocol):
             entities_deleted=job.entities_deleted,
             entities_failed=job.entities_skipped,
             error=job.error,
+            error_category=getattr(job, "error_category", None),
         )
 
     # ------------------------------------------------------------------
@@ -320,6 +344,7 @@ class ResponseBuilder(ResponseBuilderProtocol):
                     entities_deleted=job.entities_deleted or 0,
                     entities_failed=job.entities_skipped or 0,
                     error=job.error,
+                    error_category=getattr(job, "error_category", None),
                 )
 
                 return schemas.SyncDetails(
@@ -360,6 +385,17 @@ class ResponseBuilder(ResponseBuilderProtocol):
         except Exception as e:
             ctx.logger.warning(f"Failed to get entity summary: {e}")
         return None
+
+    def _resolve_provider_settings_url(self, source_conn: SourceConnection) -> Optional[str]:
+        """Resolve auth provider settings URL for credential error UI."""
+        if not self._auth_provider_registry or not source_conn.readable_auth_provider_id:
+            return None
+        try:
+            return self._auth_provider_registry.get_settings_url(
+                source_conn.readable_auth_provider_id
+            )
+        except Exception:
+            return None
 
     def _get_federated_search(self, source_conn: SourceConnection) -> bool:
         """Get federated_search flag from the source registry."""

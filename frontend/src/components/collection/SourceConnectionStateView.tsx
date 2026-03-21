@@ -13,6 +13,7 @@ import { toast } from '@/hooks/use-toast';
 import { SourceConnectionSettings } from './SourceConnectionSettings';
 import { EntityStateList } from './EntityStateList';
 import { SyncErrorCard } from './SyncErrorCard';
+import { CredentialErrorView } from './CredentialErrorView';
 import { SourceAuthenticationView } from '@/components/shared/SourceAuthenticationView';
 import {
   Tooltip,
@@ -88,6 +89,10 @@ interface SourceConnection {
   schedule?: Schedule;
   last_sync_job?: LastSyncJob;
   entities?: EntitySummary;  // Changed from entity_states array to entities object
+  // Credential error info
+  error_category?: string;
+  error_message?: string;
+  provider_settings_url?: string;
   // Source configuration
   federated_search?: boolean;  // Whether this source uses federated search
   // Legacy fields that may still exist
@@ -902,8 +907,25 @@ const SourceConnectionStateView: React.FC<Props> = ({
       {/* Only show sync-related UI when authenticated */}
       {!isNotAuthorized && (
         <>
-          {/* Show error card if sync failed or there's an error - Only for non-federated sources */}
-          {!isFederatedSource && (currentSyncJob?.status === 'failed') && (
+          {/* Show credential error view for needs_reauth status */}
+          {!isFederatedSource && sourceConnection?.status === 'needs_reauth' && sourceConnection?.error_category && (
+            <CredentialErrorView
+              errorCategory={sourceConnection.error_category}
+              errorMessage={sourceConnection.error_message}
+              providerSettingsUrl={sourceConnection.provider_settings_url}
+              sourceConnectionId={sourceConnectionId}
+              shortName={sourceConnection.short_name}
+              isDark={isDark}
+              onRefreshAuthUrl={handleRefreshAuthUrl}
+              onCredentialUpdated={() => {
+                fetchSourceConnection();
+                onConnectionUpdated?.();
+              }}
+            />
+          )}
+
+          {/* Show error card if sync failed (non-credential errors) - Only for non-federated sources */}
+          {!isFederatedSource && sourceConnection?.status !== 'needs_reauth' && (currentSyncJob?.status === 'failed') && (
             <SyncErrorCard
               error={currentSyncJob?.error || sourceConnection?.last_sync_job?.error || "The last sync failed. Check the logs for more details."}
               isDark={isDark}

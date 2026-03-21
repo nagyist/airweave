@@ -44,6 +44,7 @@ class SyncJobService(SyncJobServiceProtocol):
         completed_at: Optional[datetime],
         failed_at: Optional[datetime],
         error: Optional[str],
+        error_category: Optional[str] = None,
     ) -> TimestampUpdate:
         """Build timestamp / error fields for the ORM update."""
         update = TimestampUpdate()
@@ -56,6 +57,8 @@ class SyncJobService(SyncJobServiceProtocol):
                 update.failed_at = failed_at
             if error:
                 update.error = error
+            if error_category:
+                update.error_category = error_category
         return update
 
     async def update_status(
@@ -68,6 +71,7 @@ class SyncJobService(SyncJobServiceProtocol):
         started_at: Optional[datetime] = None,
         completed_at: Optional[datetime] = None,
         failed_at: Optional[datetime] = None,
+        error_category: Optional[str] = None,
     ) -> None:
         """Update sync job status with provided details.
 
@@ -88,7 +92,7 @@ class SyncJobService(SyncJobServiceProtocol):
                 if stats:
                     update_data.update(asdict(self._build_stats_update(stats)))
                 ts = self._build_timestamp_update(
-                    status, started_at, completed_at, failed_at, error
+                    status, started_at, completed_at, failed_at, error, error_category
                 )
                 update_data.update({k: v for k, v in asdict(ts).items() if v is not None})
 

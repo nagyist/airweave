@@ -155,6 +155,17 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
             config=config,
         )
 
+        # 7. Validate credentials early so failures surface as NEEDS_REAUTH
+        try:
+            await source.validate()
+        except Exception as exc:
+            from airweave.domains.sources.exceptions import SourceValidationError
+
+            raise SourceValidationError(
+                short_name=source_connection_data.short_name,
+                reason=f"credential validation failed: {exc}",
+            ) from exc
+
         return source
 
     async def validate(

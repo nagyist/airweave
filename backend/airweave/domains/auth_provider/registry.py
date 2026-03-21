@@ -36,6 +36,14 @@ class AuthProviderRegistry(AuthProviderRegistryProtocol):
         """List all registered auth provider entries."""
         return list(self._entries.values())
 
+    def get_settings_url(self, short_name: str) -> str | None:
+        """Get the settings dashboard URL for an auth provider, or None."""
+        try:
+            entry = self._entries[short_name]
+            return entry.settings_url or None
+        except KeyError:
+            return None
+
     def build(self) -> None:
         """Build the registry from auth provider classes.
 
@@ -81,6 +89,7 @@ class AuthProviderRegistry(AuthProviderRegistryProtocol):
         blocked_sources: list[str] = getattr(provider_cls, "BLOCKED_SOURCES", [])
         field_name_mapping: dict[str, str] = getattr(provider_cls, "FIELD_NAME_MAPPING", {})
         slug_name_mapping: dict[str, str] = getattr(provider_cls, "SLUG_NAME_MAPPING", {})
+        settings_url: str = getattr(provider_cls, "settings_url", "")
 
         # ------------------------------------------------------------------
         # Precompute fields
@@ -106,4 +115,6 @@ class AuthProviderRegistry(AuthProviderRegistryProtocol):
             # Mappings
             field_name_mapping=field_name_mapping,
             slug_name_mapping=slug_name_mapping,
+            # Settings URL
+            settings_url=settings_url,
         )

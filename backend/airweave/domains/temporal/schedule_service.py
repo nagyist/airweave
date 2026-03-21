@@ -451,6 +451,64 @@ class TemporalScheduleService(TemporalScheduleServiceProtocol):
         except Exception as e:
             logger.info(f"Schedule handle {schedule_id} not deleted: {e}")
 
+    async def pause_schedules_for_source_connection(
+        self,
+        source_connection_id: UUID,
+        db: AsyncSession,
+        ctx: ApiContext,
+        *,
+        reason: str = "",
+    ) -> None:
+        """Pause all Temporal schedules for a source connection."""
+        sc = await self._sc_repo.get(db, source_connection_id, ctx)
+        if not sc or not sc.sync_id:
+            return
+
+        sync_id = sc.sync_id
+        client = await self._get_client()
+
+        for prefix in ("sync-", "minute-sync-", "daily-cleanup-"):
+            schedule_id = f"{prefix}{sync_id}"
+            try:
+                handle = client.get_schedule_handle(schedule_id)
+                await handle.pause(note=reason or "Credential error")
+                logger.info(f"Paused schedule {schedule_id}")
+            except RPCError as e:
+                if e.status == RPCStatusCode.NOT_FOUND:
+                    logger.debug(f"Schedule {schedule_id} not found (skipping pause)")
+                else:
+                    logger.warning(f"Failed to pause schedule {schedule_id}: {e}")
+            except Exception as e:
+                logger.warning(f"Failed to pause schedule {schedule_id}: {e}")
+
+    async def unpause_schedules_for_source_connection(
+        self,
+        source_connection_id: UUID,
+        db: AsyncSession,
+        ctx: ApiContext,
+    ) -> None:
+        """Unpause all Temporal schedules for a source connection."""
+        sc = await self._sc_repo.get(db, source_connection_id, ctx)
+        if not sc or not sc.sync_id:
+            return
+
+        sync_id = sc.sync_id
+        client = await self._get_client()
+
+        for prefix in ("sync-", "minute-sync-", "daily-cleanup-"):
+            schedule_id = f"{prefix}{sync_id}"
+            try:
+                handle = client.get_schedule_handle(schedule_id)
+                await handle.unpause()
+                logger.info(f"Unpaused schedule {schedule_id}")
+            except RPCError as e:
+                if e.status == RPCStatusCode.NOT_FOUND:
+                    logger.debug(f"Schedule {schedule_id} not found (skipping unpause)")
+                else:
+                    logger.warning(f"Failed to unpause schedule {schedule_id}: {e}")
+            except Exception as e:
+                logger.warning(f"Failed to unpause schedule {schedule_id}: {e}")
+
     async def ensure_system_schedules(self) -> None:
         """Create system-level singleton schedules if they don't already exist.
 

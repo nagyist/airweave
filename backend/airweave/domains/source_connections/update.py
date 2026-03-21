@@ -127,6 +127,16 @@ class SourceConnectionUpdateService(SourceConnectionUpdateServiceProtocol):
                 )
                 del update_data["credentials"]
 
+                # Unpause schedules — credential update may fix a NEEDS_REAUTH state
+                try:
+                    await self._temporal_schedule_service.unpause_schedules_for_source_connection(
+                        source_conn.id, uow.session, ctx
+                    )
+                except Exception:
+                    ctx.logger.warning(
+                        "Failed to unpause schedules after credential update", exc_info=True
+                    )
+
             # Update source connection
             if update_data:
                 source_conn = await self._sc_repo.update(

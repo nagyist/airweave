@@ -431,6 +431,7 @@ class SourceConnectionListItem(BaseModel):
     authentication_method: Optional[str] = Field(None, exclude=True)
     is_active: bool = Field(True, exclude=True)
     last_job_status: Optional[str] = Field(None, exclude=True)
+    last_job_error_category: Optional[str] = Field(None, exclude=True)
 
     model_config = {
         "json_schema_extra": {
@@ -495,6 +496,8 @@ class SourceConnectionListItem(BaseModel):
             if job_status in ("running", "cancelling"):
                 return SourceConnectionStatus.SYNCING
             elif job_status == "failed":
+                if self.last_job_error_category:
+                    return SourceConnectionStatus.NEEDS_REAUTH
                 return SourceConnectionStatus.ERROR
 
         return SourceConnectionStatus.ACTIVE
@@ -546,6 +549,7 @@ class SyncJobDetails(BaseModel):
     entities_deleted: int = 0
     entities_failed: int = 0
     error: Optional[str] = None
+    error_category: Optional[str] = None
 
 
 class SyncDetails(BaseModel):
@@ -684,6 +688,20 @@ class SourceConnection(BaseModel):
         description="Summary of synced entities by type",
     )
 
+    # Credential error info
+    error_category: Optional[str] = Field(
+        None,
+        description="Error category when status is needs_reauth (e.g. oauth_credentials_expired)",
+    )
+    error_message: Optional[str] = Field(
+        None,
+        description="Human-readable error message when status is needs_reauth",
+    )
+    provider_settings_url: Optional[str] = Field(
+        None,
+        description="URL to the auth provider's settings dashboard (for auth_provider errors)",
+    )
+
     # Source configuration
     federated_search: bool = Field(
         False,
@@ -796,6 +814,11 @@ class SourceConnectionJob(BaseModel):
         description="Error message if the job failed",
         json_schema_extra={"example": None},
     )
+    error_category: Optional[str] = Field(
+        None,
+        description="Error category for credential errors (e.g. oauth_credentials_expired)",
+        json_schema_extra={"example": None},
+    )
     error_details: Optional[Dict[str, Any]] = Field(
         None,
         description="Additional error context for debugging",
@@ -878,6 +901,10 @@ def compute_status(
         if last_job_status in (SyncJobStatus.RUNNING, SyncJobStatus.CANCELLING):
             return SourceConnectionStatus.SYNCING
         elif last_job_status == SyncJobStatus.FAILED:
+            # Check for error_category to determine NEEDS_REAUTH vs ERROR
+            error_category = getattr(source_conn, "_error_category", None)
+            if error_category:
+                return SourceConnectionStatus.NEEDS_REAUTH
             return SourceConnectionStatus.ERROR
 
     return SourceConnectionStatus.ACTIVE

@@ -163,6 +163,7 @@ class SyncJobServiceProtocol(Protocol):
         started_at: Optional[datetime] = None,
         completed_at: Optional[datetime] = None,
         failed_at: Optional[datetime] = None,
+        error_category: Optional[str] = None,
     ) -> None:
         """Update sync job status with provided details."""
         ...

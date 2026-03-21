@@ -656,10 +656,15 @@ class SyncOrchestrator:
 
     async def _handle_sync_failure(self, error: Exception) -> None:
         """Handle sync failure by updating job status with error details."""
+        from airweave.domains.source_connections.error_classifier import classify_error
+
         error_message = get_error_message(error)
         self.sync_context.logger.error(
             f"Sync job {self.sync_context.sync_job.id} failed: {error_message}", exc_info=True
         )
+
+        classification = classify_error(error, self.sync_context.authentication_method)
+        error_cat = classification.category.value if classification.category else None
 
         stats = self.runtime.entity_tracker.get_stats()
 
@@ -670,7 +675,28 @@ class SyncOrchestrator:
             error=error_message,
             failed_at=utc_now_naive(),
             stats=stats,
+            error_category=error_cat,
         )
+
+        # Pause schedules on credential errors to avoid repeated failures
+        if classification.category is not None:
+            try:
+                from airweave.core.container import get_container
+
+                container = get_container()
+                temporal_schedule_service = container.temporal_schedule_service
+                async with get_db_context() as pause_db:
+                    await temporal_schedule_service.pause_schedules_for_source_connection(
+                        self.sync_context.source_connection_id,
+                        pause_db,
+                        self.sync_context,
+                        reason=f"Credential error: {classification.category.value}",
+                    )
+            except Exception as pause_err:
+                self.sync_context.logger.warning(
+                    f"Failed to pause schedules after credential error: {pause_err}",
+                    exc_info=True,
+                )
 
         # Calculate duration from start to failure
         if not self.sync_context.sync_job.started_at:

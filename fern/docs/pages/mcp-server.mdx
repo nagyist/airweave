@@ -246,18 +246,45 @@ The MCP server exposes two tools to AI assistants:
 
 The primary search tool. The tool name includes the collection ID so the AI assistant knows which dataset it's searching (e.g., `search-my-docs`).
 
-**Parameters:**
+The tool supports all three [search tiers](/search#search-tiers), selectable via the `tier` parameter:
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
-| `query` | string | Yes | - | The search query text |
-| `limit` | number | No | 100 | Maximum results to return (1-1000) |
-| `offset` | number | No | 0 | Results to skip for pagination |
-| `search_method` | `"hybrid"` \| `"neural"` \| `"keyword"` | No | `"hybrid"` | Search strategy |
+| `query` | string | Yes | — | The search query text |
+| `tier` | `"instant"` \| `"classic"` \| `"agentic"` | No | `"classic"` | Search tier — controls depth vs. speed |
+| `limit` | number | No | 100 | Maximum results to return (1–1000) |
+| `offset` | number | No | 0 | Results to skip for pagination (instant and classic only) |
+| `retrieval_strategy` | `"hybrid"` \| `"neural"` \| `"keyword"` | No | `"hybrid"` | Retrieval strategy (instant tier only) |
+| `thinking` | boolean | No | `false` | Enable extended thinking / chain-of-thought (agentic tier only) |
+| `filter` | FilterGroup[] | No | — | Structured filters for precise matching |
 
-<Note>
-The MCP server uses **legacy** parameter names (`search_method`, `response_type`, etc.) for backwards compatibility with existing AI assistant integrations. See the [Search documentation](/search) for the current API.
-</Note>
+**Tiers at a glance:**
+
+- **`instant`** — Direct vector search. Fastest (sub-second). Use for straightforward lookups.
+- **`classic`** — An LLM plans the search strategy, then executes it. Good balance of speed (~2–5 s) and quality. This is the default.
+- **`agentic`** — A multi-step agent iteratively searches, reads, and navigates your data. Deepest results, highest latency.
+
+**Filters:**
+
+Filters let you narrow results by metadata. Each filter group is a list of conditions combined with AND; multiple groups are combined with OR.
+
+```json title="Example: only Notion results"
+{
+  "filter": [
+    {
+      "conditions": [
+        {
+          "field": "airweave_system_metadata.source_name",
+          "operator": "equals",
+          "value": "notion"
+        }
+      ]
+    }
+  ]
+}
+```
+
+See the [Search documentation](/search#filters) for the full list of filterable fields and operators.
 
 ### `get-config`
 
@@ -284,13 +311,14 @@ AI Assistant (Cursor, Claude, OpenAI, VS Code)
                             │
                       Airweave API
                             │
-                      POST /collections/{id}/search/instant
+                      POST /collections/{id}/search/{tier}
+                      (instant | classic | agentic)
 ```
 
 - **Local mode**: One MCP server process per user. API key and collection are set via environment variables. Communication over stdio.
 - **Hosted mode**: Stateless HTTP server. A fresh MCP server instance is created for each request. Supports API key auth (via headers) and OAuth 2.0 (via Auth0).
 
-In both modes, the MCP server is a thin wrapper around the [Airweave SDK](/api-reference). It validates parameters, calls the search API, and formats results for the AI assistant.
+In both modes, the MCP server validates parameters, calls the appropriate [search tier endpoint](/search#search-tiers), and formats results for the AI assistant.
 
 ---
 

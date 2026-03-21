@@ -990,7 +990,7 @@ export const SearchResponse: React.FC<SearchResponseProps> = ({
                                     </div>
                                 ) : (
                                     <>
-                                        <div ref={jsonViewerRef} className={cn("px-4 py-3 space-y-5 raw-data-scrollbar", DESIGN_SYSTEM.typography.sizes.label)}>
+                                        <div ref={jsonViewerRef} className={cn("px-3 py-2 raw-data-scrollbar")}>
                                             {results.slice(0, visibleResultsCount).map((result: any, index: number) => (
                                                 <EntityResultCard
                                                     key={result.entity_id || result.id || index}
@@ -1046,7 +1046,8 @@ export const SearchResponse: React.FC<SearchResponseProps> = ({
                                             <SyntaxHighlighter
                                                 language="json"
                                                 style={syntaxStyle}
-                                                customStyle={{ margin: 0, borderRadius: 0, fontSize: '11px', padding: '1rem', background: 'transparent', lineHeight: '1.5' }}
+                                                customStyle={{ margin: 0, borderRadius: 0, fontSize: '11px', padding: '1rem', background: 'transparent', backgroundColor: 'transparent', lineHeight: '1.5' }}
+                                                codeTagProps={{ style: { background: 'transparent', backgroundColor: 'transparent' } }}
                                                 showLineNumbers={false}
                                             >
                                                 {displayString}

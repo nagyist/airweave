@@ -1,19 +1,26 @@
-import React, { useState, useMemo } from 'react';
-import { Button } from '@/components/ui/button';
+import React, { useState, useMemo, useCallback } from 'react';
 import { API_CONFIG } from '@/lib/api';
-import { Terminal } from 'lucide-react';
+import { Terminal, Copy, Check, ExternalLink, X } from 'lucide-react';
+import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
+import { oneDark, oneLight } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { useTheme } from '@/lib/theme-provider';
 import { cn } from '@/lib/utils';
 import { PythonIcon } from '@/components/icons/PythonIcon';
 import { NodeIcon } from '@/components/icons/NodeIcon';
 import { McpIcon } from '@/components/icons/McpIcon';
 
-import { CodeBlock } from '@/components/ui/code-block';
-import { DESIGN_SYSTEM } from '@/lib/design-system';
-
 // Local type aliases — avoids circular import with SearchBox
 type SearchTier = "instant" | "classic" | "agentic";
 type RetrievalStrategy = "hybrid" | "neural" | "keyword";
+
+type ApiTab = "rest" | "python" | "node" | "mcp";
+
+const TABS: { id: ApiTab; label: string; icon: React.FC<{ className?: string }> }[] = [
+    { id: "rest", label: "cURL", icon: Terminal },
+    { id: "python", label: "Python", icon: PythonIcon },
+    { id: "node", label: "Node.js", icon: NodeIcon },
+    { id: "mcp", label: "MCP", icon: McpIcon },
+];
 
 interface ApiIntegrationDocProps {
     collectionReadableId: string;
@@ -23,6 +30,7 @@ interface ApiIntegrationDocProps {
     thinking?: boolean;
     filter?: any[];
     apiKey?: string;
+    onClose?: () => void;
 }
 
 export const ApiIntegrationDoc = ({
@@ -33,11 +41,23 @@ export const ApiIntegrationDoc = ({
     thinking = false,
     filter = [],
     apiKey = "YOUR_API_KEY",
+    onClose,
 }: ApiIntegrationDocProps) => {
-    const [apiTab, setApiTab] = useState<"rest" | "python" | "node" | "mcp">("rest");
+    const [apiTab, setApiTab] = useState<ApiTab>("rest");
+    const [copied, setCopied] = useState(false);
 
     const { resolvedTheme } = useTheme();
     const isDark = resolvedTheme === 'dark';
+
+    const handleCopy = useCallback(async (text: string) => {
+        try {
+            await navigator.clipboard.writeText(text);
+            setCopied(true);
+            setTimeout(() => setCopied(false), 2000);
+        } catch (error) {
+            console.error('Failed to copy:', error);
+        }
+    }, []);
 
     const endpoints = useMemo(() => {
         const apiBaseUrl = API_CONFIG.baseURL;
@@ -47,7 +67,6 @@ export const ApiIntegrationDoc = ({
         const escapeForJson = (str: string) => str.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
         const escapeForPython = (str: string) => str.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
 
-        // v2 endpoint URL
         const apiUrl = `${apiBaseUrl}/collections/${collectionReadableId}/search/${tier}`;
 
         // Request body per tier
@@ -84,7 +103,7 @@ export const ApiIntegrationDoc = ({
             })
             .join('\n');
 
-        // ─── cURL ────────────────────────────────────────────────────────
+        // ─── cURL
         const curlSnippet = `curl -X 'POST' \\
   '${apiUrl}' \\
   -H 'accept: application/json' \\
@@ -92,7 +111,7 @@ export const ApiIntegrationDoc = ({
   -H 'Content-Type: application/json' \\
   -d '${jsonBody}'`;
 
-        // ─── Python ──────────────────────────────────────────────────────
+        // ─── Python
         const sdkMethodPython = tier === "instant" ? "search_instant"
             : tier === "classic" ? "search_classic"
             : "search_agentic";
@@ -128,7 +147,7 @@ ${pythonParams.join(',\n')},
 )
 print(response.results${tier === "agentic" ? ", response.answer" : ""})`;
 
-        // ─── Node.js ─────────────────────────────────────────────────────
+        // ─── Node.js
         const sdkMethodNode = tier === "instant" ? "searchInstant"
             : tier === "classic" ? "searchClassic"
             : "searchAgentic";
@@ -165,8 +184,11 @@ ${nodeParams.join(',\n')},
 
 console.log(response.results${tier === "agentic" ? ", response.answer" : ""});`;
 
-        // ─── MCP config (collection-level, not tier-specific) ────────────
-        const configSnippet = `{
+        // ─── MCP config
+        const configSnippet = `// Add to your MCP client config
+// e.g. ~/.config/Claude/claude_desktop_config.json
+
+{
   "mcpServers": {
     "airweave-${collectionReadableId}": {
       "command": "npx",
@@ -180,186 +202,128 @@ console.log(response.results${tier === "agentic" ? ", response.answer" : ""});`;
   }
 }`;
 
-        return { curlSnippet, pythonSnippet, nodeSnippet, configSnippet };
+        return { curlSnippet, pythonSnippet, nodeSnippet, configSnippet, apiUrl };
     }, [collectionReadableId, apiKey, tier, retrievalStrategy, thinking, filter, query]);
 
-    // Memoize footer components
-    const docLinkFooter = useMemo(() => (
-        <div className="text-xs flex items-center gap-2">
-            <span className={isDark ? "text-gray-400" : "text-gray-500"}>→</span>
-            <a
-                href="https://docs.airweave.ai/api-reference/collections/search-advanced-collections-readable-id-search-post"
-                target="_blank"
-                rel="noopener noreferrer"
-                className={cn(
-                    "hover:underline transition-all",
-                    isDark ? "text-blue-400 hover:text-blue-300" : "text-blue-600 hover:text-blue-700"
-                )}
-            >
-                Explore the full API documentation
-            </a>
-        </div>
-    ), [isDark]);
+    const currentCode = apiTab === "rest" ? endpoints.curlSnippet
+        : apiTab === "python" ? endpoints.pythonSnippet
+        : apiTab === "node" ? endpoints.nodeSnippet
+        : endpoints.configSnippet;
 
-    const mcpConfigFooter = useMemo(() => (
-        <div className="text-xs flex items-center gap-2">
-            <span className={isDark ? "text-gray-400" : "text-gray-500"}>→</span>
-            <span className={isDark ? "text-gray-400" : "text-gray-500"}>
-                Add this to your MCP client configuration file (e.g., ~/.config/Claude/claude_desktop_config.json)
-            </span>
-        </div>
-    ), [isDark]);
+    const currentLanguage = apiTab === "rest" ? "bash"
+        : apiTab === "python" ? "python"
+        : apiTab === "node" ? "javascript"
+        : "javascript"; // jsonc — JS highlights // comments in the MCP config
+
+    const syntaxStyle = isDark ? oneDark : oneLight;
+
+    const linkColor = isDark
+        ? 'text-blue-400 hover:text-blue-300'
+        : 'text-blue-600 hover:text-blue-500';
 
     return (
-        <div className="w-full mb-6">
-            {/* LIVE API DOC SECTION */}
-            <div className="mb-8">
-                <div className="w-full opacity-95">
-                    <div className={cn(
-                        DESIGN_SYSTEM.radius.card,
-                        "overflow-hidden border",
-                        isDark ? "bg-gray-900 border-gray-800" : "bg-gray-100 border-gray-200"
-                    )}>
-                        {/* Tabs */}
-                        <div className="flex space-x-1 p-2 w-fit overflow-x-auto border-b border-b-gray-200 dark:border-b-gray-800">
-                            <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => setApiTab("rest")}
-                                className={cn(
-                                    DESIGN_SYSTEM.radius.button,
-                                    DESIGN_SYSTEM.typography.sizes.header,
-                                    "flex items-center",
-                                    DESIGN_SYSTEM.spacing.gaps.standard,
-                                    isDark
-                                        ? "text-gray-200 hover:bg-gray-800/80"
-                                        : "text-gray-700 hover:bg-gray-200/80",
-                                    apiTab === "rest"
-                                        ? isDark ? "bg-gray-800" : "bg-gray-200"
-                                        : ""
-                                )}
-                            >
-                                <Terminal className={DESIGN_SYSTEM.icons.large} />
-                                <span>cURL</span>
-                            </Button>
-                            <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => setApiTab("python")}
-                                className={cn(
-                                    DESIGN_SYSTEM.radius.button,
-                                    DESIGN_SYSTEM.typography.sizes.header,
-                                    "flex items-center",
-                                    DESIGN_SYSTEM.spacing.gaps.standard,
-                                    isDark
-                                        ? "text-gray-200 hover:bg-gray-800/80"
-                                        : "text-gray-700 hover:bg-gray-200/80",
-                                    apiTab === "python"
-                                        ? isDark ? "bg-gray-800" : "bg-gray-200"
-                                        : ""
-                                )}
-                            >
-                                <PythonIcon className={DESIGN_SYSTEM.icons.large} />
-                                <span>Python</span>
-                            </Button>
-                            <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => setApiTab("node")}
-                                className={cn(
-                                    DESIGN_SYSTEM.radius.button,
-                                    DESIGN_SYSTEM.typography.sizes.header,
-                                    "flex items-center",
-                                    DESIGN_SYSTEM.spacing.gaps.standard,
-                                    isDark
-                                        ? "text-gray-200 hover:bg-gray-800/80"
-                                        : "text-gray-700 hover:bg-gray-200/80",
-                                    apiTab === "node"
-                                        ? isDark ? "bg-gray-800" : "bg-gray-200"
-                                        : ""
-                                )}
-                            >
-                                <NodeIcon className={DESIGN_SYSTEM.icons.large} />
-                                <span>Node.js</span>
-                            </Button>
-                            <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => setApiTab("mcp")}
-                                className={cn(
-                                    DESIGN_SYSTEM.radius.button,
-                                    DESIGN_SYSTEM.typography.sizes.header,
-                                    "flex items-center",
-                                    DESIGN_SYSTEM.spacing.gaps.standard,
-                                    isDark
-                                        ? "text-gray-200 hover:bg-gray-800/80"
-                                        : "text-gray-700 hover:bg-gray-200/80",
-                                    apiTab === "mcp"
-                                        ? isDark ? "bg-gray-800" : "bg-gray-200"
-                                        : ""
-                                )}
-                            >
-                                <McpIcon className={DESIGN_SYSTEM.icons.large} />
-                                <span>MCP</span>
-                            </Button>
-                        </div>
-
-                        {/* Tab Content */}
-                        <div className={"h-[460px]"}>
-                            {apiTab === "rest" && (
-                                <CodeBlock
-                                    code={endpoints.curlSnippet}
-                                    language="bash"
-                                    badgeText="POST"
-                                    badgeColor="bg-amber-600 hover:bg-amber-600"
-                                    title={`/collections/${collectionReadableId}/search/${tier}`}
-                                    footerContent={docLinkFooter}
-                                    height="100%"
-                                    className="h-full rounded-none border-none"
-                                />
+        <div className={cn(
+            "w-full font-mono rounded-lg overflow-hidden border",
+            isDark ? "bg-gray-950 border-gray-800" : "bg-white border-gray-200"
+        )}>
+            {/* ── Tab bar with copy + close ── */}
+            <div className={cn(
+                "flex items-center px-3 border-b",
+                isDark ? "border-gray-800" : "border-gray-200"
+            )}>
+                <div className="flex items-center gap-0 flex-1">
+                {TABS.map((tab) => {
+                    const Icon = tab.icon;
+                    const isActive = apiTab === tab.id;
+                    return (
+                        <button
+                            key={tab.id}
+                            onClick={() => setApiTab(tab.id)}
+                            className={cn(
+                                "flex items-center gap-1.5 px-3 py-2 text-[11px] transition-colors relative",
+                                isActive
+                                    ? isDark ? "text-gray-200" : "text-gray-800"
+                                    : isDark ? "text-gray-500 hover:text-gray-300" : "text-gray-400 hover:text-gray-600"
                             )}
-
-                            {apiTab === "python" && (
-                                <CodeBlock
-                                    code={endpoints.pythonSnippet}
-                                    language="python"
-                                    badgeText="SDK"
-                                    badgeColor="bg-blue-600 hover:bg-blue-600"
-                                    title="AirweaveSDK"
-                                    footerContent={docLinkFooter}
-                                    height="100%"
-                                    className="h-full rounded-none border-none"
-                                />
+                        >
+                            <Icon className="h-3.5 w-3.5" />
+                            {tab.label}
+                            {isActive && (
+                                <div className={cn(
+                                    "absolute bottom-0 left-0 right-0 h-0.5",
+                                    isDark ? "bg-blue-400" : "bg-blue-600"
+                                )} />
                             )}
-
-                            {apiTab === "node" && (
-                                <CodeBlock
-                                    code={endpoints.nodeSnippet}
-                                    language="javascript"
-                                    badgeText="SDK"
-                                    badgeColor="bg-blue-600 hover:bg-blue-600"
-                                    title="AirweaveSDKClient"
-                                    footerContent={docLinkFooter}
-                                    height="100%"
-                                    className="h-full rounded-none border-none"
-                                />
-                            )}
-
-                            {apiTab === "mcp" && (
-                                <CodeBlock
-                                    code={endpoints.configSnippet}
-                                    language="json"
-                                    badgeText="CONFIG"
-                                    badgeColor="bg-purple-600 hover:bg-purple-600"
-                                    title="MCP Configuration"
-                                    footerContent={mcpConfigFooter}
-                                    height="100%"
-                                    className="h-full rounded-none border-none"
-                                />
-                            )}
-                        </div>
-                    </div>
+                        </button>
+                    );
+                })}
                 </div>
+                <div className="flex items-center gap-3">
+                    <button
+                        onClick={() => handleCopy(currentCode)}
+                        className={cn(
+                            "inline-flex items-center gap-1 text-[10px] transition-colors",
+                            isDark ? "text-gray-600 hover:text-gray-400" : "text-gray-400 hover:text-gray-600"
+                        )}
+                    >
+                        {copied
+                            ? <><Check className="h-3 w-3" /> copied</>
+                            : <><Copy className="h-3 w-3" /> copy</>
+                        }
+                    </button>
+                    {onClose && (
+                        <button
+                            onClick={onClose}
+                            className={cn(
+                                "inline-flex items-center justify-center h-5 w-5 rounded transition-colors",
+                                isDark ? "text-gray-600 hover:text-gray-300 hover:bg-gray-800" : "text-gray-400 hover:text-gray-700 hover:bg-gray-200"
+                            )}
+                            title="Close (Esc)"
+                        >
+                            <X className="h-3.5 w-3.5" />
+                        </button>
+                    )}
+                </div>
+            </div>
+
+            {/* ── Code content ── */}
+            <div className={cn(
+                "overflow-auto h-[360px] raw-data-scrollbar",
+                isDark ? "bg-gray-950" : "bg-gray-50"
+            )}>
+                <SyntaxHighlighter
+                    language={currentLanguage}
+                    style={syntaxStyle}
+                    customStyle={{
+                        margin: 0,
+                        padding: '0.75rem',
+                        background: 'transparent',
+                        backgroundColor: 'transparent',
+                        fontSize: '11px',
+                        lineHeight: '1.6',
+                    }}
+                    codeTagProps={{ style: { background: 'transparent', backgroundColor: 'transparent' } }}
+                    showLineNumbers={false}
+                    wrapLongLines={false}
+                >
+                    {currentCode}
+                </SyntaxHighlighter>
+            </div>
+
+            {/* ── Footer ── */}
+            <div className={cn(
+                "flex items-center gap-2 px-3 py-2 border-t text-[10px]",
+                isDark ? "border-gray-800" : "border-gray-200"
+            )}>
+                <a
+                    href="https://docs.airweave.ai"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={cn("inline-flex items-center gap-1 transition-colors", linkColor)}
+                >
+                    <ExternalLink className="h-3 w-3" />
+                    API documentation
+                </a>
             </div>
         </div>
     );

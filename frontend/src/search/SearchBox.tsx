@@ -850,19 +850,7 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
                 <>
                     <div className="fixed inset-0 bg-black/60 z-40 backdrop-blur-sm" onClick={() => setShowCodeBlock(false)} />
                     <div className="fixed inset-0 z-50 flex items-center justify-center p-8 pointer-events-none">
-                        <div className="relative w-full max-w-4xl pointer-events-auto" onClick={(e) => e.stopPropagation()}>
-                            <button
-                                onClick={() => setShowCodeBlock(false)}
-                                className={cn(
-                                    "absolute top-2 right-2 z-10 h-8 w-8 rounded-md flex items-center justify-center transition-colors",
-                                    isDark
-                                        ? "bg-muted hover:bg-muted/80 text-muted-foreground hover:text-foreground"
-                                        : "bg-muted hover:bg-muted/80 text-muted-foreground hover:text-foreground"
-                                )}
-                                title="Close (Esc)"
-                            >
-                                <X className="h-4 w-4" />
-                            </button>
+                        <div className="w-full max-w-4xl pointer-events-auto" onClick={(e) => e.stopPropagation()}>
                             <ApiIntegrationDoc
                                 collectionReadableId={collectionId}
                                 query={query || "Ask a question about your data"}
@@ -871,6 +859,7 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
                                 thinking={thinking}
                                 filter={toBackendFilterGroups(filterGroups)}
                                 apiKey={apiKey}
+                                onClose={() => setShowCodeBlock(false)}
                             />
                         </div>
                     </div>

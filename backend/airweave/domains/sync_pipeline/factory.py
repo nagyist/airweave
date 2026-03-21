@@ -42,6 +42,7 @@ from airweave.domains.sync_pipeline.builders import SyncContextBuilder
 from airweave.domains.sync_pipeline.builders.destinations import DestinationsContextBuilder
 from airweave.domains.sync_pipeline.config import SyncConfig
 from airweave.domains.sync_pipeline.contexts.runtime import SyncRuntime
+from airweave.domains.sync_pipeline.contexts.sync import SyncContext
 from airweave.domains.sync_pipeline.entity.dispatcher_builder import EntityDispatcherBuilder
 from airweave.domains.sync_pipeline.orchestrator import SyncOrchestrator
 from airweave.domains.sync_pipeline.pipeline.entity_tracker import EntityTracker
@@ -252,7 +253,7 @@ class SyncFactory:
 
     def _build_entity_pipeline(
         self,
-        sync_context: "SyncContextBuilder",
+        sync_context: SyncContext,
         runtime: SyncRuntime,
         destinations: list,
         resolved_config: SyncConfig,
@@ -280,9 +281,7 @@ class SyncFactory:
             entity_repo=self._entity_repo,
         )
 
-    def _build_access_control_pipeline(
-        self, sync_context: "SyncContextBuilder"
-    ) -> AccessControlPipeline:
+    def _build_access_control_pipeline(self, sync_context: SyncContext) -> AccessControlPipeline:
         """Build access control pipeline with resolver, dispatcher, and tracker."""
         return AccessControlPipeline(
             resolver=ACActionResolver(),
@@ -299,7 +298,7 @@ class SyncFactory:
         self,
         runtime: SyncRuntime,
         source_result: SourceBuildResult,
-        sync_context: "SyncContextBuilder",
+        sync_context: SyncContext,
     ) -> AsyncSourceStream:
         """Build the async source stream from the source generator."""
         return AsyncSourceStream(
@@ -499,10 +498,8 @@ class SyncFactory:
         )
 
         return await DestinationsContextBuilder.build_destinations_only(
-            db=db,
             sync=sync,
             collection=collection,
-            ctx=ctx,
             logger=dest_logger,
             execution_config=execution_config,
         )

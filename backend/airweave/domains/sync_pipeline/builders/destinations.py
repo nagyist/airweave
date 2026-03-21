@@ -6,11 +6,8 @@ Vespa is the sole destination; class is referenced directly.
 from typing import List, Optional
 from uuid import UUID
 
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from airweave import schemas
 from airweave.core.constants.reserved_ids import NATIVE_VESPA_UUID
-from airweave.core.context import BaseContext
 from airweave.core.logging import ContextualLogger
 from airweave.domains.sync_pipeline.config import SyncConfig
 from airweave.platform.destinations._base import BaseDestination
@@ -23,19 +20,15 @@ class DestinationsContextBuilder:
     @classmethod
     async def build_destinations_only(
         cls,
-        db: AsyncSession,
         sync: schemas.Sync,
         collection: schemas.CollectionRecord,
-        ctx: BaseContext,
         logger: ContextualLogger,
         execution_config: Optional[SyncConfig] = None,
     ) -> List[BaseDestination]:
         """Build destinations without entity map (entity map built by factory via DI)."""
         return await cls._create_destinations(
-            db=db,
             sync=sync,
             collection=collection,
-            ctx=ctx,
             logger=logger,
             execution_config=execution_config,
         )
@@ -47,10 +40,8 @@ class DestinationsContextBuilder:
     @classmethod
     async def _create_destinations(
         cls,
-        db: AsyncSession,
         sync: schemas.Sync,
         collection: schemas.CollectionRecord,
-        ctx,
         logger: ContextualLogger,
         execution_config: Optional[SyncConfig] = None,
     ) -> List[BaseDestination]:
@@ -65,11 +56,8 @@ class DestinationsContextBuilder:
         for destination_connection_id in destination_ids:
             try:
                 destination = await cls._create_single_destination(
-                    db=db,
                     destination_connection_id=destination_connection_id,
-                    sync=sync,
                     collection=collection,
-                    ctx=ctx,
                     logger=logger,
                 )
                 if destination:
@@ -96,11 +84,8 @@ class DestinationsContextBuilder:
     @classmethod
     async def _create_single_destination(
         cls,
-        db: AsyncSession,
         destination_connection_id: UUID,
-        sync: schemas.Sync,
         collection: schemas.CollectionRecord,
-        ctx,
         logger: ContextualLogger,
     ) -> Optional[BaseDestination]:
         """Create a single destination instance."""

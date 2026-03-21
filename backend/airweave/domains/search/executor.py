@@ -242,7 +242,7 @@ class SearchPlanExecutor(SearchPlanExecutorProtocol):
         )
 
         # Check for failures — fail if any source errored
-        source_errors: list[tuple[str, Exception]] = []
+        source_errors: list[tuple[str, BaseException]] = []
         for idx, result_or_exc in enumerate(results_lists):
             if isinstance(result_or_exc, BaseException):
                 source_name = sources[idx].__class__.__name__

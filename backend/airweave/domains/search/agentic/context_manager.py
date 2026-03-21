@@ -295,7 +295,7 @@ class ContextManager:
         header_tokens = self._tokenizer.count_tokens(header)
         remaining = available_tokens - header_tokens
 
-        included = []
+        included: list[str] = []
         for summary in result.summaries:
             tokens = self._tokenizer.count_tokens(summary.text)
             if remaining - tokens < 0 and included:
@@ -327,7 +327,7 @@ class ContextManager:
         header_tokens = self._tokenizer.count_tokens(header)
         remaining = available_tokens - header_tokens
 
-        included = []
+        included: list[str] = []
         for summary in result.summaries:
             tokens = self._tokenizer.count_tokens(summary.text)
             if remaining - tokens < 0 and included:
@@ -361,7 +361,7 @@ class ContextManager:
         header_tokens = self._tokenizer.count_tokens(total_label)
         remaining = available_tokens - header_tokens
 
-        included = []
+        included: list[str] = []
         for entity in entities:
             tokens = self._tokenizer.count_tokens(entity.text)
             if remaining - tokens < 0 and included:

@@ -13,7 +13,7 @@ class FederatedSearchError(SearchError):
     Contains per-source error details for debugging.
     """
 
-    def __init__(self, source_errors: list[tuple[str, Exception]]) -> None:
+    def __init__(self, source_errors: list[tuple[str, BaseException]]) -> None:
         """Initialize with per-source error details."""
         self.source_errors = source_errors
         summary = "; ".join(f"{name}: {err}" for name, err in source_errors)

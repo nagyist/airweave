@@ -12,17 +12,25 @@ Expected data directory layout (HuggingFace snapshot_download output):
         └── train-00002-of-00003.parquet
 """
 
+from __future__ import annotations
+
 import os
 import re
-from typing import Any, AsyncGenerator, Dict, List, Optional, Union
+from typing import AsyncGenerator, List
 
 import pyarrow.parquet as pq  # type: ignore[import-untyped]
 
+from airweave.core.logging import ContextualLogger
+from airweave.domains.browse_tree.types import NodeSelectionData
+from airweave.domains.sources.token_providers.protocol import SourceAuthProvider
+from airweave.domains.storage.file_service import FileService
+from airweave.domains.syncs.cursors.cursor import SyncCursor
 from airweave.platform.configs.auth import EnronAuthConfig
 from airweave.platform.configs.config import EnronConfig
 from airweave.platform.decorators import source
 from airweave.platform.entities._base import BaseEntity
 from airweave.platform.entities.enron import EnronEmailEntity
+from airweave.platform.http_client.airweave_client import AirweaveHttpClient
 from airweave.platform.sources._base import BaseSource
 from airweave.schemas.source_connection import AuthenticationMethod
 
@@ -56,26 +64,39 @@ class EnronSource(BaseSource):
     message_ids match without transformation.
     """
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        *,
+        auth: SourceAuthProvider,
+        logger: ContextualLogger,
+        http_client: AirweaveHttpClient,
+    ) -> None:
         """Initialize the Enron source."""
-        super().__init__()
+        super().__init__(auth=auth, logger=logger, http_client=http_client)
         self.data_dir: str = ""
 
     @classmethod
     async def create(
         cls,
-        credentials: Optional[Union[Dict[str, Any], EnronAuthConfig]] = None,
-        config: Optional[Union[Dict[str, Any], EnronConfig]] = None,
-    ) -> "EnronSource":
+        *,
+        auth: SourceAuthProvider,
+        logger: ContextualLogger,
+        http_client: AirweaveHttpClient,
+        config: EnronConfig,
+    ) -> EnronSource:
         """Create a new Enron source instance."""
-        instance = cls()
+        instance = cls(auth=auth, logger=logger, http_client=http_client)
         if config:
-            instance.data_dir = (
-                config.get("data_dir", "") if isinstance(config, dict) else config.data_dir
-            )
+            instance.data_dir = config.data_dir if hasattr(config, 'data_dir') else ""
         return instance
 
-    async def generate_entities(self) -> AsyncGenerator[BaseEntity, None]:
+    async def generate_entities(
+        self,
+        *,
+        cursor: SyncCursor | None = None,
+        files: FileService | None = None,
+        node_selections: list[NodeSelectionData] | None = None,
+    ) -> AsyncGenerator[BaseEntity, None]:
         """Read parquet files and yield EnronEmailEntity instances."""
         data_dir = os.path.join(self.data_dir, "data")
         parquet_files = sorted(
@@ -113,9 +134,14 @@ class EnronSource(BaseSource):
 
         self.logger.info(f"Complete: {total:,} emails yielded")
 
-    async def validate(self) -> bool:
+    async def validate(self) -> None:
         """Validate that the data directory contains parquet files."""
         data_dir = os.path.join(self.data_dir, "data")
         if not os.path.isdir(data_dir):
-            return False
-        return any(f.endswith(".parquet") for f in os.listdir(data_dir))
+            raise ValueError(
+                f"Enron data directory '{data_dir}' does not exist"
+            )
+        if not any(f.endswith(".parquet") for f in os.listdir(data_dir)):
+            raise ValueError(
+                f"Enron data directory '{data_dir}' contains no parquet files"
+            )

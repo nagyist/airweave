@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import re
-from datetime import datetime
 from typing import Any, AsyncGenerator, Dict, List, Optional
 
 from tenacity import retry, stop_after_attempt
@@ -272,7 +271,7 @@ class SlackSource(BaseSource):
         return entity
 
     # ------------------------------------------------------------------
-    # Sync entry point (not used for federated search)
+    # Sync entry point (not used — Slack is federated search only)
     # ------------------------------------------------------------------
 
     async def generate_entities(
@@ -286,97 +285,11 @@ class SlackSource(BaseSource):
 
         Raises NotImplementedError; use search() instead.
         """
-        try:
-            channel_info = message.get("channel", {})
-            channel_id = channel_info.get("id", "unknown")
-            channel_name = channel_info.get("name")
-
-            # Parse timestamp to datetime
-            ts = message.get("ts", "0")
-            try:
-                created_at = datetime.fromtimestamp(float(ts))
-            except (ValueError, TypeError):
-                created_at = None
-
-            # Clean Slack mrkdwn markup from text for display
-            raw_text = message.get("text", "")
-            text = _clean_slack_mrkdwn(raw_text)
-            message_name = text[:50] + "..." if len(text) > 50 else text
-            if not message_name:
-                message_name = f"Slack message {ts}"
-
-            # Build breadcrumbs
-            breadcrumbs = [
-                Breadcrumb(
-                    entity_id=channel_id,
-                    name=f"#{channel_name}" if channel_name else channel_id,
-                    entity_type="SlackChannel",
-                )
-            ]
-
-            message_text = text or message_name
-            username = message.get("username")
-
-            # Build system metadata for federated search
-            # (normally built by EntityPipeline._enrich_early_metadata in sync pipeline)
-            system_metadata = AirweaveSystemMetadata(
-                source_name="slack",  # short_name from @source decorator
-                entity_type="SlackMessageEntity",
-                sync_id=None,  # No sync for federated search
-                sync_job_id=None,  # No sync job for federated search
-            )
-
-            # Create entity first (text_builder needs entity to extract embeddable fields)
-            entity = SlackMessageEntity(
-                # Base fields
-                entity_id=message.get("iid", message.get("ts", "")),
-                breadcrumbs=breadcrumbs,
-                name=message_name,
-                created_at=created_at,
-                updated_at=None,  # Messages don't have update timestamp
-                airweave_system_metadata=system_metadata,
-                # API fields
-                text=message_text,
-                user=message.get("user"),
-                username=username,
-                ts=message.get("ts", ""),
-                channel_id=channel_id,
-                channel_name=channel_name,
-                channel_is_private=channel_info.get("is_private", False),
-                type=message.get("type", "message"),
-                permalink=message.get("permalink"),
-                team=message.get("team"),
-                previous_message=message.get("previous"),
-                next_message=message.get("next"),
-                score=float(message.get("score", 0)),
-                iid=message.get("iid"),
-                url=message.get("permalink"),
-                message_time=created_at or datetime.utcnow(),
-                web_url_value=message.get("permalink"),
-            )
-
-            # Build textual representation using shared utility
-            # (normally built by TextualRepresentationBuilder in sync pipeline)
-            entity.textual_representation = text_builder.build_metadata_section(
-                entity=entity,
-                source_name="slack",
-            )
-
-            return entity
-        except Exception as e:
-            self.logger.error(f"Error creating message entity: {e}")
-            return None
-
-    async def generate_entities(self) -> AsyncGenerator[BaseEntity, None]:
-        """Generate entities for the source.
-
-        This method should not be called for federated search sources.
-        Federated search sources use the search() method instead.
-        """
         self.logger.warning("generate_entities() called on federated search source")
         raise NotImplementedError(
             "Slack uses federated search. Use the search() method instead of generate_entities()."
         )
+        yield  # make this a generator  # noqa: RUF027
 
     async def validate(self) -> None:
         """Validate credentials by calling Slack auth.test."""

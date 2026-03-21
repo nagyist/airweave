@@ -1,14 +1,22 @@
 """HERB People source — syncs employees and customers from the HERB benchmark dataset."""
 
+from __future__ import annotations
+
 import json
 import os
-from typing import Any, AsyncGenerator, Dict, Optional, Union
+from typing import AsyncGenerator
 
+from airweave.core.logging import ContextualLogger
+from airweave.domains.browse_tree.types import NodeSelectionData
+from airweave.domains.sources.token_providers.protocol import SourceAuthProvider
+from airweave.domains.storage.file_service import FileService
+from airweave.domains.syncs.cursors.cursor import SyncCursor
 from airweave.platform.configs.auth import HerbAuthConfig
 from airweave.platform.configs.config import HerbConfig
 from airweave.platform.decorators import source
 from airweave.platform.entities._base import BaseEntity, Breadcrumb
 from airweave.platform.entities.herb_people import HerbCustomerEntity, HerbEmployeeEntity
+from airweave.platform.http_client.airweave_client import AirweaveHttpClient
 from airweave.platform.sources._base import BaseSource
 from airweave.schemas.source_connection import AuthenticationMethod
 
@@ -25,26 +33,39 @@ from airweave.schemas.source_connection import AuthenticationMethod
 class HerbPeopleSource(BaseSource):
     """Source that syncs employee and customer records from the HERB benchmark dataset."""
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        *,
+        auth: SourceAuthProvider,
+        logger: ContextualLogger,
+        http_client: AirweaveHttpClient,
+    ) -> None:
         """Initialize the HERB people source."""
-        super().__init__()
+        super().__init__(auth=auth, logger=logger, http_client=http_client)
         self.data_dir: str = ""
 
     @classmethod
     async def create(
         cls,
-        credentials: Optional[Union[Dict[str, Any], HerbAuthConfig]] = None,
-        config: Optional[Dict[str, Any]] = None,
-    ) -> "HerbPeopleSource":
+        *,
+        auth: SourceAuthProvider,
+        logger: ContextualLogger,
+        http_client: AirweaveHttpClient,
+        config: HerbConfig,
+    ) -> HerbPeopleSource:
         """Create a new HERB people source instance."""
-        instance = cls()
+        instance = cls(auth=auth, logger=logger, http_client=http_client)
         if config:
-            instance.data_dir = (
-                config.get("data_dir", "") if isinstance(config, dict) else config.data_dir
-            )
+            instance.data_dir = config.data_dir if hasattr(config, 'data_dir') else ""
         return instance
 
-    async def generate_entities(self) -> AsyncGenerator[BaseEntity, None]:
+    async def generate_entities(
+        self,
+        *,
+        cursor: SyncCursor | None = None,
+        files: FileService | None = None,
+        node_selections: list[NodeSelectionData] | None = None,
+    ) -> AsyncGenerator[BaseEntity, None]:
         """Generate employee and customer entities from HERB metadata files."""
         metadata_dir = os.path.join(self.data_dir, "metadata")
 
@@ -93,9 +114,12 @@ class HerbPeopleSource(BaseSource):
                     ],
                 )
 
-    async def validate(self) -> bool:
+    async def validate(self) -> None:
         """Validate that the HERB metadata directory exists."""
         metadata_dir = os.path.join(self.data_dir, "metadata")
-        return os.path.isdir(metadata_dir) and os.path.exists(
+        if not (os.path.isdir(metadata_dir) and os.path.exists(
             os.path.join(metadata_dir, "employee.json")
-        )
+        )):
+            raise ValueError(
+                f"HERB metadata directory '{metadata_dir}' does not exist or is missing employee.json"
+            )

@@ -18,8 +18,6 @@ import os
 import re
 from typing import AsyncGenerator, List
 
-import pyarrow.parquet as pq  # type: ignore[import-untyped]
-
 from airweave.core.logging import ContextualLogger
 from airweave.domains.browse_tree.types import NodeSelectionData
 from airweave.domains.sources.token_providers.protocol import SourceAuthProvider
@@ -82,7 +80,7 @@ class EnronSource(BaseSource):
         auth: SourceAuthProvider,
         logger: ContextualLogger,
         http_client: AirweaveHttpClient,
-        config: EnronConfig,
+        config: EnronConfig,  # type: ignore[override]
     ) -> EnronSource:
         """Create a new Enron source instance."""
         instance = cls(auth=auth, logger=logger, http_client=http_client)
@@ -98,6 +96,10 @@ class EnronSource(BaseSource):
         node_selections: list[NodeSelectionData] | None = None,
     ) -> AsyncGenerator[BaseEntity, None]:
         """Read parquet files and yield EnronEmailEntity instances."""
+        # Lazy import: pyarrow is a heavy optional dependency only needed by this
+        # benchmark source and is not guaranteed to be in the Docker image.
+        import pyarrow.parquet as pq  # type: ignore[import-untyped]
+
         data_dir = os.path.join(self.data_dir, "data")
         parquet_files = sorted(f for f in os.listdir(data_dir) if f.endswith(".parquet"))
 

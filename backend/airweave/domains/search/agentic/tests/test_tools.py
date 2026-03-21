@@ -327,6 +327,36 @@ class TestGetSiblingsTool:
         with pytest.raises(ToolValidationError, match="no breadcrumbs"):
             await tool.execute({"entity_id": "ent-1"}, state)
 
+    @pytest.mark.asyncio
+    async def test_returns_sibling_results(self) -> None:
+        """Entity with breadcrumbs → siblings returned from vector DB."""
+        # Entity in state with a parent breadcrumb
+        entity = make_result(entity_id="ent-1", name="My Doc")
+        entity.breadcrumbs = [
+            SearchBreadcrumb(entity_id="parent-1", name="Parent Folder", entity_type="FolderEntity")
+        ]
+
+        # Sibling returned by vector DB (same parent in last breadcrumb)
+        sibling = make_result(entity_id="sibling-1", name="Sibling Doc")
+        sibling.breadcrumbs = [
+            SearchBreadcrumb(entity_id="parent-1", name="Parent Folder", entity_type="FolderEntity")
+        ]
+
+        vdb = FakeVectorDB()
+        vdb.seed_filter_results([sibling])
+
+        state = make_state(results={"ent-1": entity})
+        tool = GetSiblingsTool(vector_db=vdb, collection_id="col-1")
+        result = await tool.execute(
+            {"entity_id": "ent-1", "limit": 50}, state, tool_call_id="tc-sib"
+        )
+
+        assert len(result.summaries) == 1
+        assert result.summaries[0].entity_id == "sibling-1"
+        assert "sibling-1" in state.results
+        assert "tc-sib" in state.results_by_tool_call_id
+        assert "Parent Folder" in result.context_label
+
 
 class TestGetParentTool:
     """Tests for GetParentTool."""
@@ -356,6 +386,46 @@ class TestGetParentTool:
 
         with pytest.raises(ToolValidationError, match="root entity"):
             await tool.execute({"entity_id": "ent-1"}, state)
+
+    @pytest.mark.asyncio
+    async def test_parent_fetched_from_vector_db(self) -> None:
+        """Parent not in state → fetched from vector DB and returned."""
+        child = make_result(entity_id="child-1", name="Child Doc")
+        child.breadcrumbs = [
+            SearchBreadcrumb(entity_id="parent-1", name="Parent", entity_type="FolderEntity")
+        ]
+        parent = make_result(entity_id="parent-1", name="Parent", content="Parent content.")
+
+        vdb = FakeVectorDB()
+        vdb.seed_filter_results([parent])
+
+        state = make_state(results={"child-1": child})
+        tool = GetParentTool(vector_db=vdb, collection_id="col-1")
+        result = await tool.execute({"entity_id": "child-1"}, state, tool_call_id="tc-par")
+
+        assert len(result.entities) == 1
+        assert result.entities[0].entity_id == "parent-1"
+        assert result.not_found == []
+        assert "parent-1" in state.results
+        assert "tc-par" in state.reads_by_tool_call_id
+
+    @pytest.mark.asyncio
+    async def test_parent_not_found_in_vector_db(self) -> None:
+        """Parent not in state and not in vector DB → returned in not_found."""
+        child = make_result(entity_id="child-1", name="Child Doc")
+        child.breadcrumbs = [
+            SearchBreadcrumb(entity_id="missing-parent", name="Missing", entity_type="FolderEntity")
+        ]
+
+        vdb = FakeVectorDB()
+        vdb.seed_filter_results([])  # empty results
+
+        state = make_state(results={"child-1": child})
+        tool = GetParentTool(vector_db=vdb, collection_id="col-1")
+        result = await tool.execute({"entity_id": "child-1"}, state)
+
+        assert result.entities == []
+        assert result.not_found == ["missing-parent"]
 
 
 # ── Count tool ────────────────────────────────────────────────────────

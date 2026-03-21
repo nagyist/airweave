@@ -335,6 +335,149 @@ class TestListenerErrorHandling:
 # ---------------------------------------------------------------------------
 
 
+class TestSearchCompletedRouting:
+    """Tests for SearchCompletedEvent → billing routing."""
+
+    @pytest.mark.asyncio
+    async def test_agentic_with_diagnostics_records_tokens(self):
+        """Agentic tier with diagnostics → TOKENS recorded via normalize_tokens."""
+        from airweave.adapters.llm.registry import get_model_spec
+        from airweave.core.events.search import CompletedDiagnostics, SearchCompletedEvent, SearchTier
+        from airweave.domains.search.config import SearchConfig
+
+        listener, ledger = _make_listener()
+
+        # Use real fallback chain to get real price factors
+        provider, model = SearchConfig.LLM_FALLBACK_CHAIN[0]
+        spec = get_model_spec(provider, model)
+
+        prompt_tokens = 1000
+        completion_tokens = 500
+        expected_normalized = int(
+            prompt_tokens * spec.input_price_factor
+            + completion_tokens * spec.output_price_factor
+        )
+
+        event = SearchCompletedEvent(
+            organization_id=ORG_ID,
+            request_id="req-1",
+            tier=SearchTier.AGENTIC,
+            results=[],
+            duration_ms=5000,
+            billable=True,
+            diagnostics=CompletedDiagnostics(
+                prompt_tokens=prompt_tokens,
+                completion_tokens=completion_tokens,
+            ),
+        )
+
+        await listener.handle(event)
+
+        assert ledger.recorded[(ORG_ID, ActionType.TOKENS)] == expected_normalized
+        assert expected_normalized > 0  # sanity: non-zero tokens were recorded
+
+    @pytest.mark.asyncio
+    async def test_classic_records_query(self):
+        """Classic tier → QUERIES amount=1."""
+        from airweave.core.events.search import SearchCompletedEvent, SearchTier
+
+        listener, ledger = _make_listener()
+        event = SearchCompletedEvent(
+            organization_id=ORG_ID,
+            request_id="req-2",
+            tier=SearchTier.CLASSIC,
+            results=[],
+            duration_ms=200,
+            billable=True,
+        )
+
+        await listener.handle(event)
+
+        assert ledger.recorded[(ORG_ID, ActionType.QUERIES)] == 1
+
+    @pytest.mark.asyncio
+    async def test_not_billable_skipped(self):
+        """Non-billable SearchCompletedEvent → no records."""
+        from airweave.core.events.search import SearchCompletedEvent, SearchTier
+
+        listener, ledger = _make_listener()
+        event = SearchCompletedEvent(
+            organization_id=ORG_ID,
+            request_id="req-3",
+            tier=SearchTier.AGENTIC,
+            results=[],
+            duration_ms=100,
+            billable=False,
+        )
+
+        await listener.handle(event)
+
+        assert len(ledger.record_calls) == 0
+
+    @pytest.mark.asyncio
+    async def test_agentic_without_diagnostics_records_query(self):
+        """Agentic tier but no diagnostics → falls through to QUERIES."""
+        from airweave.core.events.search import SearchCompletedEvent, SearchTier
+
+        listener, ledger = _make_listener()
+        event = SearchCompletedEvent(
+            organization_id=ORG_ID,
+            request_id="req-4",
+            tier=SearchTier.AGENTIC,
+            results=[],
+            duration_ms=300,
+            billable=True,
+            diagnostics=None,
+        )
+
+        await listener.handle(event)
+
+        assert ledger.recorded[(ORG_ID, ActionType.QUERIES)] == 1
+
+    @pytest.mark.asyncio
+    async def test_agentic_zero_tokens_not_recorded(self):
+        """Agentic with diagnostics but zero normalized tokens → no record."""
+        from airweave.core.events.search import CompletedDiagnostics, SearchCompletedEvent, SearchTier
+
+        listener, ledger = _make_listener()
+        event = SearchCompletedEvent(
+            organization_id=ORG_ID,
+            request_id="req-5",
+            tier=SearchTier.AGENTIC,
+            results=[],
+            duration_ms=100,
+            billable=True,
+            diagnostics=CompletedDiagnostics(
+                prompt_tokens=0,
+                completion_tokens=0,
+            ),
+        )
+
+        await listener.handle(event)
+
+        # normalize_tokens(0, 0, ...) = 0 → no record call
+        assert len(ledger.record_calls) == 0
+
+    @pytest.mark.asyncio
+    async def test_instant_records_query(self):
+        """Instant tier → QUERIES amount=1."""
+        from airweave.core.events.search import SearchCompletedEvent, SearchTier
+
+        listener, ledger = _make_listener()
+        event = SearchCompletedEvent(
+            organization_id=ORG_ID,
+            request_id="req-6",
+            tier=SearchTier.INSTANT,
+            results=[],
+            duration_ms=50,
+            billable=True,
+        )
+
+        await listener.handle(event)
+
+        assert ledger.recorded[(ORG_ID, ActionType.QUERIES)] == 1
+
+
 class TestEventPatterns:
     def test_covers_expected_namespaces(self):
         patterns = UsageBillingListener.EVENT_PATTERNS

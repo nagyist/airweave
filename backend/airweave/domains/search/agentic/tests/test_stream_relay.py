@@ -1,12 +1,15 @@
 """Tests for SearchStreamRelay — EventBus → PubSub bridge."""
 
+from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
 
 from airweave.core.events.search import (
+    RerankingDiagnostics,
     SearchCompletedEvent,
     SearchFailedEvent,
+    SearchRerankingEvent,
     SearchStartedEvent,
     SearchThinkingEvent,
     SearchToolCalledEvent,
@@ -147,3 +150,94 @@ class TestSearchStreamRelay:
         await relay.handle(event)
 
         assert len(pubsub.published) == 0
+
+    @pytest.mark.asyncio
+    async def test_started_event_payload_fields(self) -> None:
+        """StartedEvent → payload includes request_id, tier, collection_readable_id."""
+        pubsub = _FakePubSub()
+        relay = SearchStreamRelay(pubsub=pubsub)
+
+        event = SearchStartedEvent(
+            organization_id=uuid4(),
+            request_id="req-start-1",
+            tier="agentic",
+            collection_readable_id="my-collection",
+            query="find something",
+        )
+        await relay.handle(event)
+
+        assert len(pubsub.published) == 1
+        payload = pubsub.published[0][2]
+        assert payload["type"] == "started"
+        assert payload["request_id"] == "req-start-1"
+        assert payload["tier"] == "agentic"
+        assert payload["collection_readable_id"] == "my-collection"
+
+    @pytest.mark.asyncio
+    async def test_reranking_event_published(self) -> None:
+        """RerankingEvent → payload with type=reranking, duration_ms, diagnostics."""
+        pubsub = _FakePubSub()
+        relay = SearchStreamRelay(pubsub=pubsub)
+
+        event = SearchRerankingEvent(
+            organization_id=uuid4(),
+            request_id="req-rerank-1",
+            duration_ms=150,
+            diagnostics=RerankingDiagnostics(
+                input_count=20,
+                output_count=10,
+                model="cohere/rerank-v4.0-pro",
+                top_relevance_score=0.99,
+                bottom_relevance_score=0.45,
+            ),
+        )
+        await relay.handle(event)
+
+        assert len(pubsub.published) == 1
+        payload = pubsub.published[0][2]
+        assert payload["type"] == "reranking"
+        assert payload["duration_ms"] == 150
+        assert payload["diagnostics"]["input_count"] == 20
+        assert payload["diagnostics"]["output_count"] == 10
+
+    @pytest.mark.asyncio
+    async def test_unknown_event_type_not_published(self) -> None:
+        """Event with an event_type not in _SSE_TYPE_MAP → no pubsub.publish call."""
+        pubsub = _FakePubSub()
+        relay = SearchStreamRelay(pubsub=pubsub)
+
+        from airweave.core.events.base import DomainEvent
+        from airweave.core.events.enums import EntityEventType
+
+        # Subclass with request_id field so it passes the first guard
+        class _UnknownEvent(DomainEvent):
+            request_id: str
+
+        # EntityEventType.BATCH_PROCESSED is "entity.batch_processed" — not in _SSE_TYPE_MAP
+        event = _UnknownEvent(
+            event_type=EntityEventType.BATCH_PROCESSED,
+            organization_id=uuid4(),
+            request_id="req-unknown-1",
+        )
+        await relay.handle(event)
+
+        assert len(pubsub.published) == 0
+
+    @pytest.mark.asyncio
+    async def test_pubsub_error_does_not_propagate(self) -> None:
+        """If pubsub.publish raises, the relay logs but does not re-raise."""
+        broken_pubsub = AsyncMock()
+        broken_pubsub.publish.side_effect = RuntimeError("redis down")
+        relay = SearchStreamRelay(pubsub=broken_pubsub)
+
+        event = SearchStartedEvent(
+            organization_id=uuid4(),
+            request_id="req-err-1",
+            tier="agentic",
+            collection_readable_id="col-1",
+            query="test query",
+        )
+        # Should not raise
+        await relay.handle(event)
+
+        broken_pubsub.publish.assert_called_once()

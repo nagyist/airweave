@@ -600,15 +600,14 @@
         ]
       }
     },
-    "/collections/{readable_id}/search": {
-      "get": {
+    "/collections/{readable_id}/search/instant": {
+      "post": {
         "tags": [
           "collections"
         ],
-        "summary": "Search Collection (Legacy)",
-        "description": "**DEPRECATED**: Use POST /collections/{readable_id}/search instead.\n\nThis legacy GET endpoint provides basic search functionality via query parameters.\nMigrate to the POST endpoint for access to advanced features like:\n- Structured filters\n- Query expansion\n- Reranking\n- Streaming responses",
-        "operationId": "search_get_legacy_collections__readable_id__search_get",
-        "deprecated": true,
+        "summary": "Instant Search",
+        "description": "Direct vector search. Embeds the query and searches Vespa. No LLM involved.",
+        "operationId": "instant_search_collections__readable_id__search_instant_post",
         "parameters": [
           {
             "name": "readable_id",
@@ -616,104 +615,27 @@
             "required": true,
             "schema": {
               "type": "string",
-              "description": "The unique readable identifier of the collection to search",
-              "example": "customer-support-tickets-x7k9m",
               "title": "Readable Id"
-            },
-            "description": "The unique readable identifier of the collection to search"
-          },
-          {
-            "name": "query",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "description": "The search query text to find relevant documents and data",
-              "example": "How do I reset my password?",
-              "title": "Query"
-            },
-            "description": "The search query text to find relevant documents and data"
-          },
-          {
-            "name": "response_type",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "$ref": "#/components/schemas/ResponseType",
-              "description": "Format of the response: 'raw' returns search results, 'completion' returns AI-generated answers",
-              "example": "raw",
-              "default": "raw"
-            },
-            "description": "Format of the response: 'raw' returns search results, 'completion' returns AI-generated answers"
-          },
-          {
-            "name": "limit",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "maximum": 1000,
-              "minimum": 1,
-              "description": "Maximum number of results to return",
-              "example": 10,
-              "default": 100,
-              "title": "Limit"
-            },
-            "description": "Maximum number of results to return"
-          },
-          {
-            "name": "offset",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "minimum": 0,
-              "description": "Number of results to skip for pagination",
-              "example": 0,
-              "default": 0,
-              "title": "Offset"
-            },
-            "description": "Number of results to skip for pagination"
-          },
-          {
-            "name": "recency_bias",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "number",
-                  "maximum": 1.0,
-                  "minimum": 0.0
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "description": "How much to weigh recency vs similarity (0=similarity only, 1=recency only)",
-              "example": 0.3,
-              "title": "Recency Bias"
-            },
-            "description": "How much to weigh recency vs similarity (0=similarity only, 1=recency only)"
+            }
           }
         ],
-        "responses": {
-          "200": {
-            "description": "Search results",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/LegacySearchResponse"
-                }
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InstantSearchRequest"
               }
             }
-          },
-          "404": {
-            "description": "Collection Not Found",
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/NotFoundErrorResponse"
+                  "$ref": "#/components/schemas/SearchV2Response"
                 }
               }
             }
@@ -723,17 +645,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ValidationErrorResponse"
-                }
-              }
-            }
-          },
-          "429": {
-            "description": "Rate Limit Exceeded",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RateLimitErrorResponse"
+                  "$ref": "#/components/schemas/HTTPValidationError"
                 }
               }
             }
@@ -744,14 +656,16 @@
             "ApiKeyAuth": []
           }
         ]
-      },
+      }
+    },
+    "/collections/{readable_id}/search/classic": {
       "post": {
         "tags": [
           "collections"
         ],
-        "summary": "Search Collection",
-        "description": "Search your collection using semantic and hybrid search.\n\nThis is the primary search endpoint providing powerful AI-powered search capabilities:\n\n**Search Strategies:**\n- **hybrid** (default): Combines neural (semantic) and keyword (BM25) matching\n- **neural**: Pure semantic search using embeddings\n- **keyword**: Traditional keyword-based BM25 search\n\n**Features:**\n- **Query expansion**: Generate query variations to improve recall\n- **Filter interpretation**: Extract structured filters from natural language\n- **Reranking**: LLM-based reranking for improved relevance\n- **Answer generation**: AI-generated answers based on search results\n\n**Note**: Accepts both new SearchRequest and legacy LegacySearchRequest formats\nfor backwards compatibility.",
-        "operationId": "search_collections__readable_id__search_post",
+        "summary": "Classic Search",
+        "description": "AI-optimized search. An LLM generates a search strategy (query expansions, retrieval method, filters), then executes against Vespa.",
+        "operationId": "classic_search_collections__readable_id__search_classic_post",
         "parameters": [
           {
             "name": "readable_id",
@@ -759,11 +673,8 @@
             "required": true,
             "schema": {
               "type": "string",
-              "description": "The unique readable identifier of the collection to search",
-              "example": "customer-support-tickets-x7k9m",
               "title": "Readable Id"
-            },
-            "description": "The unique readable identifier of the collection to search"
+            }
           }
         ],
         "requestBody": {
@@ -771,45 +682,18 @@
           "content": {
             "application/json": {
               "schema": {
-                "anyOf": [
-                  {
-                    "$ref": "#/components/schemas/SearchRequest"
-                  },
-                  {
-                    "$ref": "#/components/schemas/LegacySearchRequest"
-                  }
-                ],
-                "title": "Search Request"
+                "$ref": "#/components/schemas/ClassicSearchRequest"
               }
             }
           }
         },
         "responses": {
           "200": {
-            "description": "Search results with optional AI completion",
+            "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
-                  "anyOf": [
-                    {
-                      "$ref": "#/components/schemas/SearchResponse"
-                    },
-                    {
-                      "$ref": "#/components/schemas/LegacySearchResponse"
-                    }
-                  ],
-                  "title": "Response Search Collections  Readable Id  Search Post",
-                  "$ref": "#/components/schemas/SearchResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Collection Not Found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/NotFoundErrorResponse"
+                  "$ref": "#/components/schemas/SearchV2Response"
                 }
               }
             }
@@ -819,17 +703,121 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ValidationErrorResponse"
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ]
+      }
+    },
+    "/collections/{readable_id}/search/agentic": {
+      "post": {
+        "tags": [
+          "collections"
+        ],
+        "summary": "Agentic Search",
+        "description": "Full agent loop with tool calling. The agent iteratively searches, reads, navigates hierarchies, and collects results.",
+        "operationId": "agentic_search_collections__readable_id__search_agentic_post",
+        "parameters": [
+          {
+            "name": "readable_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Readable Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgenticSearchRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchV2Response"
                 }
               }
             }
           },
-          "429": {
-            "description": "Rate Limit Exceeded",
+          "422": {
+            "description": "Validation Error",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/RateLimitErrorResponse"
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ]
+      }
+    },
+    "/collections/{readable_id}/search/agentic/stream": {
+      "post": {
+        "tags": [
+          "collections"
+        ],
+        "summary": "Stream Agentic Search",
+        "description": "Streaming agentic search via Server-Sent Events. Returns real-time events as the agent searches: thinking, tool calls, reranking, and final results.",
+        "operationId": "stream_agentic_search_collections__readable_id__search_agentic_stream_post",
+        "parameters": [
+          {
+            "name": "readable_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Readable Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgenticSearchRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
                 }
               }
             }
@@ -2503,239 +2491,33 @@
         "title": "AdminSyncInfo",
         "description": "Extended sync info for admin listing with entity counts and status."
       },
-      "AgenticSearchAccessControl": {
-        "properties": {
-          "viewers": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "string"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Viewers",
-            "description": "Principal IDs who can view this entity. None if unknown."
-          },
-          "is_public": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Is Public",
-            "description": "Whether this entity is publicly accessible. None if unknown."
-          }
-        },
-        "type": "object",
-        "title": "AgenticSearchAccessControl",
-        "description": "Access control in agentic search result."
-      },
-      "AgenticSearchAnswer": {
-        "properties": {
-          "text": {
-            "type": "string",
-            "title": "Text",
-            "description": "The answer text. Should be clear and well-structured."
-          },
-          "citations": {
-            "items": {
-              "$ref": "#/components/schemas/AgenticSearchCitation"
-            },
-            "type": "array",
-            "title": "Citations",
-            "description": "List of entity_ids from search results used to compose the answer."
-          }
-        },
-        "type": "object",
-        "required": [
-          "text",
-          "citations"
-        ],
-        "title": "AgenticSearchAnswer",
-        "description": "Answer generated from search results."
-      },
-      "AgenticSearchBreadcrumb": {
-        "properties": {
-          "entity_id": {
-            "type": "string",
-            "title": "Entity Id",
-            "description": "ID of the entity in the source."
-          },
-          "name": {
-            "type": "string",
-            "title": "Name",
-            "description": "Display name of the entity."
-          },
-          "entity_type": {
-            "type": "string",
-            "title": "Entity Type",
-            "description": "Entity class name (e.g., 'AsanaProjectEntity')."
-          }
-        },
-        "type": "object",
-        "required": [
-          "entity_id",
-          "name",
-          "entity_type"
-        ],
-        "title": "AgenticSearchBreadcrumb",
-        "description": "Breadcrumb in agentic search result."
-      },
-      "AgenticSearchCitation": {
-        "properties": {
-          "entity_id": {
-            "type": "string",
-            "title": "Entity Id",
-            "description": "The entity ID of a search result used in the answer"
-          }
-        },
-        "type": "object",
-        "required": [
-          "entity_id"
-        ],
-        "title": "AgenticSearchCitation",
-        "description": "Citation for a source used in the answer."
-      },
-      "AgenticSearchFilterCondition": {
-        "properties": {
-          "field": {
-            "$ref": "#/components/schemas/AgenticSearchFilterableField",
-            "description": "Field to filter on (use dot notation for nested fields)."
-          },
-          "operator": {
-            "$ref": "#/components/schemas/AgenticSearchFilterOperator",
-            "description": "The comparison operator to use."
-          },
-          "value": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "integer"
-              },
-              {
-                "type": "number"
-              },
-              {
-                "type": "boolean"
-              },
-              {
-                "items": {
-                  "type": "string"
-                },
-                "type": "array"
-              },
-              {
-                "items": {
-                  "type": "integer"
-                },
-                "type": "array"
-              }
-            ],
-            "title": "Value",
-            "description": "Value to compare against. Use a list for 'in' and 'not_in' operators."
-          }
-        },
-        "type": "object",
-        "required": [
-          "field",
-          "operator",
-          "value"
-        ],
-        "title": "AgenticSearchFilterCondition",
-        "description": "A single filter condition.\n\nPydantic validates that:\n- ``field`` is a valid AgenticSearchFilterableField enum value\n- ``operator`` is a valid AgenticSearchFilterOperator enum value\n- ``value`` matches the expected types\n- The combination of field + operator + value is semantically valid\n\nInvalid filters raise ``pydantic.ValidationError`` automatically.\n\nExamples:\n    {\"field\": \"airweave_system_metadata.source_name\", \"operator\": \"equals\",\n     \"value\": \"notion\"}\n    {\"field\": \"created_at\", \"operator\": \"greater_than\",\n     \"value\": \"2024-01-01T00:00:00Z\"}\n    {\"field\": \"breadcrumbs.name\", \"operator\": \"contains\", \"value\": \"Engineering\"}"
-      },
-      "AgenticSearchFilterGroup": {
-        "properties": {
-          "conditions": {
-            "items": {
-              "$ref": "#/components/schemas/AgenticSearchFilterCondition"
-            },
-            "type": "array",
-            "minItems": 1,
-            "title": "Conditions",
-            "description": "Filter conditions within this group, combined with AND"
-          }
-        },
-        "type": "object",
-        "required": [
-          "conditions"
-        ],
-        "title": "AgenticSearchFilterGroup",
-        "description": "A group of filter conditions combined with AND.\n\nMultiple filter groups are combined with OR, allowing expressions like:\n(A AND B) OR (C AND D)\n\nExamples:\n    Single group (AND):\n        {\"conditions\": [\n            {\"field\": \"airweave_system_metadata.source_name\",\n             \"operator\": \"equals\", \"value\": \"slack\"},\n            {\"field\": \"airweave_system_metadata.entity_type\",\n             \"operator\": \"equals\", \"value\": \"SlackMessageEntity\"}\n        ]}\n\n    Multiple groups (OR between groups, AND within):\n        [\n            {\"conditions\": [{\"field\": \"name\", \"operator\": \"equals\",\n                             \"value\": \"doc1\"}]},\n            {\"conditions\": [{\"field\": \"name\", \"operator\": \"equals\",\n                             \"value\": \"doc2\"}]}\n        ]\n\n    Breadcrumb filtering:\n        {\"conditions\": [\n            {\"field\": \"breadcrumbs.name\", \"operator\": \"contains\",\n             \"value\": \"Engineering\"}\n        ]}"
-      },
-      "AgenticSearchFilterOperator": {
-        "type": "string",
-        "enum": [
-          "equals",
-          "not_equals",
-          "contains",
-          "greater_than",
-          "less_than",
-          "greater_than_or_equal",
-          "less_than_or_equal",
-          "in",
-          "not_in"
-        ],
-        "title": "AgenticSearchFilterOperator",
-        "description": "Supported filter operators."
-      },
-      "AgenticSearchFilterableField": {
-        "type": "string",
-        "enum": [
-          "entity_id",
-          "name",
-          "created_at",
-          "updated_at",
-          "breadcrumbs.entity_id",
-          "breadcrumbs.name",
-          "breadcrumbs.entity_type",
-          "airweave_system_metadata.entity_type",
-          "airweave_system_metadata.source_name",
-          "airweave_system_metadata.original_entity_id",
-          "airweave_system_metadata.chunk_index",
-          "airweave_system_metadata.sync_id",
-          "airweave_system_metadata.sync_job_id"
-        ],
-        "title": "AgenticSearchFilterableField",
-        "description": "Filterable fields in agentic search.\n\nUses dot notation for nested fields (e.g., breadcrumbs.name,\nairweave_system_metadata.source_name)."
-      },
-      "AgenticSearchMode": {
-        "type": "string",
-        "enum": [
-          "fast",
-          "thinking"
-        ],
-        "title": "AgenticSearchMode",
-        "description": "Search execution mode.\n\n- FAST: Performs a single search pass.\n- THINKING: Performs an intelligent multi-step search to find the best results."
-      },
       "AgenticSearchRequest": {
         "properties": {
           "query": {
             "type": "string",
             "title": "Query",
-            "description": "The natural language search query."
+            "description": "Search query text."
+          },
+          "thinking": {
+            "type": "boolean",
+            "title": "Thinking",
+            "description": "Enable extended thinking / chain-of-thought.",
+            "default": false
           },
           "filter": {
-            "items": {
-              "$ref": "#/components/schemas/AgenticSearchFilterGroup"
-            },
-            "type": "array",
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/FilterGroup"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Filter",
-            "description": "Filter groups that are always applied to search results. Conditions within a group are combined with AND. Multiple groups are combined with OR. Leave empty for no filtering."
-          },
-          "mode": {
-            "$ref": "#/components/schemas/AgenticSearchMode",
-            "description": "The search mode. 'fast' performs a single search pass. 'thinking' performs an intelligent multi-step search to find the best results (may take longer). Defaults to 'thinking'.",
-            "default": "thinking"
+            "description": "Filter groups (combined with OR)."
           },
           "limit": {
             "anyOf": [
@@ -2748,7 +2530,7 @@
               }
             ],
             "title": "Limit",
-            "description": "Maximum number of results to return. The response will contain at most this many results, but the agent can decide to return fewer. When not set, all results are returned."
+            "description": "Max results. None means agent decides."
           }
         },
         "type": "object",
@@ -2756,176 +2538,7 @@
           "query"
         ],
         "title": "AgenticSearchRequest",
-        "description": "Request schema for agentic search."
-      },
-      "AgenticSearchResponse": {
-        "properties": {
-          "results": {
-            "items": {
-              "$ref": "#/components/schemas/AgenticSearchResult"
-            },
-            "type": "array",
-            "title": "Results"
-          },
-          "answer": {
-            "$ref": "#/components/schemas/AgenticSearchAnswer"
-          }
-        },
-        "type": "object",
-        "required": [
-          "results",
-          "answer"
-        ],
-        "title": "AgenticSearchResponse",
-        "description": "Response schema for agentic search."
-      },
-      "AgenticSearchResult": {
-        "properties": {
-          "entity_id": {
-            "type": "string",
-            "title": "Entity Id",
-            "description": "Original entity ID."
-          },
-          "name": {
-            "type": "string",
-            "title": "Name",
-            "description": "Entity display name."
-          },
-          "relevance_score": {
-            "type": "number",
-            "title": "Relevance Score",
-            "description": "Relevance score from the search engine."
-          },
-          "breadcrumbs": {
-            "items": {
-              "$ref": "#/components/schemas/AgenticSearchBreadcrumb"
-            },
-            "type": "array",
-            "title": "Breadcrumbs",
-            "description": "Breadcrumbs showing entity hierarchy."
-          },
-          "created_at": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "date-time"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Created At",
-            "description": "When the entity was created."
-          },
-          "updated_at": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "date-time"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Updated At",
-            "description": "When the entity was last updated."
-          },
-          "textual_representation": {
-            "type": "string",
-            "title": "Textual Representation",
-            "description": "Semantically searchable text content"
-          },
-          "airweave_system_metadata": {
-            "$ref": "#/components/schemas/AgenticSearchSystemMetadata",
-            "description": "System metadata"
-          },
-          "access": {
-            "$ref": "#/components/schemas/AgenticSearchAccessControl",
-            "description": "Access control"
-          },
-          "web_url": {
-            "type": "string",
-            "title": "Web Url",
-            "description": "URL to view the entity in its source application (e.g., Notion, Asana)."
-          },
-          "url": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Url",
-            "description": "Download URL for file entities. Only present for FileEntity types."
-          },
-          "raw_source_fields": {
-            "additionalProperties": true,
-            "type": "object",
-            "title": "Raw Source Fields",
-            "description": "All source-specific fields."
-          }
-        },
-        "type": "object",
-        "required": [
-          "entity_id",
-          "name",
-          "relevance_score",
-          "breadcrumbs",
-          "textual_representation",
-          "airweave_system_metadata",
-          "access",
-          "web_url",
-          "raw_source_fields"
-        ],
-        "title": "AgenticSearchResult",
-        "description": "Agentic search result."
-      },
-      "AgenticSearchSystemMetadata": {
-        "properties": {
-          "source_name": {
-            "type": "string",
-            "title": "Source Name",
-            "description": "Name of the source this entity belongs to."
-          },
-          "entity_type": {
-            "type": "string",
-            "title": "Entity Type",
-            "description": "Type of the entity this entity represents in the source."
-          },
-          "sync_id": {
-            "type": "string",
-            "title": "Sync Id",
-            "description": "ID of the sync this entity belongs to."
-          },
-          "sync_job_id": {
-            "type": "string",
-            "title": "Sync Job Id",
-            "description": "ID of the sync job this entity belongs to."
-          },
-          "chunk_index": {
-            "type": "integer",
-            "title": "Chunk Index",
-            "description": "Index of the chunk in the file."
-          },
-          "original_entity_id": {
-            "type": "string",
-            "title": "Original Entity Id",
-            "description": "Original entity ID"
-          }
-        },
-        "type": "object",
-        "required": [
-          "source_name",
-          "entity_type",
-          "sync_id",
-          "sync_job_id",
-          "chunk_index",
-          "original_entity_id"
-        ],
-        "title": "AgenticSearchSystemMetadata",
-        "description": "System metadata in agentic search result."
+        "description": "Agentic search request \u2014 full agent loop with tool calling."
       },
       "AuthProviderAuthentication": {
         "properties": {
@@ -2948,6 +2561,7 @@
             "description": "Provider-specific configuration"
           }
         },
+        "additionalProperties": false,
         "type": "object",
         "required": [
           "provider_readable_id"
@@ -3305,6 +2919,18 @@
               }
             ],
             "title": "Redirect Url"
+          },
+          "claim_token": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Claim Token",
+            "description": "One-time token to verify OAuth flow ownership. Only returned when creating an OAuth browser connection."
           },
           "provider_readable_id": {
             "anyOf": [
@@ -3877,6 +3503,51 @@
         "title": "CheckoutSessionResponse",
         "description": "Response with checkout session URL."
       },
+      "ClassicSearchRequest": {
+        "properties": {
+          "query": {
+            "type": "string",
+            "title": "Query",
+            "description": "Search query text."
+          },
+          "filter": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/FilterGroup"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Filter",
+            "description": "Filter groups (combined with OR)."
+          },
+          "limit": {
+            "type": "integer",
+            "maximum": 1000.0,
+            "minimum": 1.0,
+            "title": "Limit",
+            "description": "Max results to return.",
+            "default": 100
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Offset",
+            "description": "Number of results to skip.",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": [
+          "query"
+        ],
+        "title": "ClassicSearchRequest",
+        "description": "Classic search request \u2014 LLM generates a search plan, execute against Vespa."
+      },
       "Collection": {
         "properties": {
           "name": {
@@ -3964,6 +3635,14 @@
             "type": "string",
             "title": "Embedding Model Name",
             "description": "Name of the embedding model used for this collection (derived from deployment metadata)."
+          },
+          "source_connection_summaries": {
+            "items": {
+              "$ref": "#/components/schemas/SourceConnectionSummary"
+            },
+            "type": "array",
+            "title": "Source Connection Summaries",
+            "description": "Lightweight list of source connections attached to this collection. Contains only short_name and name, suitable for rendering icons in list views."
           }
         },
         "type": "object",
@@ -3989,6 +3668,16 @@
           "name": "Finance Data",
           "organization_id": "org12345-6789-abcd-ef01-234567890abc",
           "readable_id": "finance-data-ab123",
+          "source_connection_summaries": [
+            {
+              "name": "Slack",
+              "short_name": "slack"
+            },
+            {
+              "name": "GitHub",
+              "short_name": "github"
+            }
+          ],
           "status": "ACTIVE",
           "vector_size": 3072
         }
@@ -4680,6 +4369,7 @@
             "description": "Authentication credentials"
           }
         },
+        "additionalProperties": false,
         "type": "object",
         "required": [
           "credentials"
@@ -4850,7 +4540,13 @@
           "organization.created",
           "organization.deleted",
           "organization.member_added",
-          "organization.member_removed"
+          "organization.member_removed",
+          "search.started",
+          "search.completed",
+          "search.failed",
+          "search.reranking",
+          "search.thinking",
+          "search.tool_called"
         ],
         "title": "EventType"
       },
@@ -4861,7 +4557,6 @@
           "source_rate_limiting",
           "zephyr_scale",
           "sharepoint_2019_v2",
-          "agentic_search",
           "api_key_admin_sync",
           "connect"
         ],
@@ -4884,6 +4579,108 @@
         ],
         "title": "Fields",
         "description": "Fields model."
+      },
+      "FilterCondition": {
+        "properties": {
+          "field": {
+            "$ref": "#/components/schemas/FilterableField",
+            "description": "Field to filter on (use dot notation for nested fields)."
+          },
+          "operator": {
+            "$ref": "#/components/schemas/FilterOperator",
+            "description": "The comparison operator to use."
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "items": {
+                  "type": "integer"
+                },
+                "type": "array"
+              }
+            ],
+            "title": "Value",
+            "description": "Value to compare against. Use a list for 'in' and 'not_in' operators."
+          }
+        },
+        "type": "object",
+        "required": [
+          "field",
+          "operator",
+          "value"
+        ],
+        "title": "FilterCondition",
+        "description": "A single filter condition.\n\nPydantic validates that:\n- ``field`` is a valid FilterableField enum value\n- ``operator`` is a valid FilterOperator enum value\n- ``value`` matches the expected types\n- The combination of field + operator + value is semantically valid\n\nInvalid filters raise ``pydantic.ValidationError`` automatically.\n\nExamples:\n    {\"field\": \"airweave_system_metadata.source_name\", \"operator\": \"equals\",\n     \"value\": \"notion\"}\n    {\"field\": \"created_at\", \"operator\": \"greater_than\",\n     \"value\": \"2024-01-01T00:00:00Z\"}\n    {\"field\": \"breadcrumbs.name\", \"operator\": \"contains\", \"value\": \"Engineering\"}"
+      },
+      "FilterGroup": {
+        "properties": {
+          "conditions": {
+            "items": {
+              "$ref": "#/components/schemas/FilterCondition"
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "Conditions",
+            "description": "Filter conditions within this group, combined with AND"
+          }
+        },
+        "type": "object",
+        "required": [
+          "conditions"
+        ],
+        "title": "FilterGroup",
+        "description": "A group of filter conditions combined with AND.\n\nMultiple filter groups are combined with OR, allowing expressions like:\n(A AND B) OR (C AND D)\n\nExamples:\n    Single group (AND):\n        {\"conditions\": [\n            {\"field\": \"airweave_system_metadata.source_name\",\n             \"operator\": \"equals\", \"value\": \"slack\"},\n            {\"field\": \"airweave_system_metadata.entity_type\",\n             \"operator\": \"equals\", \"value\": \"SlackMessageEntity\"}\n        ]}\n\n    Multiple groups (OR between groups, AND within):\n        [\n            {\"conditions\": [{\"field\": \"name\", \"operator\": \"equals\",\n                             \"value\": \"doc1\"}]},\n            {\"conditions\": [{\"field\": \"name\", \"operator\": \"equals\",\n                             \"value\": \"doc2\"}]}\n        ]\n\n    Breadcrumb filtering:\n        {\"conditions\": [\n            {\"field\": \"breadcrumbs.name\", \"operator\": \"contains\",\n             \"value\": \"Engineering\"}\n        ]}"
+      },
+      "FilterOperator": {
+        "type": "string",
+        "enum": [
+          "equals",
+          "not_equals",
+          "contains",
+          "greater_than",
+          "less_than",
+          "greater_than_or_equal",
+          "less_than_or_equal",
+          "in",
+          "not_in"
+        ],
+        "title": "FilterOperator",
+        "description": "Supported filter operators."
+      },
+      "FilterableField": {
+        "type": "string",
+        "enum": [
+          "entity_id",
+          "name",
+          "created_at",
+          "updated_at",
+          "breadcrumbs.entity_id",
+          "breadcrumbs.name",
+          "breadcrumbs.entity_type",
+          "airweave_system_metadata.entity_type",
+          "airweave_system_metadata.source_name",
+          "airweave_system_metadata.original_entity_id",
+          "airweave_system_metadata.chunk_index",
+          "airweave_system_metadata.sync_id",
+          "airweave_system_metadata.sync_job_id"
+        ],
+        "title": "FilterableField",
+        "description": "Filterable fields in search.\n\nUses dot notation for nested fields (e.g., breadcrumbs.name,\nairweave_system_metadata.source_name)."
       },
       "HTTPValidationError": {
         "properties": {
@@ -4933,6 +4730,117 @@
         ],
         "title": "HealthStatus",
         "description": "Health status of a webhook subscription based on recent delivery attempts."
+      },
+      "InstantSearchRequest": {
+        "properties": {
+          "query": {
+            "type": "string",
+            "title": "Query",
+            "description": "Search query text."
+          },
+          "retrieval_strategy": {
+            "$ref": "#/components/schemas/airweave__domains__search__types__plan__RetrievalStrategy",
+            "description": "Which retrieval strategy to use.",
+            "default": "hybrid"
+          },
+          "filter": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/FilterGroup"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Filter",
+            "description": "Filter groups (combined with OR)."
+          },
+          "limit": {
+            "type": "integer",
+            "maximum": 1000.0,
+            "minimum": 1.0,
+            "title": "Limit",
+            "description": "Max results to return.",
+            "default": 100
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Offset",
+            "description": "Number of results to skip.",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": [
+          "query"
+        ],
+        "title": "InstantSearchRequest",
+        "description": "Instant search request \u2014 embed query, fire at Vespa, return results."
+      },
+      "InternalAgenticSearchRequest": {
+        "properties": {
+          "query": {
+            "type": "string",
+            "title": "Query",
+            "description": "Search query text."
+          },
+          "thinking": {
+            "type": "boolean",
+            "title": "Thinking",
+            "description": "Enable extended thinking / chain-of-thought.",
+            "default": false
+          },
+          "filter": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/FilterGroup"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Filter",
+            "description": "Filter groups (combined with OR)."
+          },
+          "limit": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Limit",
+            "description": "Max results. None means agent decides."
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model",
+            "description": "LLM model override. Format: 'provider/model' e.g. 'together/zai-glm-5-thinking'. When not set, uses the default model from config."
+          }
+        },
+        "type": "object",
+        "required": [
+          "query"
+        ],
+        "title": "InternalAgenticSearchRequest",
+        "description": "Admin-only agentic search request with model override for evals."
       },
       "InvitationCreate": {
         "properties": {
@@ -4993,189 +4901,6 @@
         ],
         "title": "InvitationResponse",
         "description": "Schema for invitation responses."
-      },
-      "LegacySearchRequest": {
-        "properties": {
-          "query": {
-            "type": "string",
-            "title": "Query",
-            "description": "The search query text (max 2048 tokens)"
-          },
-          "filter": {
-            "anyOf": [
-              {
-                "additionalProperties": true,
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Filter",
-            "description": "Filter for metadata-based filtering"
-          },
-          "offset": {
-            "anyOf": [
-              {
-                "type": "integer",
-                "minimum": 0.0
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Offset",
-            "description": "Number of results to skip",
-            "default": 0
-          },
-          "limit": {
-            "anyOf": [
-              {
-                "type": "integer",
-                "maximum": 1000.0,
-                "minimum": 1.0
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Limit",
-            "description": "Maximum number of results",
-            "default": 100
-          },
-          "score_threshold": {
-            "anyOf": [
-              {
-                "type": "number",
-                "maximum": 1.0,
-                "minimum": 0.0
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Score Threshold",
-            "description": "Minimum similarity score threshold (deprecated, will be ignored)"
-          },
-          "response_type": {
-            "$ref": "#/components/schemas/ResponseType",
-            "description": "Type of response - 'raw' or 'completion'",
-            "default": "raw"
-          },
-          "search_method": {
-            "anyOf": [
-              {
-                "type": "string",
-                "enum": [
-                  "hybrid",
-                  "neural",
-                  "keyword"
-                ]
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Search Method",
-            "description": "Search method to use"
-          },
-          "recency_bias": {
-            "anyOf": [
-              {
-                "type": "number",
-                "maximum": 1.0,
-                "minimum": 0.0
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Recency Bias",
-            "description": "How much document age affects the similarity score (0..1)"
-          },
-          "expansion_strategy": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/QueryExpansionStrategy"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Query expansion strategy"
-          },
-          "enable_reranking": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Enable Reranking",
-            "description": "Enable LLM-based reranking to improve result relevance"
-          },
-          "enable_query_interpretation": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Enable Query Interpretation",
-            "description": "Enable automatic filter extraction from natural language query"
-          }
-        },
-        "type": "object",
-        "required": [
-          "query"
-        ],
-        "title": "LegacySearchRequest",
-        "description": "Legacy search request schema for backwards compatibility."
-      },
-      "LegacySearchResponse": {
-        "properties": {
-          "results": {
-            "items": {
-              "additionalProperties": true,
-              "type": "object"
-            },
-            "type": "array",
-            "title": "Results",
-            "description": "Array of search result objects"
-          },
-          "response_type": {
-            "$ref": "#/components/schemas/ResponseType",
-            "description": "Indicates whether results are raw search matches or AI-generated completions"
-          },
-          "completion": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Completion",
-            "description": "AI-generated natural language answer when response_type is 'completion'"
-          },
-          "status": {
-            "$ref": "#/components/schemas/SearchStatus",
-            "description": "Status of the search operation"
-          }
-        },
-        "type": "object",
-        "required": [
-          "results",
-          "response_type",
-          "status"
-        ],
-        "title": "LegacySearchResponse",
-        "description": "Legacy search response schema for backwards compatibility."
       },
       "LivenessResponse": {
         "properties": {
@@ -5430,6 +5155,7 @@
             "description": "OAuth1 consumer secret (for custom apps)"
           }
         },
+        "additionalProperties": false,
         "type": "object",
         "title": "OAuthBrowserAuthentication",
         "description": "OAuth authentication via browser flow.\n\nSupports both OAuth2 and OAuth1 BYOC (Bring Your Own Client):\n- OAuth2 BYOC: Provide client_id + client_secret\n- OAuth1 BYOC: Provide consumer_key + consumer_secret"
@@ -5467,6 +5193,7 @@
             "description": "Token expiry time"
           }
         },
+        "additionalProperties": false,
         "type": "object",
         "required": [
           "access_token"
@@ -6252,16 +5979,6 @@
           }
         ]
       },
-      "QueryExpansionStrategy": {
-        "type": "string",
-        "enum": [
-          "auto",
-          "llm",
-          "no_expansion"
-        ],
-        "title": "QueryExpansionStrategy",
-        "description": "Query expansion strategies for search."
-      },
       "RateLimitErrorResponse": {
         "properties": {
           "detail": {
@@ -6396,25 +6113,6 @@
           "status": "running"
         }
       },
-      "ResponseType": {
-        "type": "string",
-        "enum": [
-          "raw",
-          "completion"
-        ],
-        "title": "ResponseType",
-        "description": "Response format options for search results."
-      },
-      "RetrievalStrategy": {
-        "type": "string",
-        "enum": [
-          "hybrid",
-          "neural",
-          "keyword"
-        ],
-        "title": "RetrievalStrategy",
-        "description": "Retrieval strategies for search."
-      },
       "ScheduleConfig": {
         "properties": {
           "cron": {
@@ -6507,6 +6205,67 @@
         "title": "ScheduleDetails",
         "description": "Schedule information."
       },
+      "SearchAccessControl": {
+        "properties": {
+          "viewers": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Viewers",
+            "description": "Principal IDs who can view this entity. None if unknown."
+          },
+          "is_public": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Public",
+            "description": "Whether this entity is publicly accessible. None if unknown."
+          }
+        },
+        "type": "object",
+        "title": "SearchAccessControl",
+        "description": "Access control in search result."
+      },
+      "SearchBreadcrumb": {
+        "properties": {
+          "entity_id": {
+            "type": "string",
+            "title": "Entity Id",
+            "description": "ID of the entity in the source."
+          },
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "description": "Display name of the entity."
+          },
+          "entity_type": {
+            "type": "string",
+            "title": "Entity Type",
+            "description": "Entity class name (e.g., 'AsanaProjectEntity')."
+          }
+        },
+        "type": "object",
+        "required": [
+          "entity_id",
+          "name",
+          "entity_type"
+        ],
+        "title": "SearchBreadcrumb",
+        "description": "Breadcrumb in search result."
+      },
       "SearchRequest": {
         "properties": {
           "query": {
@@ -6518,7 +6277,7 @@
           "retrieval_strategy": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/RetrievalStrategy"
+                "$ref": "#/components/schemas/airweave__schemas__search__RetrievalStrategy"
               },
               {
                 "type": "null"
@@ -6778,15 +6537,255 @@
           ]
         }
       },
-      "SearchStatus": {
-        "type": "string",
-        "enum": [
-          "success",
-          "no_relevant_results",
-          "no_results"
+      "SearchResult": {
+        "properties": {
+          "entity_id": {
+            "type": "string",
+            "title": "Entity Id",
+            "description": "Original entity ID."
+          },
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "description": "Entity display name."
+          },
+          "relevance_score": {
+            "type": "number",
+            "title": "Relevance Score",
+            "description": "Relevance score from the search engine."
+          },
+          "breadcrumbs": {
+            "items": {
+              "$ref": "#/components/schemas/SearchBreadcrumb"
+            },
+            "type": "array",
+            "title": "Breadcrumbs",
+            "description": "Breadcrumbs showing entity hierarchy."
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At",
+            "description": "When the entity was created."
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At",
+            "description": "When the entity was last updated."
+          },
+          "textual_representation": {
+            "type": "string",
+            "title": "Textual Representation",
+            "description": "Semantically searchable text content"
+          },
+          "airweave_system_metadata": {
+            "$ref": "#/components/schemas/SearchSystemMetadata",
+            "description": "System metadata"
+          },
+          "access": {
+            "$ref": "#/components/schemas/SearchAccessControl",
+            "description": "Access control"
+          },
+          "web_url": {
+            "type": "string",
+            "title": "Web Url",
+            "description": "URL to view the entity in its source application (e.g., Notion, Asana)."
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url",
+            "description": "Download URL for file entities. Only present for FileEntity types."
+          },
+          "raw_source_fields": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Raw Source Fields",
+            "description": "All source-specific fields."
+          }
+        },
+        "type": "object",
+        "required": [
+          "entity_id",
+          "name",
+          "relevance_score",
+          "breadcrumbs",
+          "textual_representation",
+          "airweave_system_metadata",
+          "access",
+          "web_url",
+          "raw_source_fields"
         ],
-        "title": "SearchStatus",
-        "description": "Status indicators for search operation outcomes."
+        "title": "SearchResult",
+        "description": "Search result."
+      },
+      "SearchSystemMetadata": {
+        "properties": {
+          "source_name": {
+            "type": "string",
+            "title": "Source Name",
+            "description": "Name of the source this entity belongs to."
+          },
+          "entity_type": {
+            "type": "string",
+            "title": "Entity Type",
+            "description": "Type of the entity this entity represents in the source."
+          },
+          "sync_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sync Id",
+            "description": "ID of the sync this entity belongs to (None for federated)."
+          },
+          "sync_job_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sync Job Id",
+            "description": "ID of the sync job this entity belongs to (None for federated)."
+          },
+          "chunk_index": {
+            "type": "integer",
+            "title": "Chunk Index",
+            "description": "Index of the chunk in the file."
+          },
+          "original_entity_id": {
+            "type": "string",
+            "title": "Original Entity Id",
+            "description": "Original entity ID"
+          }
+        },
+        "type": "object",
+        "required": [
+          "source_name",
+          "entity_type",
+          "chunk_index",
+          "original_entity_id"
+        ],
+        "title": "SearchSystemMetadata",
+        "description": "System metadata in search result."
+      },
+      "SearchV2Response": {
+        "properties": {
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/SearchResult"
+            },
+            "type": "array",
+            "title": "Results",
+            "description": "Search results ordered by relevance."
+          }
+        },
+        "type": "object",
+        "title": "SearchV2Response",
+        "description": "Unified response for all search tiers.",
+        "examples": [
+          {
+            "results": [
+              {
+                "access": {},
+                "airweave_system_metadata": {
+                  "chunk_index": 0,
+                  "entity_type": "NotionPageEntity",
+                  "original_entity_id": "page-abc123",
+                  "source_name": "notion",
+                  "sync_id": "d4e5f6a7-b8c9-4d0e-1f2a-3b4c5d6e7f80",
+                  "sync_job_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+                },
+                "breadcrumbs": [
+                  {
+                    "entity_id": "ws-1",
+                    "entity_type": "NotionWorkspaceEntity",
+                    "name": "Acme Workspace"
+                  },
+                  {
+                    "entity_id": "db-eng",
+                    "entity_type": "NotionDatabaseEntity",
+                    "name": "Engineering"
+                  }
+                ],
+                "created_at": "2025-02-10T09:15:00Z",
+                "entity_id": "page-abc123",
+                "name": "Production Deployment Guide",
+                "raw_source_fields": {
+                  "archived": false,
+                  "icon": "\ud83d\ude80",
+                  "parent_type": "database_id"
+                },
+                "relevance_score": 0.94,
+                "textual_representation": "# Production Deployment Guide\n\nThis document covers the standard deployment process for production releases.",
+                "updated_at": "2025-03-18T16:30:00Z",
+                "web_url": "https://notion.so/Deployment-Guide-abc123"
+              },
+              {
+                "access": {},
+                "airweave_system_metadata": {
+                  "chunk_index": 0,
+                  "entity_type": "SlackMessageEntity",
+                  "original_entity_id": "msg-def456",
+                  "source_name": "slack",
+                  "sync_id": "e5f6a7b8-c9d0-4e1f-2a3b-4c5d6e7f8091",
+                  "sync_job_id": "b2c3d4e5-f6a7-8901-bcde-f12345678901"
+                },
+                "breadcrumbs": [
+                  {
+                    "entity_id": "team-1",
+                    "entity_type": "SlackWorkspaceEntity",
+                    "name": "Acme"
+                  },
+                  {
+                    "entity_id": "chan-eng",
+                    "entity_type": "SlackChannelEntity",
+                    "name": "#engineering"
+                  }
+                ],
+                "created_at": "2025-03-15T11:22:00Z",
+                "entity_id": "msg-def456",
+                "name": "Deployment checklist update",
+                "raw_source_fields": {
+                  "channel_name": "#engineering",
+                  "username": "alice"
+                },
+                "relevance_score": 0.87,
+                "textual_representation": "Updated the deployment checklist to include the new canary step. Make sure to verify metrics before promoting to 100%.",
+                "updated_at": "2025-03-15T11:22:00Z",
+                "web_url": "https://acme.slack.com/archives/C0123ABC/p1710500520"
+              }
+            ]
+          }
+        ]
       },
       "SingleActionCheckResponse": {
         "properties": {
@@ -7666,6 +7665,25 @@
         ],
         "title": "SourceConnectionStatus",
         "description": "Source connection status enum - represents overall connection state."
+      },
+      "SourceConnectionSummary": {
+        "properties": {
+          "short_name": {
+            "type": "string",
+            "title": "Short Name"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "short_name",
+          "name"
+        ],
+        "title": "SourceConnectionSummary",
+        "description": "Lightweight summary of a source connection for collection list display."
       },
       "SourceConnectionUpdate": {
         "properties": {
@@ -8675,6 +8693,12 @@
             "title": "Queries",
             "description": "Search queries executed"
           },
+          "tokens": {
+            "type": "integer",
+            "title": "Tokens",
+            "description": "Normalized token usage from agentic search",
+            "default": 0
+          },
           "source_connections": {
             "type": "integer",
             "title": "Source Connections",
@@ -8708,6 +8732,18 @@
             ],
             "title": "Max Queries",
             "description": "Maximum queries allowed"
+          },
+          "max_tokens": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Tokens",
+            "description": "Maximum normalized tokens allowed"
           },
           "max_source_connections": {
             "anyOf": [
@@ -9049,6 +9085,21 @@
             }
           ]
         }
+      },
+      "VerifyOAuthRequest": {
+        "properties": {
+          "claim_token": {
+            "type": "string",
+            "title": "Claim Token",
+            "description": "Claim token from create response"
+          }
+        },
+        "type": "object",
+        "required": [
+          "claim_token"
+        ],
+        "title": "VerifyOAuthRequest",
+        "description": "Request body for verifying OAuth flow ownership."
       },
       "WebhookMessage": {
         "properties": {
@@ -9464,6 +9515,26 @@
           "updated_at": "2024-03-15T14:30:00Z",
           "url": "https://api.mycompany.com/webhooks/airweave"
         }
+      },
+      "airweave__domains__search__types__plan__RetrievalStrategy": {
+        "type": "string",
+        "enum": [
+          "semantic",
+          "keyword",
+          "hybrid"
+        ],
+        "title": "RetrievalStrategy",
+        "description": "Supported retrieval strategies."
+      },
+      "airweave__schemas__search__RetrievalStrategy": {
+        "type": "string",
+        "enum": [
+          "hybrid",
+          "neural",
+          "keyword"
+        ],
+        "title": "RetrievalStrategy",
+        "description": "Retrieval strategies for search."
       }
     },
     "securitySchemes": {

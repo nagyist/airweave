@@ -9,6 +9,10 @@ INCLUDED_ENDPOINTS = {
     "/collections/": {"get": True, "post": True},
     "/collections/{readable_id}/": {"get": True, "patch": True, "delete": True},
     "/collections/{readable_id}/search/": {"get": True, "post": True},
+    "/collections/{readable_id}/search/instant/": {"post": True},
+    "/collections/{readable_id}/search/classic/": {"post": True},
+    "/collections/{readable_id}/search/agentic/": {"post": True},
+    "/collections/{readable_id}/search/agentic/stream/": {"post": True},
     # Source Connections
     "/source-connections/": {"get": True, "post": True},
     "/source-connections/{source_connection_id}/": {

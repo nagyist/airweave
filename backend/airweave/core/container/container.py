@@ -46,7 +46,10 @@ from airweave.domains.collections.protocols import (
 )
 from airweave.domains.connect.protocols import ConnectServiceProtocol
 from airweave.domains.connections.protocols import ConnectionRepositoryProtocol
-from airweave.domains.credentials.protocols import IntegrationCredentialRepositoryProtocol
+from airweave.domains.credentials.protocols import (
+    IntegrationCredentialRepositoryProtocol,
+    IntegrationCredentialServiceProtocol,
+)
 from airweave.domains.embedders.protocols import (
     DenseEmbedderProtocol,
     DenseEmbedderRegistryProtocol,
@@ -162,6 +165,7 @@ class Container:
     collection_repo: CollectionRepositoryProtocol
     conn_repo: ConnectionRepositoryProtocol
     cred_repo: IntegrationCredentialRepositoryProtocol
+    credential_service: IntegrationCredentialServiceProtocol
     user_org_repo: UserOrganizationRepositoryProtocol
 
     # OAuth services

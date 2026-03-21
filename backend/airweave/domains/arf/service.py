@@ -22,8 +22,8 @@ from airweave.domains.arf.types import SyncManifest
 from airweave.domains.storage.exceptions import StorageNotFoundError
 from airweave.domains.storage.paths import StoragePaths
 from airweave.domains.storage.protocols import StorageBackend
-from airweave.platform.contexts import SyncContext
-from airweave.platform.contexts.runtime import SyncRuntime
+from airweave.domains.sync_pipeline.contexts import SyncContext
+from airweave.domains.sync_pipeline.contexts.runtime import SyncRuntime
 from airweave.platform.entities._base import BaseEntity
 
 
@@ -244,7 +244,11 @@ class ArfService(ArfServiceProtocol):
         except StorageNotFoundError:
             return None
 
-    async def upsert_manifest(self, sync_context: "SyncContext", runtime: "SyncRuntime") -> None:
+    async def upsert_manifest(
+        self,
+        sync_context: SyncContext,
+        runtime: SyncRuntime,
+    ) -> None:
         """Create or update manifest for a sync job."""
         sync_id = str(sync_context.sync.id)
         manifest_path = self._manifest_path(sync_id)
@@ -268,8 +272,6 @@ class ArfService(ArfServiceProtocol):
                 created_at=now,
                 updated_at=now,
                 sync_jobs=[job_id],
-                vector_size=runtime.dense_embedder.dimensions,
-                embedding_model_name=runtime.dense_embedder.model_name,
             )
             await self._storage.write_json(manifest_path, manifest.model_dump())
 

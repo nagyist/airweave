@@ -7,15 +7,19 @@ ArfReaderProtocol covers the read path (replay / inspection).
 from typing import Any, AsyncGenerator, Dict, List, Optional, Protocol
 
 from airweave.domains.arf.types import SyncManifest
-from airweave.platform.contexts import SyncContext
-from airweave.platform.contexts.runtime import SyncRuntime
+from airweave.domains.sync_pipeline.contexts import SyncContext
+from airweave.domains.sync_pipeline.contexts.runtime import SyncRuntime
 from airweave.platform.entities._base import BaseEntity
 
 
 class ArfServiceProtocol(Protocol):
     """Write-path contract for ARF entity capture."""
 
-    async def upsert_manifest(self, sync_context: SyncContext, runtime: SyncRuntime) -> None:
+    async def upsert_manifest(
+        self,
+        sync_context: SyncContext,
+        runtime: SyncRuntime,
+    ) -> None:
         """Create or update the sync manifest."""
         ...
 

@@ -110,7 +110,7 @@ def fake_circuit_breaker():
 @pytest.fixture
 def fake_ocr_provider():
     """Fake OcrProvider that returns canned markdown."""
-    from airweave.adapters.ocr.fake import FakeOcrProvider
+    from airweave.domains.ocr.fakes.provider import FakeOcrProvider
 
     return FakeOcrProvider()
 
@@ -406,6 +406,38 @@ def fake_sync_lifecycle():
 
 
 @pytest.fixture
+def fake_sync_factory():
+    """Fake SyncFactory."""
+    from airweave.domains.sync_pipeline.fakes.factory import FakeSyncFactory
+
+    return FakeSyncFactory()
+
+
+@pytest.fixture
+def fake_entity_repo():
+    """Fake EntityRepository."""
+    from airweave.domains.sync_pipeline.fakes.entity_repository import FakeEntityRepository
+
+    return FakeEntityRepository()
+
+
+@pytest.fixture
+def fake_access_broker():
+    """Fake AccessBroker."""
+    from airweave.domains.access_control.fakes.broker import FakeAccessBroker
+
+    return FakeAccessBroker()
+
+
+@pytest.fixture
+def fake_converter_registry():
+    """Fake ConverterRegistry."""
+    from airweave.domains.converters.fakes.registry import FakeConverterRegistry
+
+    return FakeConverterRegistry()
+
+
+@pytest.fixture
 def fake_billing_webhook():
     """Fake BillingWebhookProcessor."""
     from airweave.adapters.payment.fake import FakePaymentGateway
@@ -693,6 +725,10 @@ def test_container(
     fake_instant_search,
     fake_classic_search,
     fake_agentic_search_v2,
+    fake_sync_factory,
+    fake_entity_repo,
+    fake_access_broker,
+    fake_converter_registry,
 ):
     """A Container with all dependencies replaced by fakes.
 
@@ -774,4 +810,8 @@ def test_container(
         instant_search=fake_instant_search,
         classic_search=fake_classic_search,
         agentic_search=fake_agentic_search_v2,
+        sync_factory=fake_sync_factory,
+        entity_repo=fake_entity_repo,
+        access_broker=fake_access_broker,
+        converter_registry=fake_converter_registry,
     )

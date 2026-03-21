@@ -1,5 +1,5 @@
 ---
-globs: **/sync/**
+globs: **/sync_pipeline/**
 alwaysApply: false
 ---
 # Airweave Sync Architecture - Deep Dive
@@ -28,10 +28,13 @@ The sync module orchestrates data flow from sources to destinations using a high
 **Key Responsibilities**:
 - Builds SyncContext (frozen data) via SyncContextBuilder
 - Builds source + cursor directly via `_build_source()` (uses SourceLifecycleService)
-- Builds live services (destinations, trackers) via sub-builders
-- Assembles SyncRuntime from the services
+- Builds destinations via DestinationsContextBuilder
+- Builds entity tracker via `_build_entity_tracker()` (inlined, no separate builder)
+- Assembles SyncRuntime from per-sync state
 - Configures contextual logging with sync metadata
 - Wires pipelines, handlers, worker pool, and stream
+
+**DI Model**: Instance-based with constructor-injected deps. Stateless app-scoped services (event_bus, usage_checker, processor, arf_service) are held by the factory and injected directly into consumers (SyncOrchestrator, EntityPipeline), not stored in SyncRuntime.
 
 ### SyncContext (frozen data)
 **Purpose**: Immutable data describing a sync run. Inherits from `BaseContext` (sibling to `ApiContext`).
@@ -47,25 +50,25 @@ The sync module orchestrates data flow from sources to destinations using a high
 Can be passed directly as `ctx` to CRUD operations (it IS a `BaseContext`).
 
 ### SyncRuntime (live services)
-**Purpose**: Holds live services and mutable state for a sync run. Separate from SyncContext.
+**Purpose**: Holds per-sync mutable state for a sync run. Separate from SyncContext.
 
 **Fields**:
 - `source`: Source instance with OAuth token management
 - `cursor`: Mutable sync cursor for incremental syncs
 - `destinations`: List of destination instances
 - `entity_tracker`: Centralized entity state tracker
-- `event_bus`: Central EventBus for domain events (progress, lifecycle)
-- `usage_checker`: Usage limit enforcement (`UsageLimitCheckerProtocol`)
+
+Stateless singletons (event_bus, usage_checker, embedders) are NOT stored here — they are DI'd directly into their consumers via constructor injection.
 
 Built by the factory, held by the orchestrator, injected into pipeline/handler constructors.
 
 ### Builders
 - **SyncContextBuilder** (`builders/sync.py`): Builds data-only SyncContext
-- **SyncFactory._build_source()**: Builds source + cursor directly (previously `SourceContextBuilder`, now inlined into the factory)
-- **DestinationsContextBuilder** (`builders/destinations.py`): Builds destinations + entity_map
-- **TrackingContextBuilder** (`builders/tracking.py`): Builds entity_tracker
+- **SyncFactory._build_source()**: Builds source + cursor directly (uses SourceLifecycleService), returns `SourceBuildResult`
+- **DestinationsContextBuilder** (`builders/destinations.py`): Builds destination instances
+- **SyncFactory._build_entity_tracker()**: Builds EntityTracker with initial counts (inlined into factory)
 
-The factory calls sub-builders in parallel where possible, then assembles SyncRuntime.
+The factory calls build helpers in sequence, then assembles SyncRuntime.
 
 ### SyncOrchestrator
 **Purpose**: Coordinates the entire sync workflow with error handling and progress tracking
@@ -80,6 +83,8 @@ The factory calls sub-builders in parallel where possible, then assembles SyncRu
 - `_process_entities()`: Implements pull-based processing loop
 - `_handle_completed_tasks()`: Cleans completed tasks and checks for errors
 - `_wait_for_remaining_tasks()`: Ensures all tasks complete before finishing
+
+**Constructor-Injected Services**: Receives `event_bus`, `usage_checker`, `usage_ledger`, and `sync_cursor_service` directly via constructor — not through SyncRuntime.
 
 **Concurrency Management**:
 ```python
@@ -115,21 +120,21 @@ async for entity in stream.get_entities():
 **Pipeline Stages**:
 1. **Track & Dedupe**: EntityTracker records encounter, skips duplicates
 2. **Prepare**: Populate fields, enrich metadata, compute content hash
-3. **Resolve Actions**: ActionResolver determines INSERT/UPDATE/DELETE/KEEP
-4. **Dispatch**: ActionDispatcher routes actions to handlers concurrently
+3. **Resolve Actions**: EntityActionResolver determines INSERT/UPDATE/DELETE/KEEP
+4. **Dispatch**: EntityActionDispatcher routes actions to handlers concurrently
 
-**Action Types** (`platform/sync/actions/types.py`):
+**Action Types** (`domains/sync_pipeline/entity/actions.py`):
 - `InsertAction`: New entity, not in database
 - `UpdateAction`: Hash changed from stored value
 - `DeleteAction`: DeletionEntity from source
 - `KeepAction`: Hash matches stored value (no-op)
 
-**Handlers** (`platform/sync/handlers/`):
+**Handlers** (`domains/sync_pipeline/entity/handlers/`):
 | Handler | Responsibility | Execution |
 |---------|----------------|-----------|
-| `VectorDBHandler` | Chunking → embedding → vector DB writes | Concurrent |
+| `DestinationHandler` | Chunking → embedding → vector DB writes | Concurrent |
 | `ArfHandler` | Captures raw entities to ARF storage via `ArfService` | Concurrent |
-| `PostgresMetadataHandler` | Persists entity metadata | Sequential (last) |
+| `PostgresHandler` | Persists entity metadata | Sequential (last) |
 
 **Error Handling**:
 - Catches exceptions per entity (doesn't fail entire sync)
@@ -235,18 +240,20 @@ if auth_type in (AuthType.oauth2_with_refresh, AuthType.oauth2_with_refresh_rota
 ### 1. Initialization Phase
 ```
 SyncFactory.create_orchestrator()
-├── Create SyncContext (frozen data)
-│   ├── Build source + cursor via _build_source() (SourceLifecycleService)
-│   ├── Create destinations
-│   ├── Setup embedding model
-│   ├── Build DAG router
-│   ├── Create EntityTracker
-│   └── Create EventBus (SyncProgressRelay auto-subscribes)
-├── Initialize transformer cache (CRITICAL)
-├── Create EntityPipeline
-│   ├── ActionResolver
-│   └── ActionDispatcher (with handlers)
-└── Create AsyncWorkerPool
+├── Resolve layered SyncConfig (collection → sync → job overrides)
+├── Resolve source connection from DB
+├── Build source + cursor via _build_source() (SourceLifecycleService)
+├── Build destinations via DestinationsContextBuilder
+├── Build EntityTracker via _build_entity_tracker() (with initial counts)
+├── Build entity_map from EntityDefinitionRegistry
+├── Assemble SyncContext (frozen data) via SyncContextBuilder
+├── Assemble SyncRuntime (source, cursor, entity_tracker, destinations)
+├── Wire EntityPipeline
+│   ├── EntityActionResolver
+│   └── EntityActionDispatcher (via EntityDispatcherBuilder)
+├── Wire AccessControlPipeline
+├── Wire AsyncSourceStream
+└── Create SyncOrchestrator (with DI'd event_bus, usage_checker, usage_ledger, sync_cursor_service)
 ```
 
 ### 2. Streaming Phase
@@ -268,15 +275,15 @@ SyncOrchestrator (Consumer)
 EntityPipeline.process()
 ├── Track & dedupe (EntityTracker)
 ├── Prepare entities (enrich, compute hash)
-├── Resolve actions (ActionResolver)
+├── Resolve actions (EntityActionResolver)
 │   ├── Query DB for existing hashes
 │   └── Return ActionBatch (inserts, updates, deletes, keeps)
-└── Dispatch to handlers (ActionDispatcher)
-    ├── VectorDBHandler (concurrent)
+└── Dispatch to handlers (EntityActionDispatcher)
+    ├── DestinationHandler (concurrent)
     │   └── text → chunks → embeddings → vector DB
     ├── ArfHandler (concurrent)
     │   └── Capture to ARF storage via ArfService
-    └── PostgresMetadataHandler (sequential, last)
+    └── PostgresHandler (sequential, last)
         └── Persist entity metadata
 ```
 
@@ -321,7 +328,7 @@ if sync_job_dict.get("_orphaned") or "ORPHANED_SYNC" in str(e):
 **Cleanup Actions** (in `self_destruct_orphaned_sync_activity`):
 - Deletes all schedule types: `sync-{id}`, `minute-sync-{id}`, `daily-cleanup-{id}`
 - Uses existing `temporal_schedule_service.delete_schedule_handle()`
-- Logs with INFO level (🧹 indicators), not ERROR
+- Logs with INFO level, not ERROR
 - Idempotent (safe for concurrent workflows)
 
 **Result**: No "Source connection record not found" errors, graceful workflow exits, automatic schedule cleanup.

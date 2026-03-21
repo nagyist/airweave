@@ -84,6 +84,7 @@ class EntityDefinitionRegistry(EntityDefinitionRegistryProtocol):
         """Initialize the entity definition registry."""
         self._entries: dict[str, EntityDefinitionEntry] = {}
         self._by_source: dict[str, list[EntityDefinitionEntry]] = {}
+        self._by_class: dict[Type, str] = {}
 
     def get(self, short_name: str) -> EntityDefinitionEntry:
         """Get an entity definition entry by short name.
@@ -102,6 +103,13 @@ class EntityDefinitionRegistry(EntityDefinitionRegistryProtocol):
     def list_all(self) -> list[EntityDefinitionEntry]:
         """List all registered entity definition entries."""
         return list(self._entries.values())
+
+    def get_short_name_by_class(self, entity_class: Type) -> str | None:
+        """Reverse-lookup: get short_name for an entity class.
+
+        Returns None if the class is not registered.
+        """
+        return self._by_class.get(entity_class)
 
     def list_for_source(self, source_short_name: str) -> list[EntityDefinitionEntry]:
         """List all entity definitions for a given source.
@@ -143,6 +151,7 @@ class EntityDefinitionRegistry(EntityDefinitionRegistryProtocol):
                 )
 
                 self._entries[short_name] = entry
+                self._by_class[entity_cls] = short_name
                 source_entries.append(entry)
 
             self._by_source[module_name] = source_entries

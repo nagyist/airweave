@@ -27,8 +27,6 @@ class SyncManifest(BaseModel):
     created_at: str
     updated_at: str
     sync_jobs: List[str] = Field(default_factory=list)
-    vector_size: Optional[int] = None
-    embedding_model_name: Optional[str] = None
 
 
 @dataclass(frozen=True, slots=True)

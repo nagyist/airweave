@@ -94,11 +94,8 @@ def _make_sync_context(sync_id: str = SYNC_ID) -> Any:
 
 def _make_runtime(source_short_name: str = "github") -> Any:
     source = SimpleNamespace(short_name=source_short_name)
-    dense_embedder = SimpleNamespace(dimensions=768, model_name="test-embed")
     entity_tracker = SimpleNamespace(get_all_encountered_ids_flat=lambda: set())
-    return SimpleNamespace(
-        source=source, dense_embedder=dense_embedder, entity_tracker=entity_tracker
-    )
+    return SimpleNamespace(source=source, entity_tracker=entity_tracker)
 
 
 def _build_service() -> tuple:

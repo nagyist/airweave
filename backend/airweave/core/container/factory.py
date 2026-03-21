@@ -38,9 +38,6 @@ from airweave.adapters.metrics import (
     PrometheusHttpMetrics,
     PrometheusMetricsRenderer,
 )
-from airweave.adapters.ocr.docling import DoclingOcrAdapter
-from airweave.adapters.ocr.fallback import FallbackOcrProvider
-from airweave.adapters.ocr.mistral import MistralOcrAdapter
 from airweave.adapters.pubsub.redis import RedisPubSub
 from airweave.adapters.reranker.cohere import CohereReranker
 from airweave.adapters.tokenizer.registry import get_model_spec as get_tokenizer_spec
@@ -52,13 +49,15 @@ from airweave.core.container.container import Container
 from airweave.core.health.service import HealthService
 from airweave.core.logging import logger
 from airweave.core.metrics_service import PrometheusMetricsService
-from airweave.core.protocols import CircuitBreaker, OcrProvider, PubSub
+from airweave.core.protocols import CircuitBreaker, PubSub
 from airweave.core.protocols.event_bus import EventBus
 from airweave.core.protocols.identity import IdentityProvider
 from airweave.core.protocols.payment import PaymentGatewayProtocol
 from airweave.core.protocols.webhooks import WebhookPublisher
 from airweave.core.redis_client import redis_client
 from airweave.db.session import health_check_engine
+from airweave.domains.access_control.broker import AccessBroker
+from airweave.domains.access_control.repository import AccessControlMembershipRepository
 from airweave.domains.arf.service import ArfService
 from airweave.domains.auth_provider.registry import AuthProviderRegistry
 from airweave.domains.auth_provider.service import AuthProviderService
@@ -70,6 +69,7 @@ from airweave.domains.collections.vector_db_deployment_metadata_repository impor
     VectorDbDeploymentMetadataRepository,
 )
 from airweave.domains.connections.repository import ConnectionRepository
+from airweave.domains.converters.registry import ConverterRegistry
 from airweave.domains.credentials.repository import IntegrationCredentialRepository
 from airweave.domains.credentials.service import IntegrationCredentialService
 from airweave.domains.embedders.config import (
@@ -84,6 +84,7 @@ from airweave.domains.embedders.sparse.fastembed import (
     FastEmbedSparseEmbedder as DomainFastEmbedSparseEmbedder,
 )
 from airweave.domains.entities.entity_count_repository import EntityCountRepository
+from airweave.domains.entities.entity_repository import EntityRepository
 from airweave.domains.entities.registry import EntityDefinitionRegistry
 from airweave.domains.oauth.callback_service import OAuthCallbackService
 from airweave.domains.oauth.flow_service import OAuthFlowService
@@ -93,6 +94,10 @@ from airweave.domains.oauth.repository import (
     OAuthInitSessionRepository,
     OAuthRedirectSessionRepository,
 )
+from airweave.domains.ocr.docling import DoclingOcrAdapter
+from airweave.domains.ocr.fallback import FallbackOcrProvider
+from airweave.domains.ocr.mistral.converter import MistralOCR
+from airweave.domains.ocr.protocols import OcrProvider
 from airweave.domains.organizations.protocols import UserOrganizationRepositoryProtocol
 from airweave.domains.organizations.repository import OrganizationRepository as OrgRepo
 from airweave.domains.organizations.repository import UserOrganizationRepository
@@ -116,8 +121,12 @@ from airweave.domains.sources.registry import SourceRegistry
 from airweave.domains.sources.service import SourceService
 from airweave.domains.sources.validation import SourceValidationService
 from airweave.domains.storage.sync_file_manager import SyncFileManager
+from airweave.domains.sync_pipeline.factory import SyncFactory
+from airweave.domains.sync_pipeline.processors.chunk_embed import ChunkEmbedProcessor
+from airweave.domains.sync_pipeline.subscribers.progress_relay import SyncProgressRelay
 from airweave.domains.syncs.cursors.repository import SyncCursorRepository
 from airweave.domains.syncs.cursors.service import SyncCursorService
+from airweave.domains.syncs.service import SyncService
 from airweave.domains.syncs.sync_job_repository import SyncJobRepository
 from airweave.domains.syncs.sync_job_service import SyncJobService
 from airweave.domains.syncs.sync_lifecycle_service import SyncLifecycleService
@@ -133,7 +142,6 @@ from airweave.domains.usage.subscribers.billing_listener import UsageBillingList
 from airweave.domains.webhooks.service import WebhookServiceImpl
 from airweave.domains.webhooks.subscribers import WebhookEventSubscriber
 from airweave.platform.auth.settings import integration_settings
-from airweave.platform.sync.subscribers.progress_relay import SyncProgressRelay
 from airweave.platform.temporal.client import TemporalClient
 
 
@@ -389,6 +397,60 @@ def create_container(settings: Settings) -> Container:
     sparse_embedder = _create_sparse_embedder(sparse_embedder_registry)
 
     # -----------------------------------------------------------------
+    # Access control membership repo + chunk embed processor
+    # -----------------------------------------------------------------
+    acl_membership_repo = AccessControlMembershipRepository()
+    access_broker = AccessBroker(acl_repo=acl_membership_repo)
+    converter_registry = ConverterRegistry(ocr_provider=ocr_provider)
+    chunk_embed_processor = ChunkEmbedProcessor(
+        converter_registry=converter_registry,
+        dense_embedder=dense_embedder,
+        sparse_embedder=sparse_embedder,
+    )
+
+    # Storage domain
+    # -----------------------------------------------------------------
+    storage_backend = _create_storage_backend(settings)
+    sync_file_manager = SyncFileManager(backend=storage_backend)
+
+    # ARF domain service (raw entity capture / replay)
+    # -----------------------------------------------------------------
+    arf_service = ArfService(storage=storage_backend)
+
+    # Node selection repo (shared by sync factory + browse tree service)
+    node_selection_repo = NodeSelectionRepository()
+
+    # -----------------------------------------------------------------
+    # Sync factory + service
+    # -----------------------------------------------------------------
+    sync_factory = SyncFactory(
+        # Repositories
+        sc_repo=source_deps["sc_repo"],
+        entity_repo=sync_deps["entity_repo"],
+        entity_count_repo=sync_deps["entity_count_repo"],
+        acl_repo=acl_membership_repo,
+        selection_repo=node_selection_repo,
+        # Registries
+        entity_definition_registry=source_deps["entity_definition_registry"],
+        source_registry=source_deps["source_registry"],
+        # Services
+        source_lifecycle_service=source_deps["source_lifecycle_service"],
+        sync_cursor_service=source_deps["sync_cursor_service"],
+        processor=chunk_embed_processor,
+        arf_service=arf_service,
+        # Infrastructure
+        event_bus=event_bus,
+        usage_checker=usage_checker,
+        usage_ledger=usage_ledger,
+        storage_backend=storage_backend,
+    )
+
+    sync_service = SyncService(
+        sync_job_service=sync_deps["sync_job_service"],
+        sync_factory=sync_factory,
+    )
+
+    # -----------------------------------------------------------------
     # Search domain services (LLM, tokenizer, reranker, metadata builder, per-tier)
     # -----------------------------------------------------------------
     search_deps = _create_search_services(
@@ -405,7 +467,7 @@ def create_container(settings: Settings) -> Container:
     )
 
     # -----------------------------------------------------------------
-    # Collection service (needs collection_repo, sc_repo, sync_lifecycle, dense_registry)
+    # Collection service
     # -----------------------------------------------------------------
     collection_service = CollectionService(
         collection_repo=source_deps["collection_repo"],
@@ -458,7 +520,6 @@ def create_container(settings: Settings) -> Container:
     # -----------------------------------------------------------------
     # Browse tree service
     # -----------------------------------------------------------------
-    node_selection_repo = NodeSelectionRepository()
     browse_tree_service = BrowseTreeService(
         selection_repo=node_selection_repo,
         sc_repo=source_deps["sc_repo"],
@@ -469,19 +530,6 @@ def create_container(settings: Settings) -> Container:
         conn_repo=source_deps["conn_repo"],
         temporal_workflow_service=sync_deps["temporal_workflow_service"],
     )
-
-    # Storage domain
-    # -----------------------------------------------------------------
-    storage_backend = _create_storage_backend(settings)
-    sync_file_manager = SyncFileManager(backend=storage_backend)
-
-    # ARF domain service (raw entity capture / replay)
-    # -----------------------------------------------------------------
-    arf_service = ArfService(storage=storage_backend)
-
-    # -----------------------------------------------------------------
-    # Usage billing listener
-    # -----------------------------------------------------------------
 
     return Container(
         storage_backend=storage_backend,
@@ -536,8 +584,12 @@ def create_container(settings: Settings) -> Container:
         payment_gateway=billing_services["payment_gateway"],
         sync_record_service=sync_deps["sync_record_service"],
         sync_job_service=sync_deps["sync_job_service"],
-        sync_service=sync_deps["sync_service"],
+        sync_service=sync_service,
         sync_lifecycle=sync_deps["sync_lifecycle"],
+        sync_factory=sync_factory,
+        entity_repo=sync_deps["entity_repo"],
+        access_broker=access_broker,
+        converter_registry=converter_registry,
         temporal_workflow_service=sync_deps["temporal_workflow_service"],
         temporal_schedule_service=sync_deps["temporal_schedule_service"],
         usage_checker=usage_checker,
@@ -686,7 +738,7 @@ def _create_ocr_provider(
     Returns None with a warning when no providers are available.
     """
     try:
-        mistral_ocr = MistralOcrAdapter()
+        mistral_ocr = MistralOCR()
     except Exception as e:
         logger.error(f"Error creating Mistral OCR adapter: {e}")
         mistral_ocr = None
@@ -924,12 +976,10 @@ def _create_sync_services(
     4. SyncLifecycleService (needs everything above)
     """
     entity_count_repo = EntityCountRepository()
+    entity_repo = EntityRepository()
 
     sync_job_service = SyncJobService(sync_job_repo=sync_job_repo)
 
-    from airweave.domains.syncs.service import SyncService
-
-    sync_service = SyncService(sync_job_service=sync_job_service)
     temporal_workflow_service = TemporalWorkflowService()
 
     sync_record_service = SyncRecordService(
@@ -971,11 +1021,12 @@ def _create_sync_services(
     return {
         "sync_record_service": sync_record_service,
         "sync_job_service": sync_job_service,
-        "sync_service": sync_service,
         "sync_lifecycle": sync_lifecycle,
         "temporal_workflow_service": temporal_workflow_service,
         "temporal_schedule_service": temporal_schedule_service,
         "response_builder": response_builder,
+        "entity_repo": entity_repo,
+        "entity_count_repo": entity_count_repo,
     }
 
 

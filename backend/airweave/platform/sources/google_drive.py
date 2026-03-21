@@ -1352,6 +1352,6 @@ class GoogleDriveSource(BaseSource):
             raise
         except Exception as e:
             self.logger.warning(f"Critical error in generate_entities: {str(e)}")
-            from airweave.platform.sync.exceptions import SyncFailureError
+            from airweave.domains.sync_pipeline.exceptions import SyncFailureError
 
             raise SyncFailureError(f"Google Drive sync failed: {str(e)}") from e

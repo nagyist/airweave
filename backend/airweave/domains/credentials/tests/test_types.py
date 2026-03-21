@@ -1,5 +1,6 @@
 """Unit tests for DecryptedCredential."""
 
+from dataclasses import FrozenInstanceError
 from uuid import uuid4
 
 import pytest
@@ -90,5 +91,5 @@ class TestToAuthConfig:
 class TestFrozen:
     def test_cannot_mutate_fields(self):
         dc = _dc({"access_token": "tok"})
-        with pytest.raises(AttributeError):
-            dc.credential_id = uuid4()
+        with pytest.raises((AttributeError, FrozenInstanceError)):
+            dc.credential_id = uuid4()  # type: ignore[misc]

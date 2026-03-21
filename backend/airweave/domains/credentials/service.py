@@ -52,7 +52,7 @@ class IntegrationCredentialService:
 
         raw = self._encryptor.decrypt(record.encrypted_credentials)
         return DecryptedCredential(
-            credential_id=record.id,
+            credential_id=UUID(str(record.id)),
             integration_short_name=record.integration_short_name,
             raw=raw,
         )

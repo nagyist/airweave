@@ -46,7 +46,8 @@ class StubEncryptor:
     def decrypt(self, encrypted: str) -> dict[str, Any]:
         import json
 
-        return json.loads(encrypted)
+        result: dict[str, Any] = json.loads(encrypted)
+        return result
 
 
 class StubRepo:
@@ -56,7 +57,7 @@ class StubRepo:
         self._records: dict[UUID, IntegrationCredential] = {}
 
     def seed(self, record: IntegrationCredential) -> None:
-        self._records[record.id] = record
+        self._records[UUID(str(record.id))] = record
 
     async def get(
         self, db, id: UUID, ctx
@@ -71,8 +72,9 @@ class StubRepo:
         ctx,
         uow=None,
     ) -> IntegrationCredential:
+        rid = uuid4()
         record = IntegrationCredential(
-            id=uuid4(),
+            id=rid,
             organization_id=ctx.organization.id,
             name=obj_in.name,
             integration_short_name=obj_in.integration_short_name,
@@ -82,7 +84,7 @@ class StubRepo:
             auth_config_class=obj_in.auth_config_class,
             encrypted_credentials=obj_in.encrypted_credentials,
         )
-        self._records[record.id] = record
+        self._records[rid] = record
         return record
 
     async def update(

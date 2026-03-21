@@ -77,8 +77,9 @@ class FakeIntegrationCredentialService:
             integration_short_name=short_name,
             raw=auth_payload,
         )
-        self._store[record.id] = dc
-        self._records[record.id] = record
+        rid = UUID(str(record.id))
+        self._store[rid] = dc
+        self._records[rid] = record
         return record
 
     async def update(

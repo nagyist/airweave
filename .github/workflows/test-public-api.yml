@@ -31,14 +31,10 @@ jobs:
           pip install poetry
           cd backend && poetry install --no-root
 
-      - name: Run LLM tool schema integration tests
-        env:
-          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
-          CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      - name: Run LLM adapter unit tests
         run: |
           cd backend
-          poetry run pytest tests/integration/agentic_search/test_llm_tool_schemas.py -v --tb=short
+          poetry run pytest airweave/adapters/llm/tests/ -v --tb=short
 
   # ───────────────────────────────────────────────────────────────────
   # Build: compile the backend Docker image once, share via artifact

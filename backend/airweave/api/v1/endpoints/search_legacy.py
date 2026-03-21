@@ -322,14 +322,13 @@ async def stream_search_collection_advanced(  # noqa: C901 - streaming orchestra
                 message=detail,
                 transient=e.status_code >= 500,
             )
-        except Exception as e:  # noqa: BLE001 - report to stream
+        except Exception:  # noqa: BLE001 - report to stream
             ctx.logger.exception(
                 "[SearchStream] Unexpected failure while executing search %s", request_id
             )
             await _publish_stream_error(
                 message="Search stream disconnected. Please retry your search.",
                 transient=True,
-                detail=str(e),
             )
 
     search_task = asyncio.create_task(_run_search())

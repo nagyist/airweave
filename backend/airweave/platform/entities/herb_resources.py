@@ -3,6 +3,8 @@
 from airweave.platform.entities._airweave_field import AirweaveField
 from airweave.platform.entities._base import BaseEntity
 
+__all__ = ["HerbResourceEntity"]
+
 
 class HerbResourceEntity(BaseEntity):
     """Shared URL/bookmark from the HERB benchmark dataset."""

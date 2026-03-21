@@ -117,7 +117,7 @@ class GetChildrenTool:
         entity_id = arguments.get("entity_id")
         if not entity_id:
             raise ToolValidationError("entity_id is required")
-        limit = min(arguments.get("limit", 50), 200)
+        limit = max(1, min(arguments.get("limit", 50), 200))
 
         filter_groups = [
             FilterGroup(
@@ -200,7 +200,7 @@ class GetSiblingsTool:
             )
 
         parent = entity.breadcrumbs[-1]
-        limit = min(arguments.get("limit", 50), 200)
+        limit = max(1, min(arguments.get("limit", 50), 200))
 
         filter_groups = [
             FilterGroup(

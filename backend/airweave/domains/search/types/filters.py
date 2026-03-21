@@ -130,6 +130,10 @@ def _validate_iso_timestamp(value: str) -> None:
 
 def _validate_numeric_value(field: FilterableField, value: Any) -> None:
     """Raise ValueError when a non-numeric value is used on a numeric field."""
+    if isinstance(value, bool):
+        raise ValueError(
+            f"Field '{field.value}' is numeric — expected a number, got boolean {value}."
+        )
     if isinstance(value, int):
         return
     if isinstance(value, str):
@@ -139,10 +143,6 @@ def _validate_numeric_value(field: FilterableField, value: Any) -> None:
             raise ValueError(
                 f"Field '{field.value}' is numeric — expected a number, got '{value}'."
             )
-    elif isinstance(value, bool):
-        raise ValueError(
-            f"Field '{field.value}' is numeric — expected a number, got boolean {value}."
-        )
 
 
 class FilterCondition(BaseModel):

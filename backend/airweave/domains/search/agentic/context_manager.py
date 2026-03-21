@@ -404,7 +404,7 @@ class ContextManager:
             return list(messages)
 
         # Keep the first message (user query) and the newest half
-        midpoint = len(messages) // 2
+        midpoint = 1 + (len(messages) - 1) // 2
         dropped_count = midpoint - 1  # -1 because we keep messages[0]
 
         kept = [messages[0]]

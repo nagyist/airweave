@@ -121,5 +121,5 @@ class HerbPeopleSource(BaseSource):
             os.path.join(metadata_dir, "employee.json")
         )):
             raise ValueError(
-                f"HERB metadata directory '{metadata_dir}' does not exist or is missing employee.json"
+                f"HERB metadata dir '{metadata_dir}' missing or no employee.json"
             )

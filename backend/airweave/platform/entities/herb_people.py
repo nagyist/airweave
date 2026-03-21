@@ -3,6 +3,8 @@
 from airweave.platform.entities._airweave_field import AirweaveField
 from airweave.platform.entities._base import BaseEntity
 
+__all__ = ["HerbEmployeeEntity", "HerbCustomerEntity"]
+
 
 class HerbEmployeeEntity(BaseEntity):
     """Employee record from the HERB benchmark dataset."""

@@ -6,6 +6,8 @@ from typing import Optional
 from airweave.platform.entities._airweave_field import AirweaveField
 from airweave.platform.entities._base import BaseEntity
 
+__all__ = ["HerbMeetingTranscriptEntity", "HerbMeetingChatEntity"]
+
 
 class HerbMeetingTranscriptEntity(BaseEntity):
     """Meeting transcript from the HERB benchmark dataset."""

@@ -61,7 +61,18 @@ class CountTool:
         """Count matching entities. ValidationError on bad filters caught by dispatcher."""
         raw_groups = arguments.get("filter_groups", [])
         validated = [FilterGroup.model_validate(fg) for fg in raw_groups]
-        combined = validated + self._user_filter
+
+        # Merge user filter conditions into each LLM group (AND semantics).
+        # Appending as separate groups would give OR semantics, which would
+        # bypass the user's deterministic constraints.
+        if self._user_filter:
+            user_conditions = [c for uf in self._user_filter for c in uf.conditions]
+            combined = [
+                FilterGroup(conditions=list(fg.conditions) + user_conditions)
+                for fg in validated
+            ] if validated else self._user_filter
+        else:
+            combined = validated
 
         count = await self._vector_db.count(combined, self._collection_id)
         return CountToolResult(count=count)

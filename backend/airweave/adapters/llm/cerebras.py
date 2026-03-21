@@ -61,9 +61,7 @@ class CerebrasLLM(BaseLLM):
         system_prompt: str,
         thinking: bool = False,
     ) -> T:
-        # Reasoning params from model spec
-        tc = self._model_spec.thinking_config
-        reasoning_params = {tc.param_name: tc.param_value}
+        reasoning_params = self._build_reasoning_params(thinking)
 
         api_start = time.monotonic()
         response = await self._client.chat.completions.create(

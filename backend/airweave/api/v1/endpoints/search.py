@@ -172,11 +172,11 @@ async def _cleanup_stream(search_task: asyncio.Task, ps: object) -> None:
         try:
             await search_task
         except Exception:
-            pass
+            pass  # Best-effort cancellation; errors during teardown are not actionable
     try:
         await ps.close()
     except Exception:
-        pass
+        pass  # Best-effort close; PubSub may already be disconnected
 
 
 def _parse_sse_event(data: str) -> str:
@@ -208,7 +208,7 @@ async def _agentic_event_stream_v2(
             if event_type == "error":
                 break
     except asyncio.CancelledError:
-        pass
+        pass  # Client disconnected; normal SSE lifecycle
     except Exception as e:
         error_data = json.dumps({"type": "error", "message": str(e)})
         yield f"data: {error_data}\n\n"

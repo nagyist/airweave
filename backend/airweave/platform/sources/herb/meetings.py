@@ -157,5 +157,5 @@ class HerbMeetingsSource(BaseSource):
             f.endswith(".json") for f in os.listdir(products_dir)
         )):
             raise ValueError(
-                f"HERB data directory '{products_dir}' does not exist or contains no product JSON files"
+                f"HERB data dir '{products_dir}' missing or has no product JSON files"
             )

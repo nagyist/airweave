@@ -6,6 +6,8 @@ from typing import Optional
 from airweave.platform.entities._airweave_field import AirweaveField
 from airweave.platform.entities._base import BaseEntity
 
+__all__ = ["HerbPullRequestEntity"]
+
 
 class HerbPullRequestEntity(BaseEntity):
     """GitHub pull request from the HERB benchmark dataset."""

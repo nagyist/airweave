@@ -17,7 +17,7 @@ from airweave.api.context import ConnectContext
 from airweave.core.context import BaseContext
 from airweave.domains.collections.protocols import CollectionRepositoryProtocol
 from airweave.domains.connect.protocols import ConnectServiceProtocol
-from airweave.domains.connect.types import MODES_CREATE, MODES_DELETE, MODES_VIEW
+from airweave.domains.connect.types import MODES_CREATE, MODES_DELETE, MODES_REAUTH, MODES_VIEW
 from airweave.domains.oauth.protocols import OAuthCallbackServiceProtocol
 from airweave.domains.organizations.protocols import OrganizationRepositoryProtocol
 from airweave.domains.source_connections.protocols import SourceConnectionServiceProtocol
@@ -348,6 +348,21 @@ class ConnectService(ConnectServiceProtocol):
         )
 
         return result  # type: ignore[return-value]
+
+    async def reinitiate_oauth(
+        self,
+        db: AsyncSession,
+        connection_id: UUID,
+        session: ConnectSessionContext,
+    ) -> schemas.SourceConnection:
+        """Re-initiate OAuth for an un-authenticated connection via Connect session."""
+        self._check_mode(session, MODES_REAUTH, "re-initiating OAuth")
+        ctx = await self._build_context(db, session)
+        await self._get_verified_connection(db, connection_id, session, ctx)
+
+        return await self._sc_service.reinitiate_oauth(  # type: ignore[return-value]
+            db, id=connection_id, ctx=ctx  # type: ignore[arg-type]
+        )
 
     async def verify_oauth(
         self,

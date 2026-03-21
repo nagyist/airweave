@@ -176,6 +176,23 @@ async def create_source_connection(
 
 
 @router.post(
+    "/source-connections/{connection_id}/reinitiate-oauth",
+    response_model=schemas.SourceConnection,
+)
+async def reinitiate_oauth(
+    connection_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    session: ConnectSessionContext = Depends(deps.get_connect_session),
+    svc: ConnectServiceProtocol = Inject(ConnectServiceProtocol),
+) -> schemas.SourceConnection:
+    """Re-initiate OAuth for an un-authenticated connection.
+
+    Authentication: Bearer <session_token>
+    """
+    return await svc.reinitiate_oauth(db, connection_id, session)
+
+
+@router.post(
     "/source-connections/{connection_id}/verify-oauth",
     response_model=schemas.SourceConnection,
 )

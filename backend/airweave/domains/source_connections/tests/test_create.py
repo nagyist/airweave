@@ -897,3 +897,184 @@ async def test_create_connection_record_preserves_connection_name():
     create_call = svc._connection_repo._calls[-1]
     connection_create = create_call[2]
     assert connection_create.name == name
+
+
+# ---------------------------------------------------------------------------
+# reinitiate_oauth tests
+# ---------------------------------------------------------------------------
+
+
+def _shell_source_conn(*, sc_id=None, init_session_id=None, is_authenticated=False):
+    """Build a minimal SourceConnection-like ORM object for testing."""
+    from airweave.models.source_connection import SourceConnection
+
+    sc = SourceConnection(
+        id=sc_id or uuid4(),
+        organization_id=uuid4(),
+        name="My GitHub",
+        short_name="github",
+        readable_collection_id="col-1",
+        config_fields={"repo": "acme"},
+        is_authenticated=is_authenticated,
+        connection_init_session_id=init_session_id,
+    )
+    return sc
+
+
+class _FakeUOW:
+    """Minimal UnitOfWork stand-in for tests that need monkeypatching."""
+
+    def __init__(self, db):
+        self.session = db
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb):
+        return False
+
+    async def commit(self):
+        return None
+
+
+async def _fake_create_redirect_session(db, provider_auth_url, ctx, uow):
+    return uuid4()
+
+
+async def test_reinitiate_oauth_happy_path(monkeypatch):
+    """Un-authed connection gets fresh auth_url and claim_token."""
+    entry = _entry(oauth_type="access_only")
+    svc = _service(entry)
+
+    sc_id = uuid4()
+    sc = _shell_source_conn(sc_id=sc_id)
+    svc._sc_repo.seed(sc_id, sc)
+
+    svc._source_validation.validate_config = MagicMock(return_value={})
+    svc._oauth_flow_service.seed_initiate_browser_flow_result(
+        OAuthBrowserInitiationResult(
+            provider_auth_url="https://provider.example.com/auth",
+            client_id=None,
+            client_secret=None,
+            oauth_client_mode="platform_default",
+            additional_overrides={},
+        )
+    )
+
+    expected_response = MagicMock(
+        id=sc_id,
+        auth=SimpleNamespace(
+            authenticated=False,
+            auth_url="https://api.example.com/source-connections/authorize/abc",
+            claim_token="fresh-token",
+        ),
+    )
+    svc._response_builder.build_response = AsyncMock(return_value=expected_response)
+
+    from airweave.domains.source_connections import create as create_module
+
+    monkeypatch.setattr(create_module, "UnitOfWork", _FakeUOW)
+    monkeypatch.setattr(svc, "_create_redirect_session", _fake_create_redirect_session)
+
+    db = AsyncMock()
+    db.add = MagicMock()
+    db.refresh = AsyncMock()
+
+    result = await svc.reinitiate_oauth(db, id=sc_id, ctx=_ctx())
+
+    assert result is expected_response
+    # Verify create_init_session was called
+    assert svc._oauth_flow_service._last_create_init_session_kwargs is not None
+    kwargs = svc._oauth_flow_service._last_create_init_session_kwargs
+    assert kwargs["short_name"] == "github"
+    assert kwargs["claim_token_hash"] is not None
+
+
+async def test_reinitiate_oauth_already_authenticated():
+    """Returns 400 when connection is already authenticated."""
+    svc = _service(_entry())
+
+    sc_id = uuid4()
+    sc = _shell_source_conn(sc_id=sc_id, is_authenticated=True)
+    svc._sc_repo.seed(sc_id, sc)
+
+    with pytest.raises(HTTPException) as exc_info:
+        await svc.reinitiate_oauth(AsyncMock(), id=sc_id, ctx=_ctx())
+
+    assert exc_info.value.status_code == 400
+    assert "already authenticated" in exc_info.value.detail
+
+
+async def test_reinitiate_oauth_not_found():
+    """Returns 404 when connection doesn't exist."""
+    svc = _service(_entry())
+
+    with pytest.raises(NotFoundException):
+        await svc.reinitiate_oauth(AsyncMock(), id=uuid4(), ctx=_ctx())
+
+
+async def test_reinitiate_oauth_preserves_byoc_credentials(monkeypatch):
+    """Reads BYOC client_id from old init session overrides."""
+    entry = _entry(oauth_type="access_only")
+    svc = _service(entry)
+
+    init_session_id = uuid4()
+    sc_id = uuid4()
+    sc = _shell_source_conn(sc_id=sc_id, init_session_id=init_session_id)
+    svc._sc_repo.seed(sc_id, sc)
+
+    # Seed old init session with BYOC credentials
+    from airweave.models.connection_init_session import ConnectionInitSession, ConnectionInitStatus
+
+    old_init = MagicMock(spec=ConnectionInitSession)
+    old_init.status = ConnectionInitStatus.PENDING
+    old_init.overrides = {
+        "client_id": "byoc-id",
+        "client_secret": "byoc-secret",
+        "template_configs": {"subdomain": "acme"},
+        "redirect_url": "https://app.example.com/callback",
+    }
+    old_init.payload = {
+        "short_name": "github",
+        "name": "My GitHub",
+        "readable_collection_id": "col-1",
+    }
+    svc._sc_repo.seed_init_session(init_session_id, old_init)
+
+    svc._source_validation.validate_config = MagicMock(return_value={})
+    svc._oauth_flow_service.seed_initiate_browser_flow_result(
+        OAuthBrowserInitiationResult(
+            provider_auth_url="https://provider.example.com/auth",
+            client_id="byoc-id",
+            client_secret="byoc-secret",
+            oauth_client_mode="byoc_nested",
+            additional_overrides={},
+        )
+    )
+
+    expected_response = MagicMock(id=sc_id)
+    svc._response_builder.build_response = AsyncMock(return_value=expected_response)
+
+    from airweave.domains.source_connections import create as create_module
+
+    monkeypatch.setattr(create_module, "UnitOfWork", _FakeUOW)
+    monkeypatch.setattr(svc, "_create_redirect_session", _fake_create_redirect_session)
+
+    db = AsyncMock()
+    db.add = MagicMock()
+    db.refresh = AsyncMock()
+
+    await svc.reinitiate_oauth(db, id=sc_id, ctx=_ctx())
+
+    # Verify old init session was cancelled
+    assert old_init.status == ConnectionInitStatus.CANCELLED
+
+    # Verify BYOC credentials were passed through via create_init_session
+    init_kwargs = svc._oauth_flow_service._last_create_init_session_kwargs
+    assert init_kwargs["client_id"] == "byoc-id"
+    assert init_kwargs["client_secret"] == "byoc-secret"
+    assert init_kwargs["template_configs"] == {"subdomain": "acme"}
+    assert init_kwargs["redirect_url"] == "https://app.example.com/callback"
+
+    # Verify payload was reused from old init session
+    assert init_kwargs["payload"]["name"] == "My GitHub"

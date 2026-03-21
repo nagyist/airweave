@@ -82,6 +82,15 @@ class ConnectServiceProtocol(Protocol):
         """Create a source connection via Connect session."""
         ...
 
+    async def reinitiate_oauth(
+        self,
+        db: AsyncSession,
+        connection_id: UUID,
+        session: ConnectSessionContext,
+    ) -> schemas.SourceConnection:
+        """Re-initiate OAuth for an un-authenticated connection."""
+        ...
+
     async def verify_oauth(
         self,
         db: AsyncSession,

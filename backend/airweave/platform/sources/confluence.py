@@ -112,39 +112,9 @@ class ConfluenceSource(BaseSource):
         }
 
     async def _get_accessible_resources(self) -> list[dict]:
-        """Get the list of accessible Atlassian resources for this token.
-
-        Calls the Atlassian OAuth accessible-resources endpoint (separate
-        from the Confluence API) using the same Bearer token.  Handles 401
-        with a single token refresh attempt; any auth failure after that
-        raises ``SourceAuthError`` so the sync aborts cleanly.
-        """
+        """Get the list of accessible Atlassian resources for this token."""
         self.logger.debug("Retrieving accessible Atlassian resources")
-        headers = await self._authed_headers()
-
-        response = await self.http_client.get(
-            ATLASSIAN_ACCESSIBLE_RESOURCES_URL,
-            headers=headers,
-        )
-
-        if response.status_code == 401 and self.auth.supports_refresh:
-            self.logger.warning(
-                "Received 401 from Atlassian accessible-resources — refreshing token"
-            )
-            headers = await self._refresh_and_get_headers()
-            response = await self.http_client.get(
-                ATLASSIAN_ACCESSIBLE_RESOURCES_URL,
-                headers=headers,
-            )
-
-        raise_for_status(
-            response,
-            source_short_name=self.short_name,
-            token_provider_kind=self.auth.provider_kind,
-            context="fetching accessible Atlassian resources",
-        )
-
-        resources = response.json()
+        resources = await self._get(ATLASSIAN_ACCESSIBLE_RESOURCES_URL)
         self.logger.debug(f"Found {len(resources)} accessible Atlassian resources")
         return resources
 
@@ -364,7 +334,7 @@ class ConfluenceSource(BaseSource):
         """Verify Confluence OAuth2 token by calling accessible-resources endpoint."""
         resources = await self._get_accessible_resources()
         if not resources:
-            raise ValueError("Confluence validation failed: no accessible resources found")
+            raise SourceAuthError("Confluence validation failed: no accessible resources found")
 
     async def generate_entities(  # noqa: C901
         self,

@@ -114,9 +114,13 @@ jobs:
           DEV_MODE: "true"
           ENABLE_INTERNAL_SOURCES: "true"
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          TOGETHER_API_KEY: ${{ secrets.TOGETHER_API_KEY }}
         run: |
           cp .env.example .env
           echo "OPENAI_API_KEY=$OPENAI_API_KEY" >> .env
+          echo "ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY" >> .env
+          echo "TOGETHER_API_KEY=$TOGETHER_API_KEY" >> .env
           echo "DISABLE_RATE_LIMIT=true" >> .env
           echo "ENABLE_INTERNAL_SOURCES=true" >> .env
           echo "DENSE_EMBEDDER=openai_text_embedding_3_small" >> .env

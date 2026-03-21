@@ -408,14 +408,16 @@ class ContextManager:
         dropped_count = midpoint - 1  # -1 because we keep messages[0]
 
         kept = [messages[0]]
-        kept.append({
-            "role": "user",
-            "content": (
-                f"[System] Context limit reached. The oldest {dropped_count} messages "
-                "were dropped to free space. Your collected results and search state "
-                "are preserved. Continue with the tools available."
-            ),
-        })
+        kept.append(
+            {
+                "role": "user",
+                "content": (
+                    f"[System] Context limit reached. The oldest {dropped_count} messages "
+                    "were dropped to free space. Your collected results and search state "
+                    "are preserved. Continue with the tools available."
+                ),
+            }
+        )
         kept.extend(messages[midpoint:])
 
         return kept

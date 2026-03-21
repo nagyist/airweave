@@ -5,9 +5,10 @@ Uses the Cerebras Cloud SDK for structured output generation with reasoning mode
 
 import json
 import time
-from typing import Any, TypeVar
+from typing import Any, TypeVar, cast
 
 from cerebras.cloud.sdk import AsyncCerebras
+from cerebras.cloud.sdk.types.chat.chat_completion import ChatCompletionResponse
 from pydantic import BaseModel
 
 from airweave.adapters.llm.base import BaseLLM
@@ -64,23 +65,26 @@ class CerebrasLLM(BaseLLM):
         reasoning_params = self._build_reasoning_params(thinking)
 
         api_start = time.monotonic()
-        response = await self._client.chat.completions.create(
-            model=self._model_spec.api_model_name,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": prompt},
-            ],
-            temperature=0.3,
-            response_format={
-                "type": "json_schema",
-                "json_schema": {
-                    "name": schema.__name__.lower(),
-                    "strict": True,
-                    "schema": schema_json,
+        response = cast(
+            ChatCompletionResponse,
+            await self._client.chat.completions.create(
+                model=self._model_spec.api_model_name,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": prompt},
+                ],
+                temperature=0.3,
+                response_format={
+                    "type": "json_schema",
+                    "json_schema": {
+                        "name": schema.__name__.lower(),
+                        "strict": True,
+                        "schema": schema_json,
+                    },
                 },
-            },
-            max_completion_tokens=self._model_spec.max_output_tokens,
-            **reasoning_params,
+                max_completion_tokens=self._model_spec.max_output_tokens,
+                **reasoning_params,
+            ),
         )
         api_time = time.monotonic() - api_start
 
@@ -165,14 +169,17 @@ class CerebrasLLM(BaseLLM):
         reasoning_params = self._build_reasoning_params(thinking)
 
         api_start = time.monotonic()
-        response = await self._client.chat.completions.create(
-            model=self._model_spec.api_model_name,
-            messages=api_messages,
-            tools=strict_tools,
-            tool_choice="required",
-            temperature=0.3,
-            max_completion_tokens=max_tokens or self._model_spec.max_output_tokens,
-            **reasoning_params,
+        response = cast(
+            ChatCompletionResponse,
+            await self._client.chat.completions.create(
+                model=self._model_spec.api_model_name,
+                messages=api_messages,
+                tools=strict_tools,
+                tool_choice="required",
+                temperature=0.3,
+                max_completion_tokens=max_tokens or self._model_spec.max_output_tokens,
+                **reasoning_params,
+            ),
         )
         api_time = time.monotonic() - api_start
 
@@ -180,7 +187,7 @@ class CerebrasLLM(BaseLLM):
         message = choice.message
 
         text = message.content if message.content else None
-        thinking = getattr(message, "reasoning", None) or None
+        thinking_text: str | None = getattr(message, "reasoning", None) or None
 
         tool_calls: list[LLMToolCall] = []
         if message.tool_calls:
@@ -199,8 +206,8 @@ class CerebrasLLM(BaseLLM):
         prompt_tokens = 0
         completion_tokens = 0
         if response.usage:
-            prompt_tokens = response.usage.prompt_tokens
-            completion_tokens = response.usage.completion_tokens
+            prompt_tokens = response.usage.prompt_tokens or 0
+            completion_tokens = response.usage.completion_tokens or 0
             self._logger.debug(
                 f"[CerebrasLLM] Tool call completed in {api_time:.2f}s, "
                 f"tokens: prompt={prompt_tokens}, completion={completion_tokens}"
@@ -208,7 +215,7 @@ class CerebrasLLM(BaseLLM):
 
         return LLMResponse(
             text=text,
-            thinking=thinking,
+            thinking=thinking_text,
             tool_calls=tool_calls,
             prompt_tokens=prompt_tokens,
             completion_tokens=completion_tokens,

@@ -67,10 +67,11 @@ class CountTool:
         # bypass the user's deterministic constraints.
         if self._user_filter:
             user_conditions = [c for uf in self._user_filter for c in uf.conditions]
-            combined = [
-                FilterGroup(conditions=list(fg.conditions) + user_conditions)
-                for fg in validated
-            ] if validated else self._user_filter
+            combined = (
+                [FilterGroup(conditions=list(fg.conditions) + user_conditions) for fg in validated]
+                if validated
+                else self._user_filter
+            )
         else:
             combined = validated
 

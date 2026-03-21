@@ -89,7 +89,7 @@ class InferredPlan:
 
 
 # Plan configuration
-PLAN_LIMITS = {
+PLAN_LIMITS: dict[BillingPlan, dict[str, int | None]] = {
     BillingPlan.DEVELOPER: {
         "max_entities": 50_000,
         "max_queries": 50,
@@ -139,9 +139,11 @@ def compare_plans(current: BillingPlan, target: BillingPlan) -> ChangeType:
         return ChangeType.SAME
 
 
-def get_plan_limits(plan: BillingPlan) -> dict:
+def get_plan_limits(plan: BillingPlan) -> dict[str, int | None]:
     """Get usage limits for a plan."""
-    return PLAN_LIMITS.get(plan, PLAN_LIMITS[BillingPlan.PRO])
+    if plan in PLAN_LIMITS:
+        return PLAN_LIMITS[plan]
+    return PLAN_LIMITS[BillingPlan.PRO]
 
 
 def compute_yearly_prepay_amount_cents(plan: BillingPlan) -> int:

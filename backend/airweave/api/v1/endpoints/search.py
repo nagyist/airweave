@@ -8,6 +8,7 @@ Services emit SearchCompletedEvent/SearchFailedEvent (they own the execution).
 
 import asyncio
 import json
+from collections.abc import AsyncGenerator
 
 from fastapi import Depends, Path
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -21,6 +22,7 @@ from airweave.api.router import TrailingSlashRouter
 from airweave.api.v1.endpoints.admin import _require_admin
 from airweave.core.events.search import SearchStartedEvent, SearchTier
 from airweave.core.protocols import EventBus, PubSub
+from airweave.core.protocols.pubsub import PubSubSubscription
 from airweave.domains.search.protocols import (
     AgenticSearchServiceProtocol,
     ClassicSearchServiceProtocol,
@@ -39,10 +41,15 @@ from airweave.schemas.search_v2 import (
 router = TrailingSlashRouter()
 
 
-@router.post("/{readable_id}/search/instant", response_model=SearchV2Response)
+@router.post(
+    "/{readable_id}/search/instant",
+    response_model=SearchV2Response,
+    summary="Instant Search",
+    description="Direct vector search.",
+)
 async def instant_search(
     readable_id: str = Path(...),
-    request: InstantSearchRequest = ...,
+    request: InstantSearchRequest = ...,  # type: ignore[assignment]
     db: AsyncSession = Depends(deps.get_db),
     ctx: ApiContext = Depends(deps.get_context),
     usage_checker: UsageLimitCheckerProtocol = Inject(UsageLimitCheckerProtocol),
@@ -71,10 +78,15 @@ async def instant_search(
     return SearchV2Response(results=results.results)
 
 
-@router.post("/{readable_id}/search/classic", response_model=SearchV2Response)
+@router.post(
+    "/{readable_id}/search/classic",
+    response_model=SearchV2Response,
+    summary="Classic Search",
+    description=("AI-optimized search."),
+)
 async def classic_search(
     readable_id: str = Path(...),
-    request: ClassicSearchRequest = ...,
+    request: ClassicSearchRequest = ...,  # type: ignore[assignment]
     db: AsyncSession = Depends(deps.get_db),
     ctx: ApiContext = Depends(deps.get_context),
     usage_checker: UsageLimitCheckerProtocol = Inject(UsageLimitCheckerProtocol),
@@ -102,10 +114,17 @@ async def classic_search(
     return SearchV2Response(results=results.results)
 
 
-@router.post("/{readable_id}/search/agentic", response_model=SearchV2Response)
+@router.post(
+    "/{readable_id}/search/agentic",
+    response_model=SearchV2Response,
+    summary="Agentic Search",
+    description=(
+        "Agent that iteratively searches, reads, navigates hierarchies, and collects results."
+    ),
+)
 async def agentic_search(
     readable_id: str = Path(...),
-    request: AgenticSearchRequest = ...,
+    request: AgenticSearchRequest = ...,  # type: ignore[assignment]
     db: AsyncSession = Depends(deps.get_db),
     ctx: ApiContext = Depends(deps.get_context),
     usage_checker: UsageLimitCheckerProtocol = Inject(UsageLimitCheckerProtocol),
@@ -159,13 +178,19 @@ async def _run_agentic_search_v2(
             await pubsub.publish(
                 "agentic_search_v2",
                 ctx.request_id,
-                json.dumps({"type": "error", "message": str(e)}),
+                json.dumps(
+                    {
+                        "type": "error",
+                        "message": "An internal error occurred during search.",
+                        "request_id": ctx.request_id,
+                    }
+                ),
             )
         except Exception:
             ctx.logger.error(f"[AgenticSearchV2] Failed to emit error for {ctx.request_id}")
 
 
-async def _cleanup_stream(search_task: asyncio.Task, ps: object) -> None:
+async def _cleanup_stream(search_task: asyncio.Task, ps: PubSubSubscription) -> None:
     """Cancel the search task if still running and close the PubSub subscription."""
     if not search_task.done():
         search_task.cancel()
@@ -183,16 +208,16 @@ def _parse_sse_event(data: str) -> str:
     """Extract the event type from a JSON SSE payload, returning empty string on failure."""
     try:
         parsed = json.loads(data)
-        return parsed.get("type", "")
+        return str(parsed.get("type", ""))
     except json.JSONDecodeError:
         return ""
 
 
 async def _agentic_event_stream_v2(
-    ps: object,
+    ps: PubSubSubscription,
     search_task: asyncio.Task,
     ctx: ApiContext,
-):
+) -> AsyncGenerator[str, None]:
     """Generate SSE events from PubSub messages for agentic search V2."""
     try:
         async for message in ps.listen():
@@ -210,16 +235,30 @@ async def _agentic_event_stream_v2(
     except asyncio.CancelledError:
         pass  # Client disconnected; normal SSE lifecycle
     except Exception as e:
-        error_data = json.dumps({"type": "error", "message": str(e)})
+        ctx.logger.exception(f"[AgenticSearchV2] SSE stream error {ctx.request_id}: {e}")
+        error_data = json.dumps(
+            {
+                "type": "error",
+                "message": "An internal error occurred during search.",
+                "request_id": ctx.request_id,
+            }
+        )
         yield f"data: {error_data}\n\n"
     finally:
         await _cleanup_stream(search_task, ps)
 
 
-@router.post("/{readable_id}/search/agentic/stream")
+@router.post(
+    "/{readable_id}/search/agentic/stream",
+    summary="Stream Agentic Search",
+    description=(
+        "Streaming agentic search via Server-Sent Events. Returns real-time events "
+        "as the agent searches."
+    ),
+)
 async def stream_agentic_search(
     readable_id: str = Path(...),
-    request: AgenticSearchRequest = ...,
+    request: AgenticSearchRequest = ...,  # type: ignore[assignment]
     db: AsyncSession = Depends(deps.get_db),
     ctx: ApiContext = Depends(deps.get_context),
     usage_checker: UsageLimitCheckerProtocol = Inject(UsageLimitCheckerProtocol),
@@ -267,7 +306,7 @@ admin_router = TrailingSlashRouter()
 @admin_router.post("/{readable_id}/search/agentic/stream")
 async def admin_stream_agentic_search(
     readable_id: str = Path(...),
-    request: InternalAgenticSearchRequest = ...,
+    request: InternalAgenticSearchRequest = ...,  # type: ignore[assignment]
     db: AsyncSession = Depends(deps.get_db),
     ctx: ApiContext = Depends(deps.get_context),
     usage_checker: UsageLimitCheckerProtocol = Inject(UsageLimitCheckerProtocol),
@@ -283,7 +322,7 @@ async def admin_stream_agentic_search(
     effective_service = service
     if request.model:
         override_llm = create_llm_from_override(request.model)
-        effective_service = service.with_llm(override_llm)  # type: ignore[union-attr]
+        effective_service = service.with_llm(override_llm)  # type: ignore[attr-defined]
 
     ps = await pubsub.subscribe("agentic_search_v2", ctx.request_id)
 

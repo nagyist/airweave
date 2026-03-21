@@ -9,9 +9,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave.api.context import ApiContext
 from airweave.db.unit_of_work import UnitOfWork
+from airweave.domains.credentials.protocols import IntegrationCredentialServiceProtocol
 from airweave.domains.credentials.types import DecryptedCredential
 from airweave.models.integration_credential import IntegrationCredential
-from airweave.domains.credentials.protocols import IntegrationCredentialServiceProtocol
 from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
 
 

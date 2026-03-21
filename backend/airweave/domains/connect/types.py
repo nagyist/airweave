@@ -13,5 +13,8 @@ MODES_CREATE: FrozenSet[ConnectSessionMode] = frozenset(
 MODES_DELETE: FrozenSet[ConnectSessionMode] = frozenset(
     {ConnectSessionMode.ALL, ConnectSessionMode.MANAGE}
 )
+MODES_REAUTH: FrozenSet[ConnectSessionMode] = frozenset(
+    {ConnectSessionMode.ALL, ConnectSessionMode.CONNECT, ConnectSessionMode.REAUTH}
+)
 
 SSE_HEARTBEAT_INTERVAL_SECONDS = 30

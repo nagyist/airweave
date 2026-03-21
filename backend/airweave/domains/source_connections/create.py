@@ -39,6 +39,7 @@ from airweave.domains.syncs.protocols import (
     SyncRecordServiceProtocol,
 )
 from airweave.domains.temporal.protocols import TemporalWorkflowServiceProtocol
+from airweave.models.connection_init_session import ConnectionInitStatus
 from airweave.schemas.connection import ConnectionCreate
 from airweave.schemas.integration_credential import IntegrationCredentialCreateEncrypted
 from airweave.schemas.source_connection import (
@@ -161,6 +162,130 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
             )
         )
         return result
+
+    async def reinitiate_oauth(
+        self, db: AsyncSession, *, id: UUID, ctx: ApiContext
+    ) -> SourceConnectionSchema:
+        """Create a fresh OAuth session for an un-authenticated connection."""
+        source_conn = await self._sc_repo.get(db, id=id, ctx=ctx)
+        if not source_conn:
+            raise NotFoundException("Source connection not found")
+        if source_conn.is_authenticated:
+            raise HTTPException(
+                status_code=400,
+                detail="Connection is already authenticated",
+            )
+
+        entry = self._get_source_entry(source_conn.short_name)
+
+        # Recover state from old init session when available
+        byoc_client_id: Optional[str] = None
+        byoc_client_secret: Optional[str] = None
+        byoc_consumer_key: Optional[str] = None
+        byoc_consumer_secret: Optional[str] = None
+        template_configs: Optional[dict[str, Any]] = None
+        redirect_url: Optional[str] = None
+        payload: Optional[dict[str, Any]] = None
+        old_init = None
+
+        if source_conn.connection_init_session_id:
+            old_init = await self._sc_repo.get_init_session_with_redirect(
+                db, source_conn.connection_init_session_id, ctx
+            )
+            if old_init:
+                overrides = old_init.overrides or {}
+                byoc_client_id = overrides.get("client_id")
+                byoc_client_secret = overrides.get("client_secret")
+                byoc_consumer_key = overrides.get("consumer_key")
+                byoc_consumer_secret = overrides.get("consumer_secret")
+                template_configs = overrides.get("template_configs")
+                redirect_url = overrides.get("redirect_url")
+                payload = old_init.payload
+
+        # Fall back: reconstruct payload from source_conn fields
+        if payload is None:
+            payload = {
+                "short_name": source_conn.short_name,
+                "name": source_conn.name,
+                "readable_collection_id": source_conn.readable_collection_id,
+                "config": source_conn.config_fields,
+            }
+
+        # Fall back: extract template configs from connection config
+        if template_configs is None:
+            try:
+                template_configs = self._extract_template_configs(
+                    entry, source_conn.config_fields or {}
+                )
+            except (HTTPException, ValueError):
+                template_configs = None
+
+        state = secrets.token_urlsafe(24)
+        claim_token = secrets.token_urlsafe(32)
+        claim_token_hash = hashlib.sha256(claim_token.encode()).hexdigest()
+
+        initiator_user_id = ctx.user_id
+        initiator_session_id: Optional[UUID] = getattr(ctx, "session_id", None)
+
+        initiation_result = await self._oauth_flow_service.initiate_browser_flow(
+            short_name=source_conn.short_name,
+            oauth_type=entry.oauth_type,
+            state=state,
+            nested_client_id=byoc_client_id,
+            nested_client_secret=byoc_client_secret,
+            nested_consumer_key=byoc_consumer_key,
+            nested_consumer_secret=byoc_consumer_secret,
+            template_configs=template_configs,
+            ctx=ctx,
+        )
+
+        async with UnitOfWork(db) as uow:
+            # Cancel superseded init session
+            if old_init and old_init.status in (
+                ConnectionInitStatus.PENDING,
+                ConnectionInitStatus.IN_PROGRESS,
+            ):
+                old_init.status = ConnectionInitStatus.CANCELLED
+                uow.session.add(old_init)
+                await uow.session.flush()
+
+            redirect_session_id = await self._create_redirect_session(
+                uow.session,
+                initiation_result.provider_auth_url,
+                ctx,
+                uow,
+            )
+            await uow.session.flush()
+
+            init_session = await self._oauth_flow_service.create_init_session(
+                uow.session,
+                short_name=source_conn.short_name,
+                state=state,
+                payload=payload,
+                ctx=ctx,
+                uow=uow,
+                redirect_session_id=redirect_session_id,
+                client_id=initiation_result.client_id,
+                client_secret=initiation_result.client_secret,
+                oauth_client_mode=initiation_result.oauth_client_mode,
+                redirect_url=redirect_url,
+                template_configs=template_configs,
+                additional_overrides=initiation_result.additional_overrides,
+                initiator_user_id=initiator_user_id,
+                initiator_session_id=initiator_session_id,
+                claim_token_hash=claim_token_hash,
+            )
+            await uow.session.flush()
+
+            source_conn.connection_init_session_id = init_session.id
+            uow.session.add(source_conn)
+            await uow.session.flush()
+            await uow.commit()
+            await uow.session.refresh(source_conn)
+
+        return await self._response_builder.build_response(
+            db, source_conn, ctx, claim_token=claim_token
+        )
 
     async def _create_with_direct_auth(
         self, db: AsyncSession, *, obj_in: SourceConnectionCreate, entry, ctx: ApiContext

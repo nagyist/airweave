@@ -225,7 +225,7 @@ const SourceConnectionStateView: React.FC<Props> = ({
 
 
   // Fetch source connection details (only when not provided as prop)
-  const fetchSourceConnection = useCallback(async (regenerateAuthUrl = false) => {
+  const fetchSourceConnection = useCallback(async () => {
     // If data is provided as prop, use it instead of fetching
     if (sourceConnectionData) {
       setSourceConnection(sourceConnectionData);
@@ -233,40 +233,58 @@ const SourceConnectionStateView: React.FC<Props> = ({
     }
 
     try {
-      const url = regenerateAuthUrl
-        ? `/source-connections/${sourceConnectionId}?regenerate_auth_url=true`
-        : `/source-connections/${sourceConnectionId}`;
-      const response = await apiClient.get(url);
+      const response = await apiClient.get(`/source-connections/${sourceConnectionId}`);
       if (response.ok) {
         const data = await response.json();
         setSourceConnection(data);
-
-        // No need for separate auth URL fetch, it's handled by the regenerateAuthUrl parameter
       }
     } catch (error) {
       console.error('Failed to fetch source connection:', error);
     }
   }, [sourceConnectionId, sourceConnectionData]);
 
-  // Handler for refreshing authentication URL
+  // Handler for re-initiating OAuth flow
   const handleRefreshAuthUrl = useCallback(async () => {
     setIsRefreshingAuth(true);
     try {
-      await fetchSourceConnection(true);
-      toast({
-        title: "Refreshed",
-        description: "Authentication URL has been refreshed"
-      });
+      const response = await apiClient.post(
+        `/source-connections/${sourceConnectionId}/reinitiate-oauth`
+      );
+      if (response.ok) {
+        const data = await response.json();
+        if (data.auth?.claim_token) {
+          sessionStorage.setItem(
+            `oauth_claim_token:${sourceConnectionId}`,
+            data.auth.claim_token
+          );
+        }
+        setSourceConnection(data);
+        toast({
+          title: "Ready",
+          description: "Click 'Connect now' to authorize.",
+        });
+      } else {
+        let message = "Failed to restart authentication";
+        try {
+          const errorData = await response.json();
+          if (errorData.detail) {
+            message = errorData.detail;
+          }
+        } catch {
+          // response body wasn't JSON — use generic message
+        }
+        throw new Error(message);
+      }
     } catch (error) {
       toast({
         title: "Error",
-        description: "Failed to refresh authentication URL",
-        variant: "destructive"
+        description: error instanceof Error ? error.message : "Failed to restart authentication",
+        variant: "destructive",
       });
     } finally {
       setIsRefreshingAuth(false);
     }
-  }, [fetchSourceConnection]);
+  }, [sourceConnectionId]);
 
   useEffect(() => {
     const isNotAuthorized = sourceConnectionData?.status === 'pending_auth' || !sourceConnectionData?.auth?.authenticated;

@@ -110,10 +110,7 @@ class FakeOAuthInitSessionRepository(OAuthInitSessionRepositoryProtocol):
         uow: UnitOfWork,
     ) -> ConnectionInitSession:
         self._calls.append(("create", obj_in))
-        obj = ConnectionInitSession(id=uuid4(), **obj_in)
-        if hasattr(obj, "id") and obj.id:
-            self._store_by_id[cast(UUID, obj.id)] = obj
-        return obj
+        return cast(ConnectionInitSession, obj_in)
 
     async def mark_completed(
         self,

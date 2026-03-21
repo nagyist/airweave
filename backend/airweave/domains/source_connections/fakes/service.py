@@ -147,6 +147,14 @@ class FakeSourceConnectionService:
             raise NotFoundException("No sync found for this source connection")
         return {"sync_id": str(obj.sync_id)}
 
+    async def reinitiate_oauth(
+        self, db: AsyncSession, *, id: UUID, ctx: ApiContext
+    ) -> SourceConnectionSchema:
+        self._calls.append(("reinitiate_oauth", db, id, ctx))
+        if self._create_service:
+            return await self._create_service.reinitiate_oauth(db, id=id, ctx=ctx)
+        raise NotImplementedError("FakeSourceConnectionService.reinitiate_oauth not wired")
+
     async def get_redirect_url(self, db: AsyncSession, *, code: str) -> str:
         self._calls.append(("get_redirect_url", db, code))
         url = self._redirect_urls.get(code)

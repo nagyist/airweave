@@ -187,6 +187,12 @@ class SourceConnectionCreateServiceProtocol(Protocol):
         """Create a source connection."""
         ...
 
+    async def reinitiate_oauth(
+        self, db: AsyncSession, *, id: UUID, ctx: ApiContext
+    ) -> SourceConnectionSchema:
+        """Create a fresh OAuth session for an un-authenticated connection."""
+        ...
+
 
 class SourceConnectionServiceProtocol(Protocol):
     """Service for source connections."""
@@ -258,6 +264,12 @@ class SourceConnectionServiceProtocol(Protocol):
 
     async def get_sync_id(self, db: AsyncSession, *, id: UUID, ctx: ApiContext) -> dict:
         """Get the sync_id for a source connection."""
+        ...
+
+    async def reinitiate_oauth(
+        self, db: AsyncSession, *, id: UUID, ctx: ApiContext
+    ) -> SourceConnectionSchema:
+        """Create a fresh OAuth session for an un-authenticated connection."""
         ...
 
     async def get_redirect_url(self, db: AsyncSession, *, code: str) -> str:

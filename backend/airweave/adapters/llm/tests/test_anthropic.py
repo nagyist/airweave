@@ -278,3 +278,92 @@ async def test_convert_tool_defs(anthropic_llm: AnthropicLLM) -> None:
     # title should be stripped by _clean_schema_basic
     assert "title" not in result[0]["input_schema"]
     assert "title" not in result[0]["input_schema"]["properties"]["x"]
+
+
+# ---------------------------------------------------------------------------
+# _parse_response_blocks
+# ---------------------------------------------------------------------------
+
+
+def _block(**kwargs):
+    """Create a mock content block with explicit attributes (not MagicMock auto-attrs)."""
+    b = MagicMock()
+    for k, v in kwargs.items():
+        # Use property to avoid MagicMock wrapping string values
+        type(b).__dict__  # force init
+        object.__setattr__(b, k, v)
+    return b
+
+
+def test_parse_response_blocks_text_and_tool_use():
+    """Mixed response with text + tool_use blocks parsed correctly."""
+    from airweave.adapters.llm.anthropic import _parse_response_blocks
+
+    text_block = MagicMock()
+    text_block.type = "text"
+    text_block.text = "I'll search for that."
+
+    tool_block = MagicMock()
+    tool_block.type = "tool_use"
+    tool_block.id = "tc-1"
+    tool_block.name = "search"
+    tool_block.input = {"query": "test"}
+
+    thinking_parts, text_parts, tool_calls = _parse_response_blocks([text_block, tool_block])
+
+    assert thinking_parts == []
+    assert text_parts == ["I'll search for that."]
+    assert len(tool_calls) == 1
+    assert tool_calls[0].name == "search"
+    assert tool_calls[0].arguments == {"query": "test"}
+
+
+def test_parse_response_blocks_thinking_and_tool_use():
+    """Response with thinking + tool_use blocks (no text)."""
+    from airweave.adapters.llm.anthropic import _parse_response_blocks
+
+    think_block = MagicMock()
+    think_block.type = "thinking"
+    think_block.thinking = "Let me reason about this..."
+
+    tool_block = MagicMock()
+    tool_block.type = "tool_use"
+    tool_block.id = "tc-1"
+    tool_block.name = "read"
+    tool_block.input = {"entity_ids": ["e1"]}
+
+    thinking_parts, text_parts, tool_calls = _parse_response_blocks([think_block, tool_block])
+
+    assert thinking_parts == ["Let me reason about this..."]
+    assert text_parts == []
+    assert len(tool_calls) == 1
+
+
+def test_parse_response_blocks_string_tool_input():
+    """tool_use block with string input (needs JSON parsing)."""
+    from airweave.adapters.llm.anthropic import _parse_response_blocks
+
+    tool_block = MagicMock()
+    tool_block.type = "tool_use"
+    tool_block.id = "tc-1"
+    tool_block.name = "count"
+    tool_block.input = '{"filter_groups": []}'
+
+    _, _, tool_calls = _parse_response_blocks([tool_block])
+
+    assert tool_calls[0].arguments == {"filter_groups": []}
+
+
+def test_convert_messages_merges_consecutive_user():
+    """Consecutive user messages are merged (Anthropic requirement)."""
+    from airweave.adapters.llm.anthropic import _convert_messages_to_anthropic
+
+    messages = [
+        {"role": "user", "content": "Hello"},
+        {"role": "user", "content": "Can you search?"},
+    ]
+
+    result = _convert_messages_to_anthropic(messages)
+
+    assert len(result) == 1
+    assert result[0]["role"] == "user"

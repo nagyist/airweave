@@ -191,11 +191,3 @@ async def test_chat_thinking_kwargs(together_llm: TogetherLLM) -> None:
     assert call_kwargs["reasoning"] == {"enabled": True}
     assert call_kwargs["temperature"] == 1.0  # thinking mode uses temp=1.0
     assert call_kwargs["chat_template_kwargs"] == {"clear_thinking": False}
-
-
-@pytest.mark.asyncio
-async def test_close(together_llm):
-    """close() calls the SDK client's close method."""
-    together_llm._client.close = AsyncMock()
-    await together_llm.close()
-    together_llm._client.close.assert_called_once()

@@ -13,8 +13,6 @@ Design principles:
 from dataclasses import dataclass, replace
 from typing import Any, Optional
 
-from airweave.domains.syncs.cursors.service import SyncCursorService
-
 from airweave.core.protocols import (
     CircuitBreaker,
     ContextCache,
@@ -79,6 +77,7 @@ from airweave.domains.sources.protocols import (
     SourceServiceProtocol,
 )
 from airweave.domains.storage.protocols import StorageBackend, SyncFileManagerProtocol
+from airweave.domains.syncs.cursors.service import SyncCursorService
 from airweave.domains.syncs.protocols import (
     SyncCursorRepositoryProtocol,
     SyncJobRepositoryProtocol,

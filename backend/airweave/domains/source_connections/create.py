@@ -13,14 +13,13 @@ from airweave.api.context import ApiContext
 from airweave.core.events.source_connection import SourceConnectionLifecycleEvent
 from airweave.core.events.sync import SyncLifecycleEvent
 from airweave.core.exceptions import NotFoundException
-from airweave.core.protocols.encryption import CredentialEncryptor
 from airweave.core.protocols.event_bus import EventBus
 from airweave.core.shared_models import ConnectionStatus, IntegrationType
 from airweave.db.unit_of_work import UnitOfWork
 from airweave.domains.auth_provider.protocols import AuthProviderServiceProtocol
 from airweave.domains.collections.protocols import CollectionRepositoryProtocol
 from airweave.domains.connections.protocols import ConnectionRepositoryProtocol
-from airweave.domains.credentials.protocols import IntegrationCredentialRepositoryProtocol
+from airweave.domains.credentials.protocols import IntegrationCredentialServiceProtocol
 from airweave.domains.oauth.protocols import OAuthFlowServiceProtocol
 from airweave.domains.source_connections.protocols import (
     ResponseBuilderProtocol,
@@ -41,7 +40,6 @@ from airweave.domains.syncs.protocols import (
 from airweave.domains.temporal.protocols import TemporalWorkflowServiceProtocol
 from airweave.models.connection_init_session import ConnectionInitStatus
 from airweave.schemas.connection import ConnectionCreate
-from airweave.schemas.integration_credential import IntegrationCredentialCreateEncrypted
 from airweave.schemas.source_connection import (
     AuthenticationMethod,
     AuthProviderAuthentication,
@@ -66,7 +64,7 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
         sc_repo: SourceConnectionRepositoryProtocol,
         collection_repo: CollectionRepositoryProtocol,
         connection_repo: ConnectionRepositoryProtocol,
-        credential_repo: IntegrationCredentialRepositoryProtocol,
+        credential_service: IntegrationCredentialServiceProtocol,
         source_registry: SourceRegistryProtocol,
         source_validation: SourceValidationServiceProtocol,
         source_lifecycle: SourceLifecycleServiceProtocol,
@@ -74,7 +72,6 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
         sync_record_service: SyncRecordServiceProtocol,
         response_builder: ResponseBuilderProtocol,
         oauth_flow_service: OAuthFlowServiceProtocol,
-        credential_encryptor: CredentialEncryptor,
         temporal_workflow_service: TemporalWorkflowServiceProtocol,
         event_bus: EventBus,
         auth_provider_service: AuthProviderServiceProtocol,
@@ -83,7 +80,7 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
         self._sc_repo = sc_repo
         self._collection_repo = collection_repo
         self._connection_repo = connection_repo
-        self._credential_repo = credential_repo
+        self._credential_service = credential_service
         self._source_registry = source_registry
         self._source_validation = source_validation
         self._source_lifecycle = source_lifecycle
@@ -91,7 +88,6 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
         self._sync_record_service = sync_record_service
         self._response_builder = response_builder
         self._oauth_flow_service = oauth_flow_service
-        self._credential_encryptor = credential_encryptor
         self._temporal_workflow_service = temporal_workflow_service
         self._event_bus = event_bus
         self._auth_provider_service = auth_provider_service
@@ -702,17 +698,17 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
             except ValueError:
                 oauth_type_value = None
 
-        credential_create = IntegrationCredentialCreateEncrypted(
-            name=f"{source_name} - {ctx.organization.id}",
-            description=f"Credentials for {source_name} - {ctx.organization.id}",
-            integration_short_name=short_name,
-            integration_type=IntegrationType.SOURCE,
-            authentication_method=auth_method,
+        return await self._credential_service.create(
+            db,
+            short_name=short_name,
+            source_name=source_name,
+            auth_payload=auth_payload,
+            auth_method=auth_method,
             oauth_type=oauth_type_value,
-            auth_config_class=auth_config_name,
-            encrypted_credentials=self._credential_encryptor.encrypt(auth_payload),
+            auth_config_name=auth_config_name,
+            ctx=ctx,
+            uow=uow,
         )
-        return await self._credential_repo.create(db, obj_in=credential_create, ctx=ctx, uow=uow)
 
     async def _create_connection_record(
         self,

@@ -31,7 +31,6 @@ from airweave.domains.access_control.resolver import ACActionResolver
 from airweave.domains.arf.protocols import ArfServiceProtocol
 from airweave.domains.browse_tree.protocols import NodeSelectionRepositoryProtocol
 from airweave.domains.browse_tree.types import NodeSelectionData
-from airweave.domains.embedders.protocols import DenseEmbedderProtocol, SparseEmbedderProtocol
 from airweave.domains.entities.protocols import EntityRepositoryProtocol
 from airweave.domains.entities.registry import EntityDefinitionRegistry
 from airweave.domains.source_connections.protocols import SourceConnectionRepositoryProtocol
@@ -40,7 +39,7 @@ from airweave.domains.sources.protocols import SourceRegistryProtocol
 from airweave.domains.storage.file_service import FileService
 from airweave.domains.sync_pipeline.builders import SyncContextBuilder
 from airweave.domains.sync_pipeline.builders.destinations import DestinationsContextBuilder
-from airweave.domains.sync_pipeline.config import SyncConfig, SyncConfigBuilder
+from airweave.domains.sync_pipeline.config import SyncConfig
 from airweave.domains.sync_pipeline.contexts.runtime import SyncRuntime
 from airweave.domains.sync_pipeline.entity.dispatcher_builder import EntityDispatcherBuilder
 from airweave.domains.sync_pipeline.orchestrator import SyncOrchestrator
@@ -72,8 +71,6 @@ class SyncFactory:
         event_bus: EventBus,
         usage_checker: UsageLimitCheckerProtocol,
         usage_ledger: UsageLedgerProtocol,
-        dense_embedder: DenseEmbedderProtocol,
-        sparse_embedder: SparseEmbedderProtocol,
         entity_repo: EntityRepositoryProtocol,
         entity_definition_registry: EntityDefinitionRegistry,
         acl_repo: AccessControlMembershipRepositoryProtocol,
@@ -90,8 +87,6 @@ class SyncFactory:
         self._event_bus = event_bus
         self._usage_checker = usage_checker
         self._usage_ledger = usage_ledger
-        self._dense_embedder = dense_embedder
-        self._sparse_embedder = sparse_embedder
         self._entity_repo = entity_repo
         self._entity_definition_registry = entity_definition_registry
         self._acl_repo = acl_repo
@@ -118,7 +113,7 @@ class SyncFactory:
         init_start = time.time()
         logger.info("Creating sync orchestrator...")
 
-        resolved_config = SyncConfigBuilder.build(
+        resolved_config = SyncConfig.build(
             collection_overrides=collection.sync_config,
             sync_overrides=sync.sync_config,
             job_overrides=sync_job.sync_config or execution_config,
@@ -197,8 +192,6 @@ class SyncFactory:
             processor=self._processor,
             entity_repo=self._entity_repo,
             arf_service=self._arf_service,
-            vector_size=self._dense_embedder.dimensions,
-            embedding_model_name=self._dense_embedder.model_name,
         )
         dispatcher = dispatcher_builder.build(
             destinations=runtime.destinations,
@@ -259,7 +252,7 @@ class SyncFactory:
         return orchestrator
 
     # -------------------------------------------------------------------------
-    # Private: Source building (inlined from SourceContextBuilder)
+    # Private: Source building
     # -------------------------------------------------------------------------
 
     async def _build_source(

@@ -1,4 +1,4 @@
-"""Tests for sync configuration builder."""
+"""Tests for sync configuration build and layer resolution."""
 
 import os
 from unittest.mock import patch
@@ -9,7 +9,6 @@ from airweave.domains.sync_pipeline.config.base import (
     HandlerConfig,
     SyncConfig,
 )
-from airweave.domains.sync_pipeline.config.builder import SyncConfigBuilder
 
 
 def _clean_env():
@@ -18,13 +17,13 @@ def _clean_env():
     return patch.dict(os.environ, env_copy, clear=True)
 
 
-class TestSyncConfigBuilderBasic:
+class TestSyncConfigBuildBasic:
     """Test basic builder functionality."""
 
     def test_build_with_no_overrides_returns_defaults(self):
         """Test build with no overrides returns schema defaults."""
         with _clean_env():
-            config = SyncConfigBuilder.build()
+            config = SyncConfig.build()
             assert config.destinations.skip_vespa is False  # Default: false (Vespa enabled in prod)
             assert config.handlers.enable_vector_handlers is True
             assert config.cursor.skip_load is False
@@ -32,16 +31,16 @@ class TestSyncConfigBuilderBasic:
 
     def test_build_returns_sync_config_instance(self):
         """Test that build returns a SyncConfig instance."""
-        config = SyncConfigBuilder.build()
+        config = SyncConfig.build()
         assert isinstance(config, SyncConfig)
 
 
-class TestSyncConfigBuilderLayerPrecedence:
+class TestSyncConfigBuildLayerPrecedence:
     """Test that layers are applied in correct precedence order."""
 
     def test_job_overrides_beat_sync(self):
         """Test that job overrides beat sync overrides."""
-        config = SyncConfigBuilder.build(
+        config = SyncConfig.build(
             sync_overrides=SyncConfig(behavior=BehaviorConfig(skip_hash_comparison=False)),
             job_overrides=SyncConfig(behavior=BehaviorConfig(skip_hash_comparison=True)),
         )
@@ -49,7 +48,7 @@ class TestSyncConfigBuilderLayerPrecedence:
 
     def test_sync_overrides_beat_collection(self):
         """Test that sync overrides beat collection overrides."""
-        config = SyncConfigBuilder.build(
+        config = SyncConfig.build(
             collection_overrides=SyncConfig(handlers=HandlerConfig(enable_vector_handlers=False)),
             sync_overrides=SyncConfig(handlers=HandlerConfig(enable_vector_handlers=True)),
         )
@@ -62,7 +61,7 @@ class TestSyncConfigBuilderLayerPrecedence:
             {"SYNC_CONFIG__BEHAVIOR__SKIP_GUARDRAILS": "true"},
             clear=False,
         ):
-            config = SyncConfigBuilder.build(
+            config = SyncConfig.build(
                 collection_overrides=SyncConfig(behavior=BehaviorConfig(skip_guardrails=False))
             )
             assert config.behavior.skip_guardrails is False
@@ -74,13 +73,13 @@ class TestSyncConfigBuilderLayerPrecedence:
             {"SYNC_CONFIG__BEHAVIOR__SKIP_GUARDRAILS": "true"},
             clear=False,
         ):
-            config = SyncConfigBuilder.build()
+            config = SyncConfig.build()
             assert config.behavior.skip_guardrails is True
 
     def test_full_layer_chain(self):
         """Test all layers together with different fields."""
         with _clean_env():
-            config = SyncConfigBuilder.build(
+            config = SyncConfig.build(
                 collection_overrides=SyncConfig(
                     handlers=HandlerConfig(enable_vector_handlers=False)
                 ),
@@ -93,13 +92,13 @@ class TestSyncConfigBuilderLayerPrecedence:
             assert config.behavior.replay_from_arf is True  # from job
 
 
-class TestSyncConfigBuilderPartialOverrides:
+class TestSyncConfigBuildPartialOverrides:
     """Test that partial overrides preserve other fields."""
 
     def test_partial_section_preserves_other_fields(self):
         """Test that overriding one field preserves others in same section."""
         with _clean_env():
-            config = SyncConfigBuilder.build(
+            config = SyncConfig.build(
                 job_overrides=SyncConfig(handlers=HandlerConfig(enable_postgres_handler=False))
             )
             assert config.handlers.enable_postgres_handler is False
@@ -108,7 +107,7 @@ class TestSyncConfigBuilderPartialOverrides:
     def test_partial_override_preserves_other_sections(self):
         """Test that overriding one section preserves other sections."""
         with _clean_env():
-            config = SyncConfigBuilder.build(
+            config = SyncConfig.build(
                 job_overrides=SyncConfig(behavior=BehaviorConfig(skip_hash_comparison=True))
             )
             assert config.behavior.skip_hash_comparison is True
@@ -118,7 +117,7 @@ class TestSyncConfigBuilderPartialOverrides:
     def test_multiple_sections_independently(self):
         """Test that different sections can be overridden independently."""
         with _clean_env():
-            config = SyncConfigBuilder.build(
+            config = SyncConfig.build(
                 job_overrides=SyncConfig(
                     behavior=BehaviorConfig(skip_hash_comparison=True),
                     handlers=HandlerConfig(enable_postgres_handler=False),
@@ -129,7 +128,7 @@ class TestSyncConfigBuilderPartialOverrides:
             assert config.cursor.skip_load is False  # Untouched
 
 
-class TestSyncConfigBuilderFromDB:
+class TestSyncConfigBuildFromDB:
     """Test builder with DB-style inputs."""
 
     def test_from_db_json(self):
@@ -141,6 +140,6 @@ class TestSyncConfigBuilderFromDB:
         }
 
         with _clean_env():
-            config = SyncConfigBuilder.build(collection_overrides=SyncConfig(**db_json))
+            config = SyncConfig.build(collection_overrides=SyncConfig(**db_json))
             assert config.handlers.enable_vector_handlers is False
             assert config.behavior.skip_hash_comparison is True

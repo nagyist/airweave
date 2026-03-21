@@ -16,8 +16,6 @@ def _build_factory(**overrides):
         "event_bus": MagicMock(),
         "usage_checker": MagicMock(),
         "usage_ledger": MagicMock(),
-        "dense_embedder": MagicMock(),
-        "sparse_embedder": MagicMock(),
         "entity_repo": MagicMock(),
         "entity_definition_registry": MagicMock(),
         "acl_repo": MagicMock(),
@@ -44,8 +42,6 @@ def test_constructor_stores_all_deps():
         "event_bus": MagicMock(),
         "usage_checker": MagicMock(),
         "usage_ledger": MagicMock(),
-        "dense_embedder": MagicMock(),
-        "sparse_embedder": MagicMock(),
         "entity_repo": MagicMock(),
         "entity_definition_registry": MagicMock(),
         "acl_repo": MagicMock(),
@@ -61,8 +57,6 @@ def test_constructor_stores_all_deps():
     assert f._event_bus is deps["event_bus"]
     assert f._usage_checker is deps["usage_checker"]
     assert f._usage_ledger is deps["usage_ledger"]
-    assert f._dense_embedder is deps["dense_embedder"]
-    assert f._sparse_embedder is deps["sparse_embedder"]
     assert f._entity_repo is deps["entity_repo"]
     assert f._entity_definition_registry is deps["entity_definition_registry"]
     assert f._acl_repo is deps["acl_repo"]

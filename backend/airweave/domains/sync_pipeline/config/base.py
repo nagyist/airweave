@@ -110,6 +110,24 @@ class SyncConfig(BaseSettings):
         return SyncConfig(**current)
 
     # ========================================================================
+    # BUILD (layer resolution)
+    # ========================================================================
+
+    @classmethod
+    def build(
+        cls,
+        collection_overrides: Optional["SyncConfig"] = None,
+        sync_overrides: Optional["SyncConfig"] = None,
+        job_overrides: Optional["SyncConfig"] = None,
+    ) -> "SyncConfig":
+        """Build final config from all layers (defaults + env + overrides)."""
+        config = cls()
+        for overrides in [collection_overrides, sync_overrides, job_overrides]:
+            if overrides:
+                config = config.merge_with(overrides.model_dump(exclude_unset=True))
+        return config
+
+    # ========================================================================
     # PRESET FACTORIES
     # ========================================================================
 

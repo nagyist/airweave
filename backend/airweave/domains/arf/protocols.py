@@ -19,8 +19,6 @@ class ArfServiceProtocol(Protocol):
         self,
         sync_context: SyncContext,
         runtime: SyncRuntime,
-        vector_size: int,
-        embedding_model_name: str,
     ) -> None:
         """Create or update the sync manifest."""
         ...

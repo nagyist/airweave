@@ -98,10 +98,6 @@ def _make_runtime(source_short_name: str = "github") -> Any:
     return SimpleNamespace(source=source, entity_tracker=entity_tracker)
 
 
-VECTOR_SIZE = 768
-EMBEDDING_MODEL = "test-embed"
-
-
 def _build_service() -> tuple:
     storage = FakeStorageBackend()
     svc = ArfService(storage=storage)
@@ -230,7 +226,7 @@ async def test_sync_exists_with_manifest():
     svc, storage = _build_service()
     ctx = _make_sync_context()
     runtime = _make_runtime()
-    await svc.upsert_manifest(ctx, runtime, VECTOR_SIZE, EMBEDDING_MODEL)
+    await svc.upsert_manifest(ctx, runtime)
     assert await svc.sync_exists(SYNC_ID) is True
 
 
@@ -239,7 +235,7 @@ async def test_delete_sync():
     svc, storage = _build_service()
     ctx = _make_sync_context()
     runtime = _make_runtime()
-    await svc.upsert_manifest(ctx, runtime, VECTOR_SIZE, EMBEDDING_MODEL)
+    await svc.upsert_manifest(ctx, runtime)
     deleted = await svc.delete_sync(SYNC_ID)
     assert deleted is True
     assert await svc.sync_exists(SYNC_ID) is False
@@ -255,7 +251,7 @@ async def test_upsert_manifest_creates():
     svc, _ = _build_service()
     ctx = _make_sync_context()
     runtime = _make_runtime("github")
-    await svc.upsert_manifest(ctx, runtime, VECTOR_SIZE, EMBEDDING_MODEL)
+    await svc.upsert_manifest(ctx, runtime)
     manifest = await svc.get_manifest(SYNC_ID)
     assert manifest is not None
     assert manifest.sync_id == SYNC_ID
@@ -268,12 +264,12 @@ async def test_upsert_manifest_updates():
     svc, _ = _build_service()
     ctx = _make_sync_context()
     runtime = _make_runtime()
-    await svc.upsert_manifest(ctx, runtime, VECTOR_SIZE, EMBEDDING_MODEL)
+    await svc.upsert_manifest(ctx, runtime)
 
     new_job_id = str(uuid4())
     ctx2 = _make_sync_context()
     ctx2.sync_job = SimpleNamespace(id=new_job_id)
-    await svc.upsert_manifest(ctx2, runtime, VECTOR_SIZE, EMBEDDING_MODEL)
+    await svc.upsert_manifest(ctx2, runtime)
 
     manifest = await svc.get_manifest(SYNC_ID)
     assert len(manifest.sync_jobs) == 2
@@ -303,7 +299,7 @@ async def test_get_replay_stats_with_data():
     svc, _ = _build_service()
     ctx = _make_sync_context()
     runtime = _make_runtime("notion")
-    await svc.upsert_manifest(ctx, runtime, VECTOR_SIZE, EMBEDDING_MODEL)
+    await svc.upsert_manifest(ctx, runtime)
     await svc.upsert_entities([_make_entity(f"e-{i}") for i in range(3)], ctx)
     stats = await svc.get_replay_stats(SYNC_ID)
     assert stats["exists"] is True
@@ -548,8 +544,8 @@ async def test_list_syncs():
     ctx1 = _make_sync_context("sync-aaa")
     ctx2 = _make_sync_context("sync-bbb")
     runtime = _make_runtime()
-    await svc.upsert_manifest(ctx1, runtime, VECTOR_SIZE, EMBEDDING_MODEL)
-    await svc.upsert_manifest(ctx2, runtime, VECTOR_SIZE, EMBEDDING_MODEL)
+    await svc.upsert_manifest(ctx1, runtime)
+    await svc.upsert_manifest(ctx2, runtime)
 
     syncs = await svc.list_syncs()
     assert "sync-aaa" in syncs

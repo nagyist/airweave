@@ -35,15 +35,13 @@ def _make_insert():
     return EntityInsertAction(entity=entity, entity_definition_short_name="stub")
 
 
-def _make_handler(arf_service=None, vector_size=768, embedding_model_name="test-embed"):
+def _make_handler(arf_service=None):
     if arf_service is None:
         arf_service = MagicMock()
         arf_service.upsert_manifest = AsyncMock()
         arf_service.write_entities = AsyncMock()
     return ArfHandler(
         arf_service=arf_service,
-        vector_size=vector_size,
-        embedding_model_name=embedding_model_name,
     )
 
 
@@ -63,8 +61,6 @@ class TestEnsureManifestSuccess:
         arf_service.upsert_manifest.assert_awaited_once_with(
             ctx,
             runtime,
-            vector_size=768,
-            embedding_model_name="test-embed",
         )
         assert handler._manifest_initialized is True
 

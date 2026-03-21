@@ -428,8 +428,6 @@ def create_container(settings: Settings) -> Container:
         event_bus=event_bus,
         usage_checker=usage_checker,
         usage_ledger=usage_ledger,
-        dense_embedder=dense_embedder,
-        sparse_embedder=sparse_embedder,
         entity_repo=sync_deps["entity_repo"],
         entity_definition_registry=source_deps["entity_definition_registry"],
         acl_repo=acl_membership_repo,

@@ -38,13 +38,9 @@ class ArfHandler(EntityActionHandler):
     def __init__(
         self,
         arf_service: ArfServiceProtocol,
-        vector_size: int,
-        embedding_model_name: str,
     ) -> None:
-        """Initialize with injected ARF service and embedding metadata."""
+        """Initialize with injected ARF service."""
         self._arf_service = arf_service
-        self._vector_size = vector_size
-        self._embedding_model_name = embedding_model_name
         self._manifest_initialized = False
 
     @property
@@ -59,8 +55,6 @@ class ArfHandler(EntityActionHandler):
             await self._arf_service.upsert_manifest(
                 sync_context,
                 runtime,
-                vector_size=self._vector_size,
-                embedding_model_name=self._embedding_model_name,
             )
             self._manifest_initialized = True
         except Exception as e:

@@ -248,8 +248,6 @@ class ArfService(ArfServiceProtocol):
         self,
         sync_context: "SyncContext",
         runtime: "SyncRuntime",
-        vector_size: int,
-        embedding_model_name: str,
     ) -> None:
         """Create or update manifest for a sync job."""
         sync_id = str(sync_context.sync.id)
@@ -274,8 +272,6 @@ class ArfService(ArfServiceProtocol):
                 created_at=now,
                 updated_at=now,
                 sync_jobs=[job_id],
-                vector_size=vector_size,
-                embedding_model_name=embedding_model_name,
             )
             await self._storage.write_json(manifest_path, manifest.model_dump())
 

@@ -36,7 +36,9 @@ api_router.include_router(usage.router, prefix="/usage", tags=["usage"])
 api_router.include_router(sources.router, prefix="/sources", tags=["sources"])
 api_router.include_router(auth_providers.router, prefix="/auth-providers", tags=["auth-providers"])
 api_router.include_router(collections.router, prefix="/collections", tags=["collections"])
-api_router.include_router(search_legacy.router, prefix="/collections", tags=["legacy-search"], include_in_schema=False)
+api_router.include_router(
+    search_legacy.router, prefix="/collections", tags=["legacy-search"], include_in_schema=False
+)
 api_router.include_router(search.router, prefix="/collections", tags=["collections"])
 api_router.include_router(
     source_connections.router, prefix="/source-connections", tags=["source-connections"]

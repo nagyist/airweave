@@ -162,7 +162,7 @@ class Agent:
             )
             raise
 
-    async def _run(
+    async def _run(  # noqa: C901 — agent loop orchestration is inherently complex
         self,
         db: AsyncSession,
         ctx: ApiContext,

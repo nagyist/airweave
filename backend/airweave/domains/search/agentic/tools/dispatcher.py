@@ -20,7 +20,6 @@ from airweave.domains.search.agentic.exceptions import (
     ToolNotFoundError,
     ToolValidationError,
 )
-from airweave.domains.search.exceptions import SearchError
 from airweave.domains.search.agentic.state import AgentState
 from airweave.domains.search.agentic.tools.types import (
     CollectToolResult,
@@ -31,6 +30,7 @@ from airweave.domains.search.agentic.tools.types import (
     ReviewToolResult,
     SearchToolResult,
 )
+from airweave.domains.search.exceptions import SearchError
 
 ToolResult = Union[
     SearchToolResult,

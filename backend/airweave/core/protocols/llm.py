@@ -92,6 +92,10 @@ class LLMProtocol(Protocol):
         """Send a conversation with tools and get a response.
 
         Args:
+            messages: Conversation history as a list of message dicts.
+            tools: Tool definitions for the LLM.
+            system_prompt: System prompt text.
+            thinking: Whether to enable extended thinking/reasoning.
             max_tokens: Override max output tokens for this call. When None,
                 uses model_spec.max_output_tokens. The agent loop computes
                 this dynamically to stay within the context window.

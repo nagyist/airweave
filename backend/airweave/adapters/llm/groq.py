@@ -195,7 +195,7 @@ class GroqLLM(BaseLLM):
             reasoning_params[tc.param_name] = "high" if thinking else "low"
 
         api_start = time.monotonic()
-        response = await self._client.chat.completions.create(
+        response = await self._client.chat.completions.create(  # type: ignore[call-overload]
             model=self._model_spec.api_model_name,
             messages=api_messages,
             tools=strict_tools,
@@ -210,14 +210,17 @@ class GroqLLM(BaseLLM):
         message = choice.message
 
         text = message.content if message.content else None
-        thinking = getattr(message, "reasoning", None) or None
+        thinking_text = getattr(message, "reasoning", None) or None
 
         tool_calls: list[LLMToolCall] = []
         if message.tool_calls:
             for tc in message.tool_calls:
                 arguments = tc.function.arguments
                 if isinstance(arguments, str):
-                    arguments = json.loads(arguments)
+                    try:
+                        arguments = json.loads(arguments)
+                    except json.JSONDecodeError:
+                        arguments = {}
                 tool_calls.append(
                     LLMToolCall(
                         id=tc.id,
@@ -238,7 +241,7 @@ class GroqLLM(BaseLLM):
 
         return LLMResponse(
             text=text,
-            thinking=thinking,
+            thinking=thinking_text,
             tool_calls=tool_calls,
             prompt_tokens=prompt_tokens,
             completion_tokens=completion_tokens,

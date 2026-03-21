@@ -15,7 +15,7 @@ import time
 from typing import Any, TypeVar
 
 from pydantic import BaseModel
-from together import AsyncTogether
+from together import AsyncTogether  # type: ignore[import-untyped]
 
 from airweave.adapters.llm.base import BaseLLM
 from airweave.adapters.llm.exceptions import LLMTransientError
@@ -162,7 +162,10 @@ class TogetherLLM(BaseLLM):
             for tc in message.tool_calls:
                 arguments = tc.function.arguments
                 if isinstance(arguments, str):
-                    arguments = json.loads(arguments)
+                    try:
+                        arguments = json.loads(arguments)
+                    except json.JSONDecodeError:
+                        arguments = {}
                 tool_calls.append(
                     LLMToolCall(
                         id=tc.id,

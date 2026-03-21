@@ -80,7 +80,7 @@ class AnthropicLLM(BaseLLM):
         }
 
         api_start = time.monotonic()
-        response = await self._client.messages.create(
+        response = await self._client.messages.create(  # type: ignore[call-overload]
             model=self._model_spec.api_model_name,
             max_tokens=self._model_spec.max_output_tokens,
             system=system_prompt,
@@ -176,7 +176,7 @@ class AnthropicLLM(BaseLLM):
         # Parse response content blocks
         thinking_parts, text_parts, tool_calls = _parse_response_blocks(response.content)
 
-        thinking = "\n".join(thinking_parts) if thinking_parts else None
+        thinking_text = "\n".join(thinking_parts) if thinking_parts else None
         text = "\n".join(text_parts) if text_parts else None
 
         prompt_tokens = 0
@@ -196,7 +196,7 @@ class AnthropicLLM(BaseLLM):
 
         return LLMResponse(
             text=text,
-            thinking=thinking,
+            thinking=thinking_text,
             tool_calls=tool_calls,
             prompt_tokens=prompt_tokens,
             completion_tokens=completion_tokens,
@@ -326,7 +326,10 @@ def _build_assistant_blocks(msg: dict) -> list[dict]:
         func = tc.get("function", {})
         arguments = func.get("arguments", {})
         if isinstance(arguments, str):
-            arguments = json.loads(arguments)
+            try:
+                arguments = json.loads(arguments)
+            except json.JSONDecodeError:
+                arguments = {}
         content_blocks.append(
             {
                 "type": "tool_use",

@@ -192,9 +192,12 @@ class CerebrasLLM(BaseLLM):
         tool_calls: list[LLMToolCall] = []
         if message.tool_calls:
             for tc in message.tool_calls:
-                arguments = tc.function.arguments
+                arguments: Any = tc.function.arguments
                 if isinstance(arguments, str):
-                    arguments = json.loads(arguments)
+                    try:
+                        arguments = json.loads(arguments)
+                    except json.JSONDecodeError:
+                        arguments = {}
                 tool_calls.append(
                     LLMToolCall(
                         id=tc.id,

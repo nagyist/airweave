@@ -63,9 +63,12 @@ function extractFields(result: any): ExtractedFields {
     }).filter((b: BreadcrumbData) => b.name);
 
     const sourceFields = result.source_fields || {};
-    const webUrl = sourceFields.web_url || result.web_url;
-    const downloadUrl = sourceFields.url || result.url;
-    const hasDownload = Boolean(downloadUrl && webUrl && downloadUrl !== webUrl);
+    const rawWebUrl = sourceFields.web_url || result.web_url;
+    const rawDownloadUrl = sourceFields.url || result.url;
+    // If only url exists (no web_url), promote it to webUrl so the link still renders
+    const webUrl = rawWebUrl || rawDownloadUrl;
+    const downloadUrl = rawDownloadUrl;
+    const hasDownload = Boolean(rawDownloadUrl && rawWebUrl && rawDownloadUrl !== rawWebUrl);
 
     return {
         sourceName,

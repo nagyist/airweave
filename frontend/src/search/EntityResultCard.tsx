@@ -269,7 +269,7 @@ const EntityResultCardComponent: React.FC<EntityResultCardProps> = ({
                             ? <ChevronDown className={cn("h-4 w-4", isDark ? "text-blue-400" : "text-blue-500")} />
                             : <ChevronRight className={cn("h-4 w-4", isDark ? "text-blue-400" : "text-blue-500")} />
                         }
-                        <FileText className="h-4 w-4 -ml-0.5" />
+                        <FileText className="h-3.5 w-3.5 -ml-0.5" strokeWidth={1.5} />
                         <span>Content</span>
                         <span className={cn("text-[10px] font-normal ml-1", muted)}>
                             {formatContentSize(fields.textualRepresentation)}

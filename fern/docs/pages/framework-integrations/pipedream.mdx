@@ -35,9 +35,10 @@ Search across all data sources within a collection using semantic and keyword se
 | `collectionId` | string | Yes | The collection readable ID to search |
 | `searchQuery` | string | Yes | The search query text |
 | `searchLimit` | integer | No | Maximum results to return (default: 10, max: 100) |
-| `responseType` | string | No | `"results"` for raw results, `"completion"` for AI-generated answer |
 | `offset` | integer | No | Number of results to skip for pagination (default: 0) |
-| `recencyBias` | string | No | Weight recency vs similarity from 0-1 (0 = no recency, 1 = recency only) |
+| `retrievalStrategy` | string | No | `"hybrid"`, `"semantic"`, or `"keyword"` (default: `"hybrid"`) |
+
+See the [Search documentation](/search) for details on retrieval strategies.
 
 #### List Collections
 
@@ -96,7 +97,7 @@ Manually trigger a data sync for a source connection. The sync runs asynchronous
 Build a Slack bot that answers questions using your organization's data:
 
 1. **Trigger**: Slack - New Slash Command
-2. **Action**: Airweave - Search Collection (with `responseType: "completion"`)
+2. **Action**: Airweave - Search Collection
 3. **Action**: Slack - Reply to Command
 
 #### Support Ticket Enrichment
@@ -138,16 +139,15 @@ export default defineComponent({
   },
   async run({ steps, $ }) {
     const response = await axios($, {
-      url: `${this.airweave.$auth.base_url || "https://api.airweave.ai"}/collections/my-collection/search`,
+      url: `${this.airweave.$auth.base_url || "https://api.airweave.ai"}/collections/my-collection/search/instant`,
       method: "POST",
       headers: {
-        "Authorization": `Bearer ${this.airweave.$auth.api_key}`,
+        "x-api-key": this.airweave.$auth.api_key,
         "Content-Type": "application/json",
       },
       data: {
         query: "quarterly revenue report",
         limit: 10,
-        response_type: "results",
       },
     });
     return response;

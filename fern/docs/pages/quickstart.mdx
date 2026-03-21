@@ -150,29 +150,40 @@ You can now search your collection and get the most relevant results from all co
 
     <CodeBlocks>
 ```Python title="Python"
-results = airweave.collections.search(
-    readable_id=collection.readable_id,
-    query="Find returned payments from user John Doe?",
+import httpx
+
+response = httpx.post(
+    f"https://api.airweave.ai/collections/{collection.readable_id}/search/instant",
+    headers={"x-api-key": "YOUR_API_KEY"},
+    json={"query": "Find returned payments from user John Doe?"},
 )
 
-for result in results.results:
-  print(result)
+for result in response.json()["results"]:
+    print(result)
 ```
 
 ```javascript title="Node.js"
-const results = await airweave.collections.search(
-  collection.readable_id,
-  { query: "Find returned payments from user John Doe?" }
+const response = await fetch(
+  `https://api.airweave.ai/collections/${collection.readableId}/search/instant`,
+  {
+    method: "POST",
+    headers: {
+      "x-api-key": "YOUR_API_KEY",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ query: "Find returned payments from user John Doe?" }),
+  }
 );
 
-results.results.forEach(result => {
-  console.log(result);
-});
+const { results } = await response.json();
+results.forEach(result => console.log(result));
 ```
 
 ```bash title="cURL"
-curl -X GET 'https://api.airweave.ai/collections/my-first-collection-abc123/search?query=Find%20returned%20payments%20from%20user%20John%20Doe%3F' \
-  -H 'x-api-key: YOUR_API_KEY'
+curl -X POST 'https://api.airweave.ai/collections/my-first-collection-abc123/search/instant' \
+  -H 'x-api-key: YOUR_API_KEY' \
+  -H 'Content-Type: application/json' \
+  -d '{"query": "Find returned payments from user John Doe?"}'
 ```
 </CodeBlocks>
   </Step>

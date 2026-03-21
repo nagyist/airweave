@@ -251,30 +251,11 @@ The primary search tool. The tool name includes the collection ID so the AI assi
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | `query` | string | Yes | - | The search query text |
-| `response_type` | `"raw"` \| `"completion"` | No | `"raw"` | `"raw"` returns results, `"completion"` returns an AI-generated answer |
 | `limit` | number | No | 100 | Maximum results to return (1-1000) |
 | `offset` | number | No | 0 | Results to skip for pagination |
-| `recency_bias` | number | No | - | Recency weighting from 0.0 to 1.0 |
-| `score_threshold` | number | No | - | Minimum similarity score (0.0 to 1.0) |
-| `search_method` | `"hybrid"` \| `"neural"` \| `"keyword"` | No | - | Search strategy |
-| `expansion_strategy` | `"auto"` \| `"llm"` \| `"no_expansion"` | No | - | Query expansion strategy |
-| `enable_reranking` | boolean | No | - | Enable LLM-based result reranking |
-| `enable_query_interpretation` | boolean | No | - | Enable automatic filter extraction from natural language |
+| `retrieval_strategy` | `"hybrid"` \| `"semantic"` \| `"keyword"` | No | `"hybrid"` | Retrieval strategy |
 
-<Note>
-The MCP server uses the **legacy** search parameter names for backwards compatibility. These are automatically mapped to the new API parameter names by the SDK. See the [Search documentation](/search) for the mapping between legacy and new parameter names.
-</Note>
-
-**Natural language examples**: the AI assistant will map these to the correct parameters automatically:
-
-- "Find the first 5 results" → `limit: 5`
-- "Show me results 11-20" → `limit: 10, offset: 10`
-- "Give me a summary" → `response_type: "completion"`
-- "Find the most recent documents" → `recency_bias: 0.8`
-- "Find high-quality results only" → `score_threshold: 0.8`
-- "Use keyword search" → `search_method: "keyword"`
-- "Don't expand my query" → `expansion_strategy: "no_expansion"`
-- "Disable reranking" → `enable_reranking: false`
+See the [Search documentation](/search) for details on retrieval strategies and the full search API.
 
 ### `get-config`
 
@@ -301,7 +282,7 @@ AI Assistant (Cursor, Claude, OpenAI, VS Code)
                             │
                       Airweave API
                             │
-                      POST /collections/{id}/search
+                      POST /collections/{id}/search/instant
 ```
 
 - **Local mode**: One MCP server process per user. API key and collection are set via environment variables. Communication over stdio.

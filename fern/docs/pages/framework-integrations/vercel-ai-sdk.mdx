@@ -53,14 +53,8 @@ airweaveSearch({
   // Max results per search (default: 10)
   defaultLimit: 20,
 
-  // Generate AI answer from results (default: false)
-  generateAnswer: true,
-
-  // Query expansion for better recall (default: true)
-  expandQuery: true,
-
-  // Rerank for relevance (default: true)
-  rerank: true,
+  // Retrieval strategy: "hybrid", "semantic", or "keyword" (default: "hybrid")
+  retrievalStrategy: "hybrid",
 
   // Base URL for self-hosted instances
   baseUrl: 'https://your-instance.airweave.ai',
@@ -75,9 +69,7 @@ airweaveSearch({
 | `baseUrl` | string | - | Base URL for self-hosted instances |
 | `defaultCollection` | string | - | Default collection readable ID to search |
 | `defaultLimit` | number | 10 | Default maximum number of results |
-| `generateAnswer` | boolean | false | Generate an AI-powered answer from results |
-| `expandQuery` | boolean | true | Expand query with variations for better recall |
-| `rerank` | boolean | true | Rerank results for improved relevance |
+| `retrievalStrategy` | string | `"hybrid"` | Retrieval strategy: `"hybrid"`, `"semantic"`, or `"keyword"` |
 
 ### Environment Variables
 

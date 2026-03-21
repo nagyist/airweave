@@ -193,6 +193,7 @@ def _make_registry_entry(short_name: str, federated: bool = False) -> SourceRegi
         feature_flag=None,
         labels=None,
         output_entity_definitions=[],
+        supports_cursor=False,
     )
 
 

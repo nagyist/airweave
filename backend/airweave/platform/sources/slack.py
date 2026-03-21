@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any, AsyncGenerator, Dict, List, Optional
 
 from tenacity import retry, stop_after_attempt
@@ -27,6 +28,44 @@ from airweave.platform.sources.retry_helpers import (
 )
 from airweave.platform.sync.pipeline.text_builder import text_builder
 from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
+
+# Pattern for Slack mrkdwn special sequences:
+# <@U1234|display_name> → @display_name  (user mention with label)
+# <@U1234>              → @U1234         (user mention without label)
+# <#C1234|channel-name> → #channel-name  (channel mention with label)
+# <#C1234>              → #C1234         (channel mention without label)
+# <!subteam^S1234|@team> → @team         (user group mention)
+# <!here>, <!channel>, <!everyone> → @here, @channel, @everyone
+# <http://url|label>    → label          (link with label)
+# <http://url>          → url            (link without label)
+_SLACK_MRKDWN_PATTERN = re.compile(
+    r"<"
+    r"(?:"
+    r"[@#!](?:[A-Z0-9^]+\|)?([^>|]+)"  # mentions: use label after pipe, or the ID
+    r"|"
+    r"(?:https?://[^|>]+)\|([^>]+)"  # links with label: use label
+    r"|"
+    r"(https?://[^>]+)"  # links without label: use URL
+    r")"
+    r">"
+)
+
+
+def _clean_slack_mrkdwn(text: str) -> str:
+    """Strip Slack mrkdwn markup, replacing mentions and links with display text."""
+
+    def _replace(m: re.Match[str]) -> str:
+        if m.group(1):
+            # Mention (user/channel/special) — use the label
+            return m.group(1)
+        # Link — use label or URL
+        return m.group(2) or m.group(3) or ""
+
+    cleaned = _SLACK_MRKDWN_PATTERN.sub(_replace, text)
+    # Strip Slack search highlight markers (U+E000 / U+E001 wrap matched terms)
+    cleaned = cleaned.replace("\ue000", "").replace("\ue001", "")
+    # Collapse multiple spaces left by removed markup
+    return re.sub(r"  +", " ", cleaned).strip()
 
 
 @source(
@@ -232,7 +271,7 @@ class SlackSource(BaseSource):
         return entity
 
     # ------------------------------------------------------------------
-    # Sync entry point (not used for federated search)
+    # Sync entry point (not used — Slack is federated search only)
     # ------------------------------------------------------------------
 
     async def generate_entities(
@@ -250,6 +289,7 @@ class SlackSource(BaseSource):
         raise NotImplementedError(
             "Slack uses federated search. Use the search() method instead of generate_entities()."
         )
+        yield  # make this a generator  # noqa: RUF027
 
     async def validate(self) -> None:
         """Validate credentials by calling Slack auth.test."""

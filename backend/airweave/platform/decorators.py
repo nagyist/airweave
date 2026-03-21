@@ -1,18 +1,26 @@
 """Refactored platform decorators with simplified capabilities."""
 
-from typing import Callable, List, Optional, Type, TypeVar
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Callable, List, Optional, Type, TypeVar
 
 from pydantic import BaseModel
 
 from airweave.core.shared_models import RateLimitLevel
-from airweave.domains.auth_provider._base import BaseAuthProvider
-from airweave.platform.destinations._base import BaseDestination
-from airweave.platform.sources._base import BaseSource
 from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
 
-_SourceT = TypeVar("_SourceT", bound=BaseSource)
-_DestinationT = TypeVar("_DestinationT", bound=BaseDestination)
-_AuthProviderT = TypeVar("_AuthProviderT", bound=BaseAuthProvider)
+if TYPE_CHECKING:
+    from airweave.domains.auth_provider._base import BaseAuthProvider
+    from airweave.platform.destinations._base import BaseDestination
+    from airweave.platform.sources._base import BaseSource
+
+    _SourceT = TypeVar("_SourceT", bound=BaseSource)
+    _DestinationT = TypeVar("_DestinationT", bound=BaseDestination)
+    _AuthProviderT = TypeVar("_AuthProviderT", bound=BaseAuthProvider)
+else:
+    _SourceT = TypeVar("_SourceT")
+    _DestinationT = TypeVar("_DestinationT")
+    _AuthProviderT = TypeVar("_AuthProviderT")
 
 
 def source(

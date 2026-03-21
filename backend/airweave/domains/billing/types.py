@@ -89,28 +89,32 @@ class InferredPlan:
 
 
 # Plan configuration
-PLAN_LIMITS = {
+PLAN_LIMITS: dict[BillingPlan, dict[str, int | None]] = {
     BillingPlan.DEVELOPER: {
-        "max_entities": 50000,
-        "max_queries": 500,
+        "max_entities": 50_000,
+        "max_queries": 50,
+        "max_tokens": 2_000_000,
         "max_source_connections": 10,
         "max_team_members": 1,
     },
     BillingPlan.PRO: {
-        "max_entities": 100000,
-        "max_queries": 2000,
+        "max_entities": 100_000,
+        "max_queries": 500,
+        "max_tokens": 10_000_000,
         "max_source_connections": 50,
         "max_team_members": 2,
     },
     BillingPlan.TEAM: {
-        "max_entities": 1000000,
-        "max_queries": 10000,
-        "max_source_connections": 1000,
+        "max_entities": 1_000_000,
+        "max_queries": 5_000,
+        "max_tokens": 50_000_000,
+        "max_source_connections": 1_000,
         "max_team_members": 10,
     },
     BillingPlan.ENTERPRISE: {
         "max_entities": None,
         "max_queries": None,
+        "max_tokens": None,
         "max_source_connections": None,
         "max_team_members": None,
     },
@@ -135,9 +139,11 @@ def compare_plans(current: BillingPlan, target: BillingPlan) -> ChangeType:
         return ChangeType.SAME
 
 
-def get_plan_limits(plan: BillingPlan) -> dict:
+def get_plan_limits(plan: BillingPlan) -> dict[str, int | None]:
     """Get usage limits for a plan."""
-    return PLAN_LIMITS.get(plan, PLAN_LIMITS[BillingPlan.PRO])
+    if plan in PLAN_LIMITS:
+        return PLAN_LIMITS[plan]
+    return PLAN_LIMITS[BillingPlan.PRO]
 
 
 def compute_yearly_prepay_amount_cents(plan: BillingPlan) -> int:

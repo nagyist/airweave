@@ -307,3 +307,61 @@
 .dark .raw-data-scrollbar * {
   scrollbar-color: rgba(107, 114, 128, 0.4) transparent;
 }
+
+/* Sentence-by-sentence reveal for agentic search thinking trace */
+@keyframes sentence-in {
+  from { opacity: 0; transform: translateY(2px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.animate-sentence-in {
+  opacity: 0;
+  animation: sentence-in 200ms ease-out forwards;
+}
+
+/* Spotlight sweep for active status labels in agentic search trace */
+.thinking-shimmer {
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+  background-size: 300% 100%;
+  animation: spotlightSweep 3s ease-in-out infinite;
+}
+.thinking-shimmer--light {
+  background-image: linear-gradient(
+    90deg,
+    rgb(75 85 99) 0%,
+    rgb(75 85 99) 44%,
+    rgb(17 24 39) 50%,
+    rgb(75 85 99) 56%,
+    rgb(75 85 99) 100%
+  );
+}
+.thinking-shimmer--dark {
+  background-image: linear-gradient(
+    90deg,
+    rgb(160 170 185) 0%,
+    rgb(160 170 185) 44%,
+    rgb(255 255 255) 50%,
+    rgb(160 170 185) 56%,
+    rgb(160 170 185) 100%
+  );
+}
+@keyframes spotlightSweep {
+  0%   { background-position: 100% 0; }
+  100% { background-position: 0% 0; }
+}
+
+/* Pulsing dot for agentic search status labels */
+.pulse-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  margin-right: 6px;
+  animation: dotPulse 2s ease-in-out infinite;
+}
+.pulse-dot--light { background-color: rgb(75 85 99); }
+.pulse-dot--dark  { background-color: rgb(210 218 230); }
+@keyframes dotPulse {
+  0%, 100% { opacity: 0.5; transform: scale(1); }
+  50%      { opacity: 1; transform: scale(1.4); }
+}

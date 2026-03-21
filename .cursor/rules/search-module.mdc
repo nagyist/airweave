@@ -1,10 +1,35 @@
 ---
-globs: **/search/**,**/search.py
+globs: **/search/**,**/search.py,**/domains/search/**
 alwaysApply: false
 ---
 # Airweave Search Rules
 
-## Overview
+> **WARNING — PARTIALLY OUTDATED (March 2026)**
+>
+> This file documents the **legacy V1 search module** (`airweave/search/`), which
+> uses an operation-based pipeline with Qdrant, Cerebras/OpenAI/Groq providers,
+> and structured-output LLM calls.
+>
+> The **new V2 search** lives in `airweave/domains/search/` and implements a
+> three-tier architecture:
+>
+> - **Instant** — direct vector search, no LLM
+> - **Classic** — vector search + reranking + answer generation (replaces V1)
+> - **Agentic** — multi-turn tool-calling agent loop with search/count/navigate/read/collect/finish tools
+>
+> Key differences from V1:
+> - **Vector DB**: Vespa (not Qdrant)
+> - **LLM adapters**: `airweave/adapters/llm/` with Together AI + Anthropic fallback (not Cerebras/Groq)
+> - **Reranker**: `airweave/adapters/reranker/` with Cohere
+> - **Filters**: `domains/search/types/filters.py` — FilterableField/FilterOperator/FilterGroup (not Qdrant native filters)
+> - **Streaming**: SSE events defined in `domains/search/agentic/events.py` (tool_call, thinking, search_results, etc.)
+> - **API**: `POST /collections/{id}/search/{tier}` where tier is `instant`, `classic`, or `agentic`
+> - **Config**: `domains/search/config.py` — model specs, token budgets, tier defaults
+>
+> **When working on `domains/search/`**, prefer reading the actual code over this
+> file. The sections below remain accurate for the legacy `airweave/search/` module only.
+
+## Overview (Legacy V1)
 
 The search module (`@search/`) implements a **modular, pipeline-based architecture** with composable operations.  It aims to maintain search quality and flexibility.
 

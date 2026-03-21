@@ -20,6 +20,18 @@ from airweave.adapters.circuit_breaker import InMemoryCircuitBreaker
 from airweave.adapters.encryption.fernet import FernetCredentialEncryptor
 from airweave.adapters.event_bus.in_memory import InMemoryEventBus
 from airweave.adapters.health import PostgresHealthProbe, RedisHealthProbe, TemporalHealthProbe
+from airweave.adapters.llm.anthropic import AnthropicLLM
+from airweave.adapters.llm.cerebras import CerebrasLLM
+from airweave.adapters.llm.fallback import FallbackChainLLM
+from airweave.adapters.llm.groq import GroqLLM
+from airweave.adapters.llm.registry import (
+    PROVIDER_API_KEY_SETTINGS,
+    LLMProvider,
+)
+from airweave.adapters.llm.registry import (
+    get_model_spec as get_llm_model_spec,
+)
+from airweave.adapters.llm.together import TogetherLLM
 from airweave.adapters.metrics import (
     PrometheusAgenticSearchMetrics,
     PrometheusDbPoolMetrics,
@@ -30,6 +42,9 @@ from airweave.adapters.ocr.docling import DoclingOcrAdapter
 from airweave.adapters.ocr.fallback import FallbackOcrProvider
 from airweave.adapters.ocr.mistral import MistralOcrAdapter
 from airweave.adapters.pubsub.redis import RedisPubSub
+from airweave.adapters.reranker.cohere import CohereReranker
+from airweave.adapters.tokenizer.registry import get_model_spec as get_tokenizer_spec
+from airweave.adapters.tokenizer.tiktoken import TiktokenTokenizer
 from airweave.adapters.webhooks.endpoint_verifier import HttpEndpointVerifier
 from airweave.adapters.webhooks.svix import SvixAdapter
 from airweave.core.config import Settings
@@ -81,6 +96,15 @@ from airweave.domains.oauth.repository import (
 from airweave.domains.organizations.protocols import UserOrganizationRepositoryProtocol
 from airweave.domains.organizations.repository import OrganizationRepository as OrgRepo
 from airweave.domains.organizations.repository import UserOrganizationRepository
+from airweave.domains.search.adapters.vector_db.filter_translator import FilterTranslator
+from airweave.domains.search.adapters.vector_db.vespa_client import VespaVectorDB
+from airweave.domains.search.agentic.service import AgenticSearchService
+from airweave.domains.search.agentic.subscribers.stream_relay import SearchStreamRelay
+from airweave.domains.search.builders.collection_metadata import CollectionMetadataBuilder
+from airweave.domains.search.classic.service import ClassicSearchService
+from airweave.domains.search.config import SearchConfig
+from airweave.domains.search.executor import SearchPlanExecutor
+from airweave.domains.search.instant.service import InstantSearchService
 from airweave.domains.source_connections.create import SourceConnectionCreationService
 from airweave.domains.source_connections.delete import SourceConnectionDeletionService
 from airweave.domains.source_connections.repository import SourceConnectionRepository
@@ -365,6 +389,22 @@ def create_container(settings: Settings) -> Container:
     sparse_embedder = _create_sparse_embedder(sparse_embedder_registry)
 
     # -----------------------------------------------------------------
+    # Search domain services (LLM, tokenizer, reranker, metadata builder, per-tier)
+    # -----------------------------------------------------------------
+    search_deps = _create_search_services(
+        settings=settings,
+        circuit_breaker=circuit_breaker,
+        dense_embedder=dense_embedder,
+        sparse_embedder=sparse_embedder,
+        collection_repo=source_deps["collection_repo"],
+        sc_repo=source_deps["sc_repo"],
+        source_registry=source_deps["source_registry"],
+        entity_definition_registry=source_deps["entity_definition_registry"],
+        event_bus=event_bus,
+        source_lifecycle=source_deps["source_lifecycle_service"],
+    )
+
+    # -----------------------------------------------------------------
     # Collection service (needs collection_repo, sc_repo, sync_lifecycle, dense_registry)
     # -----------------------------------------------------------------
     collection_service = CollectionService(
@@ -506,6 +546,9 @@ def create_container(settings: Settings) -> Container:
         organization_service=org_service,
         user_service=user_service,
         email_service=email_service,
+        instant_search=search_deps["instant_search"],
+        classic_search=search_deps["classic_search"],
+        agentic_search=search_deps["agentic_search"],
     )
 
 
@@ -605,6 +648,11 @@ def _create_event_bus(
     usage_billing_listener = UsageBillingListener(ledger=usage_ledger)
     for pattern in usage_billing_listener.EVENT_PATTERNS:
         bus.subscribe(pattern, usage_billing_listener.handle)
+
+    # SearchStreamRelay — bridges search events to PubSub for SSE streaming
+    search_stream_relay = SearchStreamRelay(pubsub=pubsub)
+    for pattern in search_stream_relay.EVENT_PATTERNS:
+        bus.subscribe(pattern, search_stream_relay.handle)
 
     # DonkeNotificationSubscriber — best-effort signup notification
     from airweave.domains.organizations.subscribers.donke_notification import (
@@ -1071,6 +1119,188 @@ def _create_rate_limiter(settings: Settings):
     from airweave.adapters.rate_limiter.redis import RedisRateLimiter
 
     return RedisRateLimiter(redis_client=redis_client.client)
+
+
+def _build_llm_chain(
+    settings: Settings,
+    config: SearchConfig,
+    circuit_breaker: CircuitBreaker,
+):
+    """Build LLM fallback chain from SearchConfig, skipping providers without API keys.
+
+    Returns:
+        An LLM instance (single provider or FallbackChainLLM).
+
+    Raises:
+        ValueError: If no LLM providers are available.
+    """
+    provider_classes = {
+        LLMProvider.ANTHROPIC: AnthropicLLM,
+        LLMProvider.CEREBRAS: CerebrasLLM,
+        LLMProvider.GROQ: GroqLLM,
+        LLMProvider.TOGETHER: TogetherLLM,
+    }
+
+    # Collect available (provider, model_spec, class) tuples first,
+    # then decide retry strategy based on how many survived.
+    available = []
+    for provider, model in config.LLM_FALLBACK_CHAIN:
+        api_key_attr = PROVIDER_API_KEY_SETTINGS.get(provider)
+        if api_key_attr and not getattr(settings, api_key_attr, None):
+            logger.debug(f"[SearchFactory] Skipping {provider.value}: no API key")
+            continue
+
+        model_spec = get_llm_model_spec(provider, model)
+        provider_cls = provider_classes.get(provider)
+        if provider_cls is None:
+            logger.warning(f"[SearchFactory] Unknown provider: {provider.value}")
+            continue
+
+        available.append((provider, model, model_spec, provider_cls))
+
+    if not available:
+        raise ValueError(
+            "No LLM providers available for search. "
+            "Configure at least one API key from SearchConfig.LLM_FALLBACK_CHAIN."
+        )
+
+    # Single provider: use default retries.
+    # Multiple providers: max_retries=0 for all except the last provider,
+    # which gets default retries since there's nothing to fall back to.
+    llm_providers = []
+    for idx, (provider, model, model_spec, provider_cls) in enumerate(available):
+        is_last = idx == len(available) - 1
+        retries = None if (len(available) == 1 or is_last) else 0
+        try:
+            llm_providers.append(provider_cls(model_spec=model_spec, max_retries=retries))
+            logger.info(
+                f"[SearchFactory] Added {provider.value}/{model.value} "
+                f"({model_spec.api_model_name})"
+            )
+        except Exception as e:
+            logger.warning(
+                f"[SearchFactory] Failed to initialize "
+                f"{provider.value}/{model.value}: {e}. Skipping."
+            )
+
+    if not llm_providers:
+        raise ValueError(
+            "No LLM providers available for search. All configured providers failed to initialize."
+        )
+
+    if len(llm_providers) == 1:
+        return llm_providers[0]
+    return FallbackChainLLM(providers=llm_providers, circuit_breaker=circuit_breaker)
+
+
+def _create_search_services(
+    settings: Settings,
+    circuit_breaker: CircuitBreaker,
+    dense_embedder: DenseEmbedderProtocol,
+    sparse_embedder: SparseEmbedderProtocol,
+    collection_repo: "CollectionRepository",
+    sc_repo: "SourceConnectionRepository",
+    source_registry: "SourceRegistry",
+    entity_definition_registry: "EntityDefinitionRegistry",
+    event_bus: "EventBus",
+    source_lifecycle: "SourceLifecycleService",
+) -> dict:
+    """Create search domain services (LLM, tokenizer, reranker, metadata builder, per-tier).
+
+    Build order:
+    1. Tokenizer (from SearchConfig)
+    2. LLM fallback chain (from SearchConfig, skips providers without API keys)
+    3. Reranker (optional, None if no COHERE_API_KEY)
+    4. CollectionMetadataBuilder (needs repos)
+    5. Per-tier services (instant, classic, agentic)
+    """
+    config = SearchConfig()
+
+    # 1. Tokenizer — validate against primary LLM model requirements
+    if not config.LLM_FALLBACK_CHAIN:
+        raise ValueError("LLM_FALLBACK_CHAIN is empty — at least one provider is required")
+
+    primary_provider, primary_model = config.LLM_FALLBACK_CHAIN[0]
+    primary_llm_spec = get_llm_model_spec(primary_provider, primary_model)
+
+    if config.TOKENIZER_TYPE != primary_llm_spec.required_tokenizer_type:
+        raise ValueError(
+            f"Primary LLM '{primary_provider.value}/{primary_model.value}' requires "
+            f"tokenizer type '{primary_llm_spec.required_tokenizer_type.value}', "
+            f"but SearchConfig specifies '{config.TOKENIZER_TYPE.value}'"
+        )
+    if config.TOKENIZER_ENCODING != primary_llm_spec.required_tokenizer_encoding:
+        raise ValueError(
+            f"Primary LLM '{primary_provider.value}/{primary_model.value}' requires "
+            f"tokenizer encoding '{primary_llm_spec.required_tokenizer_encoding.value}', "
+            f"but SearchConfig specifies '{config.TOKENIZER_ENCODING.value}'"
+        )
+
+    tokenizer_spec = get_tokenizer_spec(config.TOKENIZER_TYPE, config.TOKENIZER_ENCODING)
+    tokenizer = TiktokenTokenizer(model_spec=tokenizer_spec)
+
+    # 2. LLM fallback chain
+    llm = _build_llm_chain(settings, config, circuit_breaker)
+
+    # 3. Reranker (optional)
+    reranker = None
+    if getattr(settings, "COHERE_API_KEY", None):
+        reranker = CohereReranker(api_key=settings.COHERE_API_KEY)
+        logger.info("[SearchFactory] Cohere reranker enabled")
+
+    # 4. CollectionMetadataBuilder
+    metadata_builder = CollectionMetadataBuilder(
+        collection_repo=collection_repo,
+        sc_repo=sc_repo,
+        source_registry=source_registry,
+        entity_definition_registry=entity_definition_registry,
+        entity_count_repo=EntityCountRepository(),
+    )
+
+    # 5. Vector DB + shared executor
+    from vespa.application import Vespa
+
+    vespa_app = Vespa(url=settings.VESPA_URL, port=settings.VESPA_PORT)
+    filter_translator = FilterTranslator(logger=logger)
+    vector_db = VespaVectorDB(app=vespa_app, logger=logger, filter_translator=filter_translator)
+
+    executor = SearchPlanExecutor(
+        dense_embedder=dense_embedder,
+        sparse_embedder=sparse_embedder,
+        vector_db=vector_db,
+        sc_repo=sc_repo,
+        source_registry=source_registry,
+        source_lifecycle=source_lifecycle,
+    )
+
+    # 6. Per-tier services
+    instant_search = InstantSearchService(
+        executor=executor, collection_repo=collection_repo, event_bus=event_bus
+    )
+    classic_search = ClassicSearchService(
+        llm=llm,
+        reranker=reranker,
+        executor=executor,
+        collection_repo=collection_repo,
+        metadata_builder=metadata_builder,
+        event_bus=event_bus,
+    )
+    agentic_search = AgenticSearchService(
+        llm=llm,
+        tokenizer=tokenizer,
+        reranker=reranker,
+        executor=executor,
+        vector_db=vector_db,
+        metadata_builder=metadata_builder,
+        collection_repo=collection_repo,
+        event_bus=event_bus,
+    )
+
+    return {
+        "instant_search": instant_search,
+        "classic_search": classic_search,
+        "agentic_search": agentic_search,
+    }
 
 
 def _create_storage_backend(settings: Settings):  # -> StorageBackend

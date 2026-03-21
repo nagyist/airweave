@@ -108,6 +108,8 @@ jobs:
           COHERE_API_KEY: ${{ secrets.COHERE_API_KEY || 'dummy-key' }}
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY || 'dummy-key' }}
           CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY || 'dummy-key' }}
+          TOGETHER_API_KEY: ${{ secrets.TOGETHER_API_KEY || 'dummy-key' }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY || 'dummy-key' }}
           # Required for start.sh to skip interactive prompts
           NONINTERACTIVE: "1"
           # Skip services not needed for backend API tests
@@ -129,6 +131,8 @@ jobs:
           echo "COHERE_API_KEY=$COHERE_API_KEY" >> .env
           echo "GROQ_API_KEY=$GROQ_API_KEY" >> .env
           echo "CEREBRAS_API_KEY=$CEREBRAS_API_KEY" >> .env
+          echo "TOGETHER_API_KEY=$TOGETHER_API_KEY" >> .env
+          echo "ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY" >> .env
 
           # Disable rate limiting for regular tests
           echo "DISABLE_RATE_LIMIT=true" >> .env

@@ -5,6 +5,7 @@ from typing import List
 
 from airweave.core.events.base import DomainEvent
 from airweave.core.events.enums import SourceConnectionEventType
+from airweave.core.events.search import SearchCompletedEvent, SearchTier
 from airweave.core.events.source_connection import SourceConnectionLifecycleEvent
 from airweave.core.events.sync import (
     EntityBatchProcessedEvent,
@@ -13,7 +14,7 @@ from airweave.core.events.sync import (
 )
 from airweave.core.protocols.event_bus import EventSubscriber
 from airweave.domains.usage.protocols import UsageLedgerProtocol
-from airweave.domains.usage.types import ActionType
+from airweave.domains.usage.types import ActionType, normalize_tokens
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +27,13 @@ class UsageBillingListener(EventSubscriber):
     a ``ledger.flush()`` for the org to ensure nothing is left pending.
     """
 
-    EVENT_PATTERNS: List[str] = ["entity.*", "query.*", "sync.*", "source_connection.*"]
+    EVENT_PATTERNS: List[str] = [
+        "entity.*",
+        "query.*",
+        "search.completed",
+        "sync.*",
+        "source_connection.*",
+    ]
 
     _TERMINAL_SYNC_TYPES = frozenset({"sync.completed", "sync.failed", "sync.cancelled"})
 
@@ -43,6 +50,8 @@ class UsageBillingListener(EventSubscriber):
                 await self._handle_query(event)
             elif isinstance(event, SyncLifecycleEvent):
                 await self._handle_sync_lifecycle(event)
+            elif isinstance(event, SearchCompletedEvent):
+                await self._handle_search_completed(event)
             elif isinstance(event, SourceConnectionLifecycleEvent):
                 await self._handle_source_connection_lifecycle(event)
         except Exception as e:
@@ -72,6 +81,34 @@ class UsageBillingListener(EventSubscriber):
     async def _handle_sync_lifecycle(self, event: SyncLifecycleEvent) -> None:
         if event.event_type.value in self._TERMINAL_SYNC_TYPES:
             await self._ledger.flush(event.organization_id)
+
+    async def _handle_search_completed(self, event: SearchCompletedEvent) -> None:
+        if not event.billable:
+            return
+
+        if event.tier == SearchTier.AGENTIC and event.diagnostics:
+            # Agentic search: record normalized tokens instead of queries.
+            # Price factors from the primary model in the fallback chain.
+            # Lazy imports to avoid circular dependency through SearchConfig's
+            # deep import chain (search types → embedders → core protocols).
+            from airweave.adapters.llm.registry import get_model_spec
+            from airweave.domains.search.config import SearchConfig
+
+            provider, model = SearchConfig.LLM_FALLBACK_CHAIN[0]
+            spec = get_model_spec(provider, model)
+            normalized = normalize_tokens(
+                event.diagnostics.prompt_tokens,
+                event.diagnostics.completion_tokens,
+                spec.input_price_factor,
+                spec.output_price_factor,
+            )
+            if normalized > 0:
+                await self._ledger.record(
+                    event.organization_id, ActionType.TOKENS, amount=normalized
+                )
+        else:
+            # Instant/classic: record 1 query
+            await self._ledger.record(event.organization_id, ActionType.QUERIES, amount=1)
 
     async def _handle_source_connection_lifecycle(
         self, event: SourceConnectionLifecycleEvent

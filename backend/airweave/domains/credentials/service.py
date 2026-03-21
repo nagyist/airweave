@@ -12,7 +12,10 @@ from airweave.core.exceptions import NotFoundException
 from airweave.core.protocols.encryption import CredentialEncryptor
 from airweave.core.shared_models import IntegrationType
 from airweave.db.unit_of_work import UnitOfWork
-from airweave.domains.credentials.protocols import IntegrationCredentialRepositoryProtocol
+from airweave.domains.credentials.protocols import (
+    IntegrationCredentialRepositoryProtocol,
+    IntegrationCredentialServiceProtocol,
+)
 from airweave.domains.credentials.types import DecryptedCredential
 from airweave.models.integration_credential import IntegrationCredential
 from airweave.schemas.integration_credential import (
@@ -22,7 +25,7 @@ from airweave.schemas.integration_credential import (
 from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
 
 
-class IntegrationCredentialService:
+class IntegrationCredentialService(IntegrationCredentialServiceProtocol):
     """Encrypts, decrypts, and persists integration credentials.
 
     Sits between domain services and the raw repository + encryptor,

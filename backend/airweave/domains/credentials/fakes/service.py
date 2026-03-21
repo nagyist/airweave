@@ -11,10 +11,11 @@ from airweave.api.context import ApiContext
 from airweave.db.unit_of_work import UnitOfWork
 from airweave.domains.credentials.types import DecryptedCredential
 from airweave.models.integration_credential import IntegrationCredential
+from airweave.domains.credentials.protocols import IntegrationCredentialServiceProtocol
 from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
 
 
-class FakeIntegrationCredentialService:
+class FakeIntegrationCredentialService(IntegrationCredentialServiceProtocol):
     """In-memory fake for IntegrationCredentialServiceProtocol."""
 
     def __init__(self) -> None:
@@ -91,11 +92,11 @@ class FakeIntegrationCredentialService:
     ) -> IntegrationCredential:
         """Update a credential in the in-memory store."""
         self._calls.append(("update", credential.credential_id, credential.raw))
-        self._store[credential.credential_id] = credential
         record = self._records.get(credential.credential_id)
         if record is None:
             from airweave.core.exceptions import NotFoundException
 
             raise NotFoundException("Integration credential not found")
+        self._store[credential.credential_id] = credential
         record.encrypted_credentials = "fake-re-encrypted"
         return record

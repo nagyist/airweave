@@ -8,11 +8,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave.api.context import ApiContext
 from airweave.db.unit_of_work import UnitOfWork
+from airweave.domains.oauth.protocols import (
+    OAuthInitSessionRepositoryProtocol,
+    OAuthRedirectSessionRepositoryProtocol,
+)
 from airweave.models.connection_init_session import ConnectionInitSession
 from airweave.models.redirect_session import RedirectSession
 
 
-class FakeOAuthRedirectSessionRepository:
+class FakeOAuthRedirectSessionRepository(OAuthRedirectSessionRepositoryProtocol):
     """In-memory fake for OAuthRedirectSessionRepositoryProtocol."""
 
     def __init__(self) -> None:
@@ -58,7 +62,7 @@ class FakeOAuthRedirectSessionRepository:
         return obj
 
 
-class FakeOAuthInitSessionRepository:
+class FakeOAuthInitSessionRepository(OAuthInitSessionRepositoryProtocol):
     """In-memory fake for OAuthInitSessionRepositoryProtocol."""
 
     def __init__(self) -> None:
@@ -105,7 +109,7 @@ class FakeOAuthInitSessionRepository:
         uow: UnitOfWork,
     ) -> ConnectionInitSession:
         self._calls.append(("create", obj_in))
-        return obj_in
+        return cast(ConnectionInitSession, obj_in)
 
     async def mark_completed(
         self,

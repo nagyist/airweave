@@ -361,7 +361,9 @@ class ConnectService(ConnectServiceProtocol):
         await self._get_verified_connection(db, connection_id, session, ctx)
 
         return await self._sc_service.reinitiate_oauth(  # type: ignore[return-value]
-            db, id=connection_id, ctx=ctx  # type: ignore[arg-type]
+            db,
+            id=connection_id,
+            ctx=ctx,  # type: ignore[arg-type]
         )
 
     async def verify_oauth(

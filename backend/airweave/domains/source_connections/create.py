@@ -224,7 +224,7 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
         claim_token = secrets.token_urlsafe(32)
         claim_token_hash = hashlib.sha256(claim_token.encode()).hexdigest()
 
-        initiator_user_id = ctx.user_id if hasattr(ctx, "user_id") else None
+        initiator_user_id = ctx.user_id
         initiator_session_id: Optional[UUID] = getattr(ctx, "session_id", None)
 
         initiation_result = await self._oauth_flow_service.initiate_browser_flow(

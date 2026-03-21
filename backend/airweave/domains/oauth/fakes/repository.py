@@ -2,21 +2,17 @@
 
 from datetime import datetime
 from typing import Any, Dict, Optional, cast
-from uuid import UUID, uuid4
+from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave.api.context import ApiContext
 from airweave.db.unit_of_work import UnitOfWork
-from airweave.domains.oauth.protocols import (
-    OAuthInitSessionRepositoryProtocol,
-    OAuthRedirectSessionRepositoryProtocol,
-)
 from airweave.models.connection_init_session import ConnectionInitSession
 from airweave.models.redirect_session import RedirectSession
 
 
-class FakeOAuthRedirectSessionRepository(OAuthRedirectSessionRepositoryProtocol):
+class FakeOAuthRedirectSessionRepository:
     """In-memory fake for OAuthRedirectSessionRepositoryProtocol."""
 
     def __init__(self) -> None:
@@ -53,7 +49,6 @@ class FakeOAuthRedirectSessionRepository(OAuthRedirectSessionRepositoryProtocol)
     ) -> RedirectSession:
         self._calls.append(("create", code, final_url))
         obj = RedirectSession(
-            id=uuid4(),
             code=code,
             final_url=final_url,
             expires_at=expires_at,
@@ -63,7 +58,7 @@ class FakeOAuthRedirectSessionRepository(OAuthRedirectSessionRepositoryProtocol)
         return obj
 
 
-class FakeOAuthInitSessionRepository(OAuthInitSessionRepositoryProtocol):
+class FakeOAuthInitSessionRepository:
     """In-memory fake for OAuthInitSessionRepositoryProtocol."""
 
     def __init__(self) -> None:
@@ -110,10 +105,7 @@ class FakeOAuthInitSessionRepository(OAuthInitSessionRepositoryProtocol):
         uow: UnitOfWork,
     ) -> ConnectionInitSession:
         self._calls.append(("create", obj_in))
-        obj = ConnectionInitSession(id=uuid4(), **obj_in)
-        if hasattr(obj, "id") and obj.id:
-            self._store_by_id[cast(UUID, obj.id)] = obj
-        return obj
+        return obj_in
 
     async def mark_completed(
         self,

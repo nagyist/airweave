@@ -133,11 +133,28 @@ class Agent:
         start_time = time.monotonic()
         state = AgentState()
         diag = _DiagnosticsAccumulator()
+        ctx.logger.info(
+            f"Agentic search started collection={readable_id} query={request.query!r} "
+            f"thinking={request.thinking}"
+        )
 
         try:
-            return await self._run(db, ctx, readable_id, request, state, start_time, diag)
+            result = await self._run(db, ctx, readable_id, request, state, start_time, diag)
+            duration_ms = int((time.monotonic() - start_time) * 1000)
+            ctx.logger.info(
+                f"Agentic search completed collection={readable_id} "
+                f"results={len(result.results)} iterations={diag.iteration + 1} "
+                f"prompt_tokens={diag.prompt_tokens} completion_tokens={diag.completion_tokens} "
+                f"duration_ms={duration_ms}"
+            )
+            return result
         except Exception as e:
             duration_ms = int((time.monotonic() - start_time) * 1000)
+            ctx.logger.error(
+                f"Agentic search failed collection={readable_id} "
+                f"iteration={diag.iteration} collected={len(state.collected_ids)} "
+                f"duration_ms={duration_ms} error={e}"
+            )
             await self._event_bus.publish(
                 SearchFailedEvent(
                     organization_id=ctx.organization.id,
@@ -229,6 +246,12 @@ class Agent:
             diag.cache_creation += response.cache_creation_input_tokens
             diag.cache_read += response.cache_read_input_tokens
             diag.llm_retries += response.retries
+            ctx.logger.debug(
+                f"Agentic iteration={iteration} tool_calls={len(response.tool_calls)} "
+                f"prompt_tokens={response.prompt_tokens} "
+                f"completion_tokens={response.completion_tokens} "
+                f"llm_duration_ms={llm_duration}"
+            )
 
             # 3. Emit thinking event
             await self._event_bus.publish(
@@ -287,6 +310,10 @@ class Agent:
 
             # 7. Safety check — emergency compress if budget is too low for tool results
             if not context_mgr.check_budget(messages):
+                ctx.logger.warning(
+                    f"Agentic context budget low at iteration={iteration}, "
+                    f"triggering emergency compression"
+                )
                 messages = context_mgr.emergency_compress(messages)
                 if not context_mgr.check_budget(messages):
                     raise ContextBudgetExhaustedError(
@@ -322,6 +349,10 @@ class Agent:
 
             if iterations_since_last_collect >= config.STAGNATION_THRESHOLD:
                 diag.stagnation_nudges += 1
+                ctx.logger.warning(
+                    f"Agentic stagnation detected iteration={iteration} "
+                    f"no_new_results_for={iterations_since_last_collect} iterations"
+                )
                 messages.append(
                     {
                         "role": "user",
@@ -428,7 +459,7 @@ class Agent:
                     cache_creation_input_tokens=diag.cache_creation,
                     cache_read_input_tokens=diag.cache_read,
                 ),
-                collection_id=collection.id,
+                collection_id=collection.id,  # type: ignore[arg-type]
             )
         )
 
@@ -518,7 +549,7 @@ class Agent:
                 result = await dispatcher.dispatch(tc, state)
             except ToolError as e:
                 # Correctable errors — feed back to LLM for self-correction
-                result = ToolErrorResult(error=str(e))
+                result = ToolErrorResult(error=str(e))  # type: ignore[assignment]
             tc_duration = int((time.monotonic() - tc_start) * 1000)
 
             await self._event_bus.publish(

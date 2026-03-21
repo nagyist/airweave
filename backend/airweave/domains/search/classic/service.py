@@ -71,11 +71,22 @@ class ClassicSearchService(ClassicSearchServiceProtocol):
     ) -> SearchResults:
         """Generate strategy via LLM, execute, optionally rerank, return results."""
         start_time = time.monotonic()
+        ctx.logger.info(f"Classic search started collection={readable_id} query={request.query!r}")
 
         try:
-            return await self._execute(db, ctx, readable_id, request, start_time)
+            result = await self._execute(db, ctx, readable_id, request, start_time)
+            duration_ms = int((time.monotonic() - start_time) * 1000)
+            ctx.logger.info(
+                f"Classic search completed collection={readable_id} "
+                f"results={len(result.results)} duration_ms={duration_ms}"
+            )
+            return result
         except Exception as e:
             duration_ms = int((time.monotonic() - start_time) * 1000)
+            ctx.logger.error(
+                f"Classic search failed collection={readable_id} "
+                f"duration_ms={duration_ms} error={e}"
+            )
             await self._event_bus.publish(
                 SearchFailedEvent(
                     organization_id=ctx.organization.id,
@@ -114,10 +125,19 @@ class ClassicSearchService(ClassicSearchServiceProtocol):
         user_filter_md = format_filter_groups_md(request.filter) if request.filter else "None"
         prompt = f"User query: {request.query}\nUser filter: {user_filter_md}"
         strategy = await self._llm.structured_output(prompt, ClassicSearchStrategy, system_prompt)
+        ctx.logger.debug(
+            f"Classic search LLM strategy primary={strategy.query.primary!r} "
+            f"retrieval={strategy.retrieval_strategy} "
+            f"filter_groups={len(strategy.filter_groups or [])}"
+        )
 
         # Guard: if LLM returned an empty or non-word primary query, fall back to the
         # user's original. LLMs sometimes return "", ".", or punctuation-only strings.
         if not strategy.query.primary or not any(c.isalnum() for c in strategy.query.primary):
+            ctx.logger.warning(
+                f"Classic search LLM returned empty/invalid primary query, "
+                f"falling back to user query={request.query!r}"
+            )
             strategy.query.primary = request.query
 
         # 4. Combine with request.limit/offset → full SearchPlan

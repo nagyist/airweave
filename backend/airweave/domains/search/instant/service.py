@@ -52,11 +52,22 @@ class InstantSearchService(InstantSearchServiceProtocol):
     ) -> SearchResults:
         """Build plan from request and execute."""
         start_time = time.monotonic()
+        ctx.logger.info(f"Instant search started collection={readable_id} query={request.query!r}")
 
         try:
-            return await self._execute(db, ctx, readable_id, request, start_time)
+            result = await self._execute(db, ctx, readable_id, request, start_time)
+            duration_ms = int((time.monotonic() - start_time) * 1000)
+            ctx.logger.info(
+                f"Instant search completed collection={readable_id} "
+                f"results={len(result.results)} duration_ms={duration_ms}"
+            )
+            return result
         except Exception as e:
             duration_ms = int((time.monotonic() - start_time) * 1000)
+            ctx.logger.error(
+                f"Instant search failed collection={readable_id} "
+                f"duration_ms={duration_ms} error={e}"
+            )
             await self._event_bus.publish(
                 SearchFailedEvent(
                     organization_id=ctx.organization.id,

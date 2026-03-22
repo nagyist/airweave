@@ -8,16 +8,7 @@ import shlex
 import sys
 from pathlib import Path
 
-from watchfiles import DefaultFilter, run_process
-
-
-class _IgnoreLocalStorage(DefaultFilter):
-    """Extends DefaultFilter to also ignore local_storage directories."""
-
-    def __call__(self, change, path: str) -> bool:
-        if "local_storage" in path:
-            return False
-        return super().__call__(change, path)
+from watchfiles import run_process
 
 
 def build_worker_command() -> list[str]:
@@ -62,9 +53,4 @@ if __name__ == "__main__":
     cmd = build_worker_command()
     cmd_str = shlex.join(cmd)
     print("[dev] Starting Temporal worker:", cmd_str, flush=True)
-    run_process(
-        *watch_paths,
-        target=cmd_str,
-        target_type="command",
-        watch_filter=_IgnoreLocalStorage(),
-    )
+    run_process(*watch_paths, target=cmd_str, target_type="command")

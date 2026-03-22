@@ -99,6 +99,28 @@ class TestBuildAssistantMessage:
         assert msg["content"] is None
         assert "tool_calls" not in msg
 
+    def test_thinking_signature_preserved(self) -> None:
+        response = LLMResponse(
+            text="Searching.",
+            thinking="Let me think...",
+            tool_calls=[],
+            thinking_signature="sig_abc123",
+        )
+        msg = build_assistant_message(response)
+        assert msg["_thinking"] == "Let me think..."
+        assert msg["_thinking_signature"] == "sig_abc123"
+
+    def test_thinking_signature_none_for_non_anthropic(self) -> None:
+        response = LLMResponse(
+            text=None,
+            thinking="Together reasoning...",
+            tool_calls=[],
+            thinking_signature=None,
+        )
+        msg = build_assistant_message(response)
+        assert msg["_thinking"] == "Together reasoning..."
+        assert msg["_thinking_signature"] is None
+
 
 class TestBuildToolResultMessage:
     """Tests for build_tool_result_message."""

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -309,20 +310,23 @@ def test_parse_response_blocks_text_and_tool_use():
     tool_block.name = "search"
     tool_block.input = {"query": "test"}
 
-    thinking_parts, text_parts, tool_calls = _parse_response_blocks([text_block, tool_block])
+    thinking_parts, text_parts, tool_calls, sig = _parse_response_blocks(
+        [text_block, tool_block]
+    )
 
     assert thinking_parts == []
     assert text_parts == ["I'll search for that."]
     assert len(tool_calls) == 1
     assert tool_calls[0].name == "search"
     assert tool_calls[0].arguments == {"query": "test"}
+    assert sig is None
 
 
 def test_parse_response_blocks_thinking_and_tool_use():
     """Response with thinking + tool_use blocks (no text)."""
     from airweave.adapters.llm.anthropic import _parse_response_blocks
 
-    think_block = MagicMock()
+    think_block = MagicMock(spec=["type", "thinking"])
     think_block.type = "thinking"
     think_block.thinking = "Let me reason about this..."
 
@@ -332,11 +336,14 @@ def test_parse_response_blocks_thinking_and_tool_use():
     tool_block.name = "read"
     tool_block.input = {"entity_ids": ["e1"]}
 
-    thinking_parts, text_parts, tool_calls = _parse_response_blocks([think_block, tool_block])
+    thinking_parts, text_parts, tool_calls, sig = _parse_response_blocks(
+        [think_block, tool_block]
+    )
 
     assert thinking_parts == ["Let me reason about this..."]
     assert text_parts == []
     assert len(tool_calls) == 1
+    assert sig is None
 
 
 def test_parse_response_blocks_string_tool_input():
@@ -349,9 +356,162 @@ def test_parse_response_blocks_string_tool_input():
     tool_block.name = "count"
     tool_block.input = '{"filter_groups": []}'
 
-    _, _, tool_calls = _parse_response_blocks([tool_block])
+    _, _, tool_calls, _ = _parse_response_blocks([tool_block])
 
     assert tool_calls[0].arguments == {"filter_groups": []}
+
+
+def test_parse_response_blocks_extracts_signature():
+    """Signature is extracted from thinking blocks when present."""
+    from airweave.adapters.llm.anthropic import _parse_response_blocks
+
+    think_block = MagicMock()
+    think_block.type = "thinking"
+    think_block.thinking = "Let me think..."
+    think_block.signature = "sig_abc123"
+
+    tool_block = MagicMock()
+    tool_block.type = "tool_use"
+    tool_block.id = "tc-1"
+    tool_block.name = "search"
+    tool_block.input = {"query": "test"}
+
+    thinking_parts, _, _, sig = _parse_response_blocks([think_block, tool_block])
+
+    assert thinking_parts == ["Let me think..."]
+    assert sig == "sig_abc123"
+
+
+# ---------------------------------------------------------------------------
+# _build_assistant_blocks — thinking signature handling
+# ---------------------------------------------------------------------------
+
+
+def test_build_assistant_blocks_with_signature():
+    """Thinking block is included when signature is present."""
+    from airweave.adapters.llm.anthropic import _build_assistant_blocks
+
+    msg = {
+        "role": "assistant",
+        "content": "text",
+        "_thinking": "I should search...",
+        "_thinking_signature": "sig_abc123",
+        "tool_calls": [],
+    }
+
+    blocks = _build_assistant_blocks(msg)
+
+    thinking_blocks = [b for b in blocks if b["type"] == "thinking"]
+    assert len(thinking_blocks) == 1
+    assert thinking_blocks[0]["thinking"] == "I should search..."
+    assert thinking_blocks[0]["signature"] == "sig_abc123"
+
+
+def test_build_assistant_blocks_without_signature_skips_thinking():
+    """Thinking block is skipped when signature is missing (cross-provider fallback)."""
+    from airweave.adapters.llm.anthropic import _build_assistant_blocks
+
+    msg: dict[str, Any] = {
+        "role": "assistant",
+        "content": "text",
+        "_thinking": "Together AI reasoning text...",
+        "_thinking_signature": None,
+        "tool_calls": [],
+    }
+
+    blocks = _build_assistant_blocks(msg)
+
+    thinking_blocks = [b for b in blocks if b["type"] == "thinking"]
+    assert len(thinking_blocks) == 0
+    # Text content should still be present
+    text_blocks = [b for b in blocks if b["type"] == "text"]
+    assert len(text_blocks) == 1
+
+
+def test_build_assistant_blocks_no_thinking_at_all():
+    """No thinking block when _thinking is None."""
+    from airweave.adapters.llm.anthropic import _build_assistant_blocks
+
+    msg: dict[str, Any] = {
+        "role": "assistant",
+        "content": "just text",
+        "_thinking": None,
+        "_thinking_signature": None,
+        "tool_calls": [],
+    }
+
+    blocks = _build_assistant_blocks(msg)
+
+    thinking_blocks = [b for b in blocks if b["type"] == "thinking"]
+    assert len(thinking_blocks) == 0
+
+
+def test_cross_provider_fallback_conversation():
+    """Full conversation from Together (no sig) converts cleanly for Anthropic."""
+    from airweave.adapters.llm.anthropic import _convert_messages_to_anthropic
+
+    messages = [
+        {"role": "user", "content": "find tasks"},
+        {
+            "role": "assistant",
+            "content": None,
+            "_thinking": "Together reasoning: I should search for tasks...",
+            "_thinking_signature": None,
+            "tool_calls": [
+                {
+                    "id": "tc-1",
+                    "type": "function",
+                    "function": {"name": "search", "arguments": '{"query": "tasks"}'},
+                }
+            ],
+        },
+        {"role": "tool", "tool_call_id": "tc-1", "content": "Found 4 results"},
+    ]
+
+    result = _convert_messages_to_anthropic(messages)
+
+    # Assistant message should have tool_use but NO thinking block
+    assistant_msg = result[1]
+    assert assistant_msg["role"] == "assistant"
+    thinking_blocks = [b for b in assistant_msg["content"] if b.get("type") == "thinking"]
+    assert len(thinking_blocks) == 0
+    tool_blocks = [b for b in assistant_msg["content"] if b.get("type") == "tool_use"]
+    assert len(tool_blocks) == 1
+
+
+def test_anthropic_conversation_preserves_thinking():
+    """Conversation from Anthropic (with sig) preserves thinking blocks."""
+    from airweave.adapters.llm.anthropic import _convert_messages_to_anthropic
+
+    messages = [
+        {"role": "user", "content": "find tasks"},
+        {
+            "role": "assistant",
+            "content": None,
+            "_thinking": "Let me search for tasks...",
+            "_thinking_signature": "sig_from_claude_abc123",
+            "tool_calls": [
+                {
+                    "id": "tc-1",
+                    "type": "function",
+                    "function": {"name": "search", "arguments": '{"query": "tasks"}'},
+                }
+            ],
+        },
+        {"role": "tool", "tool_call_id": "tc-1", "content": "Found 4 results"},
+    ]
+
+    result = _convert_messages_to_anthropic(messages)
+
+    assistant_msg = result[1]
+    thinking_blocks = [b for b in assistant_msg["content"] if b.get("type") == "thinking"]
+    assert len(thinking_blocks) == 1
+    assert thinking_blocks[0]["signature"] == "sig_from_claude_abc123"
+
+
+# ---------------------------------------------------------------------------
+# _convert_messages_to_anthropic
+# ---------------------------------------------------------------------------
 
 
 def test_convert_messages_merges_consecutive_user():

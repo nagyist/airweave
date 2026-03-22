@@ -51,6 +51,7 @@ class LLMResponse:
     text: str | None
     thinking: str | None
     tool_calls: list[LLMToolCall]
+    thinking_signature: str | None = None
     prompt_tokens: int = 0
     completion_tokens: int = 0
     cache_creation_input_tokens: int = 0

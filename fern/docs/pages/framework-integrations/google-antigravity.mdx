@@ -50,13 +50,9 @@ Search within your configured Airweave collection. The tool name includes your c
 | `query` | string | Your search query (required) |
 | `limit` | number | Maximum results to return (default: 100) |
 | `offset` | number | Number of results to skip for pagination (default: 0) |
-| `response_type` | string | `"raw"` for results, `"completion"` for AI-generated answers |
-| `recency_bias` | number | Weight recent content from 0.0 to 1.0 (0 = no bias, 1 = recency only) |
-| `score_threshold` | number | Minimum similarity score from 0.0 to 1.0 |
-| `search_method` | string | `"hybrid"`, `"neural"`, or `"keyword"` |
-| `expansion_strategy` | string | `"auto"`, `"llm"`, or `"no_expansion"` |
-| `enable_reranking` | boolean | Use LLM-based reranking (default: true) |
-| `enable_query_interpretation` | boolean | Extract filters from natural language (default: true) |
+| `retrieval_strategy` | string | `"hybrid"`, `"semantic"`, or `"keyword"` |
+
+See the [Search documentation](/search) for details on retrieval strategies and search tiers.
 
 #### `get-config`
 
@@ -75,7 +71,7 @@ Find all documents mentioning the pricing update from last week
 ```
 
 ```
-What were the key decisions from yesterday's standup? Search with recency bias.
+What were the key decisions from yesterday's standup?
 ```
 
 ### Search Capabilities
@@ -83,10 +79,8 @@ What were the key decisions from yesterday's standup? Search with recency bias.
 The Airweave MCP integration provides:
 
 - **Hybrid search**: Combines semantic and keyword matching for best results
-- **Query expansion**: Generates variations of your query for better recall
-- **Reranking**: Applies LLM-based reranking for improved relevance
 - **Context retrieval**: Returns relevant context with breadcrumbs to original sources
-- **AI-generated answers**: Optionally returns synthesized answers from search results
+- **Multiple search tiers**: Instant, classic (AI-optimized), and agentic (tool-calling agent) search
 
 ### Self-Hosted Instances
 

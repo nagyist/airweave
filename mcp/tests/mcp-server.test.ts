@@ -1,6 +1,6 @@
 /**
  * MCP Server Tests - Tests the actual MCP server functionality
- * 
+ *
  * These tests verify:
  * 1. Tool registration works correctly
  * 2. Tool handlers execute with correct parameters
@@ -360,4 +360,3 @@ describe('MCP Server - Tool Registration and Execution', () => {
         });
     });
 });
-

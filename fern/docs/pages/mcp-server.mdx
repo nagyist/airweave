@@ -246,35 +246,45 @@ The MCP server exposes two tools to AI assistants:
 
 The primary search tool. The tool name includes the collection ID so the AI assistant knows which dataset it's searching (e.g., `search-my-docs`).
 
-**Parameters:**
+The tool supports all three [search tiers](/search#search-tiers), selectable via the `tier` parameter:
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
-| `query` | string | Yes | - | The search query text |
-| `response_type` | `"raw"` \| `"completion"` | No | `"raw"` | `"raw"` returns results, `"completion"` returns an AI-generated answer |
-| `limit` | number | No | 100 | Maximum results to return (1-1000) |
-| `offset` | number | No | 0 | Results to skip for pagination |
-| `recency_bias` | number | No | - | Recency weighting from 0.0 to 1.0 |
-| `score_threshold` | number | No | - | Minimum similarity score (0.0 to 1.0) |
-| `search_method` | `"hybrid"` \| `"neural"` \| `"keyword"` | No | - | Search strategy |
-| `expansion_strategy` | `"auto"` \| `"llm"` \| `"no_expansion"` | No | - | Query expansion strategy |
-| `enable_reranking` | boolean | No | - | Enable LLM-based result reranking |
-| `enable_query_interpretation` | boolean | No | - | Enable automatic filter extraction from natural language |
+| `query` | string | Yes | — | The search query text |
+| `tier` | `"instant"` \| `"classic"` \| `"agentic"` | No | `"classic"` | Search tier — controls depth vs. speed |
+| `limit` | number | No | 100 | Maximum results to return (1–1000) |
+| `offset` | number | No | 0 | Results to skip for pagination (instant and classic only) |
+| `retrieval_strategy` | `"hybrid"` \| `"semantic"` \| `"keyword"` | No | `"hybrid"` | Retrieval strategy (instant tier only) |
+| `thinking` | boolean | No | `false` | Enable extended thinking / chain-of-thought (agentic tier only) |
+| `filter` | FilterGroup[] | No | — | Structured filters for precise matching |
 
-<Note>
-The MCP server uses the **legacy** search parameter names for backwards compatibility. These are automatically mapped to the new API parameter names by the SDK. See the [Search documentation](/search) for the mapping between legacy and new parameter names.
-</Note>
+**Tiers at a glance:**
 
-**Natural language examples**: the AI assistant will map these to the correct parameters automatically:
+- **`instant`** — Direct vector search. Fastest (sub-second). Use for straightforward lookups.
+- **`classic`** — An LLM plans the search strategy, then executes it. Good balance of speed (~2–5 s) and quality. This is the default.
+- **`agentic`** — A multi-step agent iteratively searches, reads, and navigates your data. Deepest results, highest latency.
 
-- "Find the first 5 results" → `limit: 5`
-- "Show me results 11-20" → `limit: 10, offset: 10`
-- "Give me a summary" → `response_type: "completion"`
-- "Find the most recent documents" → `recency_bias: 0.8`
-- "Find high-quality results only" → `score_threshold: 0.8`
-- "Use keyword search" → `search_method: "keyword"`
-- "Don't expand my query" → `expansion_strategy: "no_expansion"`
-- "Disable reranking" → `enable_reranking: false`
+**Filters:**
+
+Filters let you narrow results by metadata. Each filter group is a list of conditions combined with AND; multiple groups are combined with OR.
+
+```json title="Example: only Notion results"
+{
+  "filter": [
+    {
+      "conditions": [
+        {
+          "field": "airweave_system_metadata.source_name",
+          "operator": "equals",
+          "value": "notion"
+        }
+      ]
+    }
+  ]
+}
+```
+
+See the [Search documentation](/search#filters) for the full list of filterable fields and operators.
 
 ### `get-config`
 
@@ -301,13 +311,14 @@ AI Assistant (Cursor, Claude, OpenAI, VS Code)
                             │
                       Airweave API
                             │
-                      POST /collections/{id}/search
+                      POST /collections/{id}/search/{tier}
+                      (instant | classic | agentic)
 ```
 
 - **Local mode**: One MCP server process per user. API key and collection are set via environment variables. Communication over stdio.
 - **Hosted mode**: Stateless HTTP server. A fresh MCP server instance is created for each request. Supports API key auth (via headers) and OAuth 2.0 (via Auth0).
 
-In both modes, the MCP server is a thin wrapper around the [Airweave SDK](/api-reference). It validates parameters, calls the search API, and formats results for the AI assistant.
+In both modes, the MCP server validates parameters, calls the appropriate [search tier endpoint](/search#search-tiers), and formats results for the AI assistant.
 
 ---
 

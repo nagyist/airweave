@@ -53,8 +53,8 @@ Schema for Box user entities.
 |-------|------|-------------|
 | user_id | str | Box user ID |
 | name | str | Display name of the user |
-| created_at | Optional[str] | When the user was created |
-| updated_at | Optional[str] | When the user was last modified |
+| created_at | Optional[datetime] | When the user was created |
+| updated_at | Optional[datetime] | When the user was last modified |
 | login | Optional[str] | Login email address of the user |
 | status | Optional[str] | Status of the user (active, inactive, etc.) |
 | job_title | Optional[str] | Job title of the user |
@@ -76,8 +76,8 @@ Schema for Box folder entities.
 |-------|------|-------------|
 | folder_id | str | Box folder ID |
 | name | str | Folder name |
-| created_at | Optional[str] | When the folder was created |
-| updated_at | Optional[str] | When the folder was last modified |
+| created_at | Optional[datetime] | When the folder was created |
+| updated_at | Optional[datetime] | When the folder was last modified |
 | description | Optional[str] | Description of the folder |
 | size | Optional[int] | Size of the folder in bytes |
 | path_collection | List[Dict] | Path of parent folders from root to this folder |
@@ -107,8 +107,8 @@ Schema for Box file entities.
 |-------|------|-------------|
 | file_id | str | Box file ID |
 | name | str | File name |
-| created_at | Optional[str] | When the file was created |
-| updated_at | Optional[str] | When the file was last modified |
+| created_at | Optional[datetime] | When the file was created |
+| updated_at | Optional[datetime] | When the file was last modified |
 | description | Optional[str] | Description of the file |
 | parent_folder_id | str | ID of the parent folder |
 | parent_folder_name | str | Name of the parent folder |
@@ -141,8 +141,8 @@ Schema for Box comment entities.
 |-------|------|-------------|
 | comment_id | str | Box comment ID |
 | name | str | Comment preview or identifier |
-| created_at | Optional[str] | When the comment was created |
-| updated_at | Optional[str] | When the comment was last modified |
+| created_at | Optional[datetime] | When the comment was created |
+| updated_at | Optional[datetime] | When the comment was last modified |
 | file_id | str | ID of the file this comment is on |
 | file_name | str | Name of the file |
 | message | str | Content of the comment |
@@ -159,8 +159,8 @@ Schema for Box collaboration entities.
 |-------|------|-------------|
 | collaboration_id | str | Box collaboration ID |
 | name | str | Collaboration display label |
-| created_at | Optional[str] | When the collaboration was created |
-| updated_at | Optional[str] | When the collaboration was last modified |
+| created_at | Optional[datetime] | When the collaboration was created |
+| updated_at | Optional[datetime] | When the collaboration was last modified |
 | role | str | Role of the collaborator (editor, viewer, previewer, etc.) |
 | accessible_by | Dict | User or group that this collaboration applies to |
 | item | Dict | File or folder that is being collaborated on |

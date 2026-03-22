@@ -4,7 +4,11 @@ subtitle: Connect your LlamaIndex agent to Airweave for semantic search across a
 slug: framework-integrations/llamaindex
 ---
 
-The `llama-index-tools-airweave` package provides an `AirweaveToolSpec` that gives your LlamaIndex agents access to Airweave's semantic search capabilities.
+<Warning>
+The `llama-index-tools-airweave` package currently uses the legacy search API. It will be updated to support the new [three-tier search API](/search) (instant, classic, agentic) in a future release. The methods and parameters documented below still work but do not expose the new search tiers.
+</Warning>
+
+The `llama-index-tools-airweave` package provides an `AirweaveToolSpec` that gives your LlamaIndex agents access to Airweave's search capabilities.
 
 ### Prerequisites
 

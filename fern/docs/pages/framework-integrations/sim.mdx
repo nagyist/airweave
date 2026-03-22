@@ -4,6 +4,10 @@ subtitle: Search your Airweave collections directly from Sim workflows using the
 slug: framework-integrations/sim
 ---
 
+<Warning>
+The Sim Airweave block currently uses the legacy search API. It will be updated to support the new [three-tier search API](/search) (instant, classic, agentic) in a future release.
+</Warning>
+
 [Sim](https://www.sim.ai) is an open-source platform for building and deploying AI agent workflows visually. The native Airweave block lets you search your synced data collections from any workflow, no code required.
 
 ### Prerequisites
@@ -51,7 +55,7 @@ Before you start you'll need:
 
 ### Output Format
 
-The Airweave block returns two outputs:
+The Airweave block returns:
 
 **`results`** - an array of search result objects, each containing:
 

@@ -72,7 +72,7 @@ export function createSearchTool(
         "**Parameters:**",
         "- `query` (required): Search text",
         "- `tier`: Search tier (default: classic)",
-        "- `retrieval_strategy`: hybrid|neural|keyword (instant tier only)",
+        "- `retrieval_strategy`: hybrid|semantic|keyword (instant tier only)",
         "- `limit`: Max results (default: 100)",
         "- `offset`: Skip results for pagination (instant/classic only)",
         "- `thinking`: Enable chain-of-thought (agentic tier only)",

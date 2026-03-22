@@ -20,7 +20,7 @@ chmod +x scripts/generate_openapi.py
 
 # Generate connector documentation
 echo "📝 Generating connector documentation..."
-python3 scripts/update_connector_docs.py
+python scripts/update_connector_docs.py
 
 # Generate OpenAPI spec - this now directly writes to definition/openapi.json
 echo "📝 Generating filtered OpenAPI spec..."

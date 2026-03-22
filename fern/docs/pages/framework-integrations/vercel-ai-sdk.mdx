@@ -4,6 +4,10 @@ subtitle: Add Airweave search to your Vercel AI SDK agents with a single functio
 slug: framework-integrations/vercel-ai-sdk
 ---
 
+<Warning>
+The `@airweave/vercel-ai-sdk` package currently uses the legacy search API. It will be updated to support the new [three-tier search API](/search) (instant, classic, agentic) in a future release.
+</Warning>
+
 The `@airweave/vercel-ai-sdk` package provides an `airweaveSearch` tool that integrates seamlessly with the [Vercel AI SDK](https://ai-sdk.dev).
 
 ### Prerequisites
@@ -53,8 +57,14 @@ airweaveSearch({
   // Max results per search (default: 10)
   defaultLimit: 20,
 
-  // Retrieval strategy: "hybrid", "semantic", or "keyword" (default: "hybrid")
-  retrievalStrategy: "hybrid",
+  // Generate AI answer from results (default: false)
+  generateAnswer: true,
+
+  // Query expansion for better recall (default: true)
+  expandQuery: true,
+
+  // Rerank for relevance (default: true)
+  rerank: true,
 
   // Base URL for self-hosted instances
   baseUrl: 'https://your-instance.airweave.ai',
@@ -69,7 +79,9 @@ airweaveSearch({
 | `baseUrl` | string | - | Base URL for self-hosted instances |
 | `defaultCollection` | string | - | Default collection readable ID to search |
 | `defaultLimit` | number | 10 | Default maximum number of results |
-| `retrievalStrategy` | string | `"hybrid"` | Retrieval strategy: `"hybrid"`, `"semantic"`, or `"keyword"` |
+| `generateAnswer` | boolean | false | Generate an AI-powered answer from results |
+| `expandQuery` | boolean | true | Expand query with variations for better recall |
+| `rerank` | boolean | true | Rerank results for improved relevance |
 
 ### Environment Variables
 

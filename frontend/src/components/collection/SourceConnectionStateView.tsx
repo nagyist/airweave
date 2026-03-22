@@ -910,17 +910,13 @@ const SourceConnectionStateView: React.FC<Props> = ({
           {/* Show credential error view for needs_reauth status */}
           {!isFederatedSource && sourceConnection?.status === 'needs_reauth' && sourceConnection?.error_category && (
             <CredentialErrorView
-              errorCategory={sourceConnection.error_category}
-              errorMessage={sourceConnection.error_message}
-              providerSettingsUrl={sourceConnection.provider_settings_url}
-              sourceConnectionId={sourceConnectionId}
-              shortName={sourceConnection.short_name}
-              isDark={isDark}
+              sourceConnection={sourceConnection as any}
               onRefreshAuthUrl={handleRefreshAuthUrl}
-              onCredentialUpdated={async () => {
-                await fetchSourceConnection();
+              isRefreshing={isRefreshingAuth}
+              onDelete={undefined}
+              onCredentialsUpdated={async () => {
+                await fetchSourceConnection(true);
                 onConnectionUpdated?.();
-                // Trigger a sync to verify the new credentials
                 handleRunSync();
               }}
             />

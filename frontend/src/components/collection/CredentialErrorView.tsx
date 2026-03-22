@@ -1,342 +1,469 @@
-import React, { useState, useCallback } from 'react';
-import { Card, CardContent, CardHeader } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
+import React, { useState, useEffect, useCallback } from 'react';
+import { AlertTriangle, KeyRound, ExternalLink, ShieldAlert, Unplug, Trash2, Loader2, Eye, EyeOff, RotateCw } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useTheme } from '@/lib/theme-provider';
+import { getAppIconUrl } from '@/lib/utils/icons';
 import { DESIGN_SYSTEM } from '@/lib/design-system';
-import { AlertCircle, KeyRound, RefreshCw, ExternalLink, ShieldAlert, Loader2 } from 'lucide-react';
 import { apiClient } from '@/lib/api';
 import { toast } from '@/hooks/use-toast';
-import { useTheme } from '@/lib/theme-provider';
+
+type ErrorCategory =
+  | 'oauth_credentials_expired'
+  | 'api_key_invalid'
+  | 'client_credentials_invalid'
+  | 'auth_provider_account_gone'
+  | 'auth_provider_credentials_invalid';
+
+interface SourceConnection {
+  id: string;
+  name: string;
+  short_name: string;
+  error_category?: string;
+  error_message?: string;
+  auth?: {
+    method?: string;
+    authenticated?: boolean;
+    auth_url?: string;
+    provider_readable_id?: string;
+    provider_settings_url?: string;
+  };
+}
 
 interface CredentialErrorViewProps {
-  errorCategory: string;
-  errorMessage?: string | null;
-  providerSettingsUrl?: string | null;
-  sourceConnectionId: string;
-  shortName: string;
-  isDark: boolean;
-  onRefreshAuthUrl: () => Promise<void>;
-  onCredentialUpdated: () => void;
-}
-
-interface CategoryConfig {
-  title: string;
-  description: string;
-  icon: React.ReactNode;
-  actionType: 'reauth' | 'credential_form' | 'external_link';
-  actionLabel: string;
-  color: string;
-  bgColor: string;
-  borderColor: string;
-}
-
-function getCategoryConfig(category: string, isDark: boolean): CategoryConfig {
-  switch (category) {
-    case 'oauth_credentials_expired':
-      return {
-        title: 'OAuth Token Expired',
-        description: 'Your OAuth authorization has expired. Re-authenticate to restore the connection.',
-        icon: <RefreshCw className="h-5 w-5" />,
-        actionType: 'reauth',
-        actionLabel: 'Re-authenticate',
-        color: isDark ? 'text-amber-400' : 'text-amber-600',
-        bgColor: isDark ? 'bg-amber-900/10' : 'bg-amber-50',
-        borderColor: isDark ? 'border-amber-800/30' : 'border-amber-200',
-      };
-    case 'api_key_invalid':
-      return {
-        title: 'API Key Invalid',
-        description: 'The API key is no longer valid. Please enter a new one.',
-        icon: <KeyRound className="h-5 w-5" />,
-        actionType: 'credential_form',
-        actionLabel: 'Update API Key',
-        color: isDark ? 'text-red-400' : 'text-red-600',
-        bgColor: isDark ? 'bg-red-900/10' : 'bg-red-50',
-        borderColor: isDark ? 'border-red-800/30' : 'border-red-200',
-      };
-    case 'client_credentials_invalid':
-      return {
-        title: 'Client Credentials Invalid',
-        description: 'The OAuth client credentials (client ID/secret) are invalid. Please update them.',
-        icon: <ShieldAlert className="h-5 w-5" />,
-        actionType: 'credential_form',
-        actionLabel: 'Update Credentials',
-        color: isDark ? 'text-red-400' : 'text-red-600',
-        bgColor: isDark ? 'bg-red-900/10' : 'bg-red-50',
-        borderColor: isDark ? 'border-red-800/30' : 'border-red-200',
-      };
-    case 'auth_provider_account_gone':
-      return {
-        title: 'Auth Provider Account Removed',
-        description: 'The connected account on the auth provider has been deleted or deactivated.',
-        icon: <AlertCircle className="h-5 w-5" />,
-        actionType: 'external_link',
-        actionLabel: 'Open Provider Dashboard',
-        color: isDark ? 'text-orange-400' : 'text-orange-600',
-        bgColor: isDark ? 'bg-orange-900/10' : 'bg-orange-50',
-        borderColor: isDark ? 'border-orange-800/30' : 'border-orange-200',
-      };
-    case 'auth_provider_credentials_invalid':
-      return {
-        title: 'Auth Provider Credentials Invalid',
-        description: 'The credentials on the auth provider need to be refreshed or re-configured.',
-        icon: <ShieldAlert className="h-5 w-5" />,
-        actionType: 'external_link',
-        actionLabel: 'Open Provider Dashboard',
-        color: isDark ? 'text-orange-400' : 'text-orange-600',
-        bgColor: isDark ? 'bg-orange-900/10' : 'bg-orange-50',
-        borderColor: isDark ? 'border-orange-800/30' : 'border-orange-200',
-      };
-    default:
-      return {
-        title: 'Authentication Error',
-        description: 'There was a problem with your credentials.',
-        icon: <AlertCircle className="h-5 w-5" />,
-        actionType: 'reauth',
-        actionLabel: 'Fix Authentication',
-        color: isDark ? 'text-red-400' : 'text-red-600',
-        bgColor: isDark ? 'bg-red-900/10' : 'bg-red-50',
-        borderColor: isDark ? 'border-red-800/30' : 'border-red-200',
-      };
-  }
+  sourceConnection: SourceConnection;
+  onRefreshAuthUrl?: () => void;
+  isRefreshing?: boolean;
+  onDelete?: () => void;
+  onCredentialsUpdated?: () => void;
 }
 
 interface AuthField {
   name: string;
-  title: string;
+  label: string;
   type: string;
+  required: boolean;
+  secret: boolean;
 }
 
-const InlineCredentialForm: React.FC<{
-  sourceConnectionId: string;
-  shortName: string;
-  isDark: boolean;
-  onSuccess: () => void;
-}> = ({ sourceConnectionId, shortName, isDark, onSuccess }) => {
-  const [credentials, setCredentials] = useState<Record<string, string>>({});
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [authFields, setAuthFields] = useState<AuthField[]>([]);
-  const [isLoadingFields, setIsLoadingFields] = useState(true);
+const CATEGORY_CONFIG: Record<ErrorCategory, {
+  icon: React.ElementType;
+  title: string;
+  description: string;
+  iconColor: { dark: string; light: string };
+  borderColor: { dark: string; light: string };
+  bgColor: { dark: string; light: string };
+}> = {
+  oauth_credentials_expired: {
+    icon: ShieldAlert,
+    title: 'Re-authorization Required',
+    description: 'Your OAuth authorization has expired or been revoked. Re-authenticate to restore the connection.',
+    iconColor: { dark: 'text-amber-400', light: 'text-amber-600' },
+    borderColor: { dark: 'border-amber-800/30', light: 'border-amber-200' },
+    bgColor: { dark: 'bg-amber-900/10', light: 'bg-amber-50' },
+  },
+  api_key_invalid: {
+    icon: KeyRound,
+    title: 'API Key Invalid',
+    description: 'The API key for this connection is no longer valid. Please enter a new one below.',
+    iconColor: { dark: 'text-red-400', light: 'text-red-600' },
+    borderColor: { dark: 'border-red-800/30', light: 'border-red-200' },
+    bgColor: { dark: 'bg-red-900/10', light: 'bg-red-50' },
+  },
+  client_credentials_invalid: {
+    icon: KeyRound,
+    title: 'Client Credentials Invalid',
+    description: 'The OAuth client credentials (client ID or secret) are invalid. Please update them below.',
+    iconColor: { dark: 'text-red-400', light: 'text-red-600' },
+    borderColor: { dark: 'border-red-800/30', light: 'border-red-200' },
+    bgColor: { dark: 'bg-red-900/10', light: 'bg-red-50' },
+  },
+  auth_provider_account_gone: {
+    icon: Unplug,
+    title: 'Auth Provider Account Not Found',
+    description: 'The connected account on the auth provider has been deleted or deactivated. Check your provider dashboard.',
+    iconColor: { dark: 'text-orange-400', light: 'text-orange-600' },
+    borderColor: { dark: 'border-orange-800/30', light: 'border-orange-200' },
+    bgColor: { dark: 'bg-orange-900/10', light: 'bg-orange-50' },
+  },
+  auth_provider_credentials_invalid: {
+    icon: ShieldAlert,
+    title: 'Auth Provider Credentials Invalid',
+    description: 'The credentials on the auth provider need to be refreshed or re-configured.',
+    iconColor: { dark: 'text-orange-400', light: 'text-orange-600' },
+    borderColor: { dark: 'border-orange-800/30', light: 'border-orange-200' },
+    bgColor: { dark: 'bg-orange-900/10', light: 'bg-orange-50' },
+  },
+};
 
-  // Fetch auth fields from source metadata
-  React.useEffect(() => {
-    (async () => {
-      try {
-        const response = await apiClient.get(`/sources/${shortName}`);
-        if (response.ok) {
-          const data = await response.json();
-          const fields = data.auth_fields?.fields || [];
-          setAuthFields(
-            fields.map((f: any) => ({
-              name: f.name,
-              title: f.title || f.name.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase()),
-              type: f.is_secret ? 'password' : 'text',
-            }))
-          );
-        }
-      } catch {
-        // Fallback to a generic field
-        setAuthFields([{ name: 'api_key', title: 'API Key', type: 'password' }]);
-      } finally {
-        setIsLoadingFields(false);
-      }
-    })();
-  }, [shortName]);
+export const CredentialErrorView: React.FC<CredentialErrorViewProps> = ({
+  sourceConnection,
+  onRefreshAuthUrl,
+  isRefreshing = false,
+  onDelete,
+  onCredentialsUpdated,
+}) => {
+  const { resolvedTheme } = useTheme();
+  const isDark = resolvedTheme === 'dark';
+  const category = sourceConnection.error_category as ErrorCategory | undefined;
 
-  const allFieldsFilled = authFields.length > 0 && authFields.every(f => credentials[f.name]);
-
-  const handleSubmit = useCallback(async () => {
-    if (!allFieldsFilled) return;
-
-    setIsSubmitting(true);
-    try {
-      const response = await apiClient.patch(
-        `/source-connections/${sourceConnectionId}`,
-        {
-          authentication: {
-            credentials: { ...credentials },
-          },
-        }
-      );
-
-      if (response.ok) {
-        toast({
-          title: 'Credentials Updated',
-          description: 'Your credentials have been updated. The next sync will use the new credentials.',
-        });
-        onSuccess();
-      } else {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.detail || 'Failed to update credentials');
-      }
-    } catch (error) {
-      toast({
-        title: 'Error',
-        description: error instanceof Error ? error.message : 'Failed to update credentials',
-        variant: 'destructive',
-      });
-    } finally {
-      setIsSubmitting(false);
-    }
-  }, [sourceConnectionId, credentials, allFieldsFilled, onSuccess]);
-
-  if (isLoadingFields) {
-    return (
-      <div className="mt-3 flex items-center gap-2 text-sm text-gray-400">
-        <Loader2 className="h-4 w-4 animate-spin" />
-        Loading fields...
-      </div>
-    );
+  if (!category || !(category in CATEGORY_CONFIG)) {
+    return null;
   }
 
+  const config = CATEGORY_CONFIG[category];
+  const Icon = config.icon;
+
   return (
-    <div className="mt-3 space-y-3">
-      {authFields.map((field) => (
-        <div key={field.name}>
-          <label
-            htmlFor={`cred-${field.name}`}
-            className={cn(
-              'block text-xs font-medium mb-1',
-              isDark ? 'text-gray-400' : 'text-gray-600'
-            )}
-          >
-            {field.title}
-          </label>
-          <input
-            id={`cred-${field.name}`}
-            type={field.type}
-            value={credentials[field.name] || ''}
-            onChange={(e) => setCredentials({ ...credentials, [field.name]: e.target.value })}
-            placeholder={`Enter ${field.title.toLowerCase()}`}
-            className={cn(
-              'w-full px-3 py-2 rounded-md border text-sm',
-              isDark
-                ? 'bg-gray-800 border-gray-700 text-gray-200 placeholder:text-gray-500'
-                : 'bg-white border-gray-300 text-gray-900 placeholder:text-gray-400'
-            )}
-          />
+    <div className={cn(
+      'rounded-xl border p-5 space-y-4',
+      config.borderColor[isDark ? 'dark' : 'light'],
+      config.bgColor[isDark ? 'dark' : 'light'],
+    )}>
+      {/* Header: icon + title + message + source icon */}
+      <div className="flex items-start gap-3">
+        <div className={cn(
+          'flex-shrink-0 w-9 h-9 rounded-lg flex items-center justify-center',
+          isDark ? 'bg-gray-800/60' : 'bg-white shadow-sm',
+        )}>
+          <Icon className={cn('h-5 w-5', config.iconColor[isDark ? 'dark' : 'light'])} />
         </div>
-      ))}
-      <Button
-        onClick={handleSubmit}
-        disabled={!allFieldsFilled || isSubmitting}
-        size="sm"
-        className="w-full"
-      >
-        {isSubmitting ? (
-          <>
-            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-            Updating...
-          </>
-        ) : (
-          'Update Credentials'
+        <div className="flex-1 min-w-0">
+          <h3 className={cn(
+            DESIGN_SYSTEM.typography.sizes.header,
+            DESIGN_SYSTEM.typography.weights.semibold,
+            'mb-1',
+            isDark ? 'text-gray-100' : 'text-gray-900',
+          )}>
+            {config.title}
+          </h3>
+          <p className={cn(
+            DESIGN_SYSTEM.typography.sizes.body,
+            isDark ? 'text-gray-400' : 'text-gray-600',
+          )}>
+            {config.description}
+          </p>
+        </div>
+        {sourceConnection.short_name && (
+          <img
+            src={getAppIconUrl(sourceConnection.short_name, resolvedTheme)}
+            alt={sourceConnection.name}
+            className="h-8 w-8 rounded-md object-contain flex-shrink-0 opacity-40"
+            onError={(e) => { e.currentTarget.style.display = 'none'; }}
+          />
         )}
-      </Button>
+      </div>
+
+      {/* Action area + delete — differs per category */}
+      <ActionArea
+        category={category}
+        sourceConnection={sourceConnection}
+        isDark={isDark}
+        onRefreshAuthUrl={onRefreshAuthUrl}
+        isRefreshing={isRefreshing}
+        onCredentialsUpdated={onCredentialsUpdated}
+        onDelete={onDelete}
+      />
     </div>
   );
 };
 
-export const CredentialErrorView: React.FC<CredentialErrorViewProps> = ({
-  errorCategory,
-  errorMessage,
-  providerSettingsUrl,
-  sourceConnectionId,
-  shortName,
+function DeleteButton({ onDelete, isDark }: { onDelete?: () => void; isDark: boolean }) {
+  if (!onDelete) return null;
+  return (
+    <button
+      onClick={onDelete}
+      className={cn(
+        'inline-flex items-center gap-1.5 px-3 py-2 rounded-lg',
+        DESIGN_SYSTEM.typography.sizes.body,
+        DESIGN_SYSTEM.typography.weights.medium,
+        'transition-all duration-200',
+        isDark
+          ? 'text-gray-400 hover:text-red-400 hover:bg-red-900/20'
+          : 'text-gray-500 hover:text-red-600 hover:bg-red-50',
+      )}
+    >
+      <Trash2 className="h-3.5 w-3.5" />
+      Delete connection
+    </button>
+  );
+}
+
+function ActionArea({
+  category,
+  sourceConnection,
   isDark,
   onRefreshAuthUrl,
-  onCredentialUpdated,
-}) => {
-  const [isReauthing, setIsReauthing] = useState(false);
-  const config = getCategoryConfig(errorCategory, isDark);
+  isRefreshing,
+  onCredentialsUpdated,
+  onDelete,
+}: {
+  category: ErrorCategory;
+  sourceConnection: SourceConnection;
+  isDark: boolean;
+  onRefreshAuthUrl?: () => void;
+  isRefreshing?: boolean;
+  onCredentialsUpdated?: () => void;
+  onDelete?: () => void;
+}) {
+  const buttonBase = cn(
+    'inline-flex items-center gap-2 px-4 py-2 rounded-lg',
+    DESIGN_SYSTEM.typography.sizes.body,
+    DESIGN_SYSTEM.typography.weights.medium,
+    'transition-all duration-200 shadow-sm',
+  );
 
-  const handleReauth = useCallback(async () => {
-    setIsReauthing(true);
-    try {
-      await onRefreshAuthUrl();
-    } finally {
-      setIsReauthing(false);
+  const primaryStyle = cn(
+    buttonBase,
+    'bg-primary text-primary-foreground hover:bg-primary/90',
+  );
+
+  const secondaryStyle = cn(
+    buttonBase,
+    isDark
+      ? 'bg-gray-800 text-gray-200 hover:bg-gray-700 border border-gray-600'
+      : 'bg-white text-gray-700 hover:bg-gray-50 border border-gray-200',
+  );
+
+  switch (category) {
+    case 'oauth_credentials_expired':
+      return (
+        <div className="flex items-center gap-2 pt-1">
+          <button
+            onClick={onRefreshAuthUrl}
+            disabled={isRefreshing}
+            className={primaryStyle}
+          >
+            {isRefreshing ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <RotateCw className="h-3.5 w-3.5" />
+            )}
+            Reauthenticate
+          </button>
+          <DeleteButton onDelete={onDelete} isDark={isDark} />
+        </div>
+      );
+
+    case 'api_key_invalid':
+    case 'client_credentials_invalid':
+      return (
+        <InlineCredentialForm
+          sourceConnection={sourceConnection}
+          isDark={isDark}
+          onCredentialsUpdated={onCredentialsUpdated}
+          onDelete={onDelete}
+        />
+      );
+
+    case 'auth_provider_account_gone': {
+      const settingsUrl = sourceConnection.auth?.provider_settings_url;
+      const providerId = sourceConnection.auth?.provider_readable_id;
+      const providerName = providerId?.split('-')[0];
+
+      return (
+        <div className="flex items-center gap-2 pt-1">
+          {settingsUrl && (
+            <a
+              href={settingsUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={secondaryStyle}
+            >
+              <ExternalLink className="h-3.5 w-3.5" />
+              Open {providerName ? capitalise(providerName) : 'Provider'} Dashboard
+            </a>
+          )}
+          <a href="/auth-providers" className={primaryStyle}>
+            <ShieldAlert className="h-3.5 w-3.5" />
+            Auth Providers Settings
+          </a>
+          <DeleteButton onDelete={onDelete} isDark={isDark} />
+        </div>
+      );
     }
-  }, [onRefreshAuthUrl]);
+
+    case 'auth_provider_credentials_invalid':
+      return (
+        <div className="flex items-center gap-2 pt-1">
+          <a href="/auth-providers" className={primaryStyle}>
+            <ShieldAlert className="h-3.5 w-3.5" />
+            Auth Providers Settings
+          </a>
+          <DeleteButton onDelete={onDelete} isDark={isDark} />
+        </div>
+      );
+
+    default:
+      return null;
+  }
+}
+
+function InlineCredentialForm({
+  sourceConnection,
+  isDark,
+  onCredentialsUpdated,
+  onDelete,
+}: {
+  sourceConnection: SourceConnection;
+  isDark: boolean;
+  onCredentialsUpdated?: () => void;
+  onDelete?: () => void;
+}) {
+  const [fields, setFields] = useState<AuthField[]>([]);
+  const [values, setValues] = useState<Record<string, string>>({});
+  const [showSecrets, setShowSecrets] = useState<Record<string, boolean>>({});
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+
+  const fetchFields = useCallback(async () => {
+    try {
+      const resp = await apiClient.get(`/sources/${sourceConnection.short_name}`);
+      const data = await resp.json();
+      const raw = data?.auth_fields?.fields ?? [];
+      const parsed: AuthField[] = raw.map((f: any) => ({
+        name: f.name,
+        label: f.label || f.name,
+        type: f.type || 'string',
+        required: f.required ?? true,
+        secret: f.secret ?? false,
+      }));
+      setFields(parsed);
+    } catch {
+      setFields([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [sourceConnection.short_name]);
+
+  useEffect(() => { fetchFields(); }, [fetchFields]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSubmitting(true);
+    try {
+      const resp = await apiClient.patch(`/source-connections/${sourceConnection.id}`, {
+        authentication: { credentials: values },
+      });
+      if (!resp.ok) {
+        const body = await resp.json().catch(() => ({}));
+        throw new Error(body.detail || `HTTP ${resp.status}`);
+      }
+      toast({ title: 'Credentials updated', description: 'Connection will be retried on next sync.' });
+      onCredentialsUpdated?.();
+    } catch (err: any) {
+      toast({
+        title: 'Update failed',
+        description: err?.message || 'Could not update credentials.',
+        variant: 'destructive',
+      });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center gap-2 py-2">
+        <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+        <span className={cn(DESIGN_SYSTEM.typography.sizes.body, 'text-muted-foreground')}>
+          Loading credential fields…
+        </span>
+      </div>
+    );
+  }
+
+  if (fields.length === 0) {
+    return (
+      <p className={cn(DESIGN_SYSTEM.typography.sizes.body, 'text-muted-foreground italic')}>
+        No credential fields found for this source. You may need to delete and recreate the connection.
+      </p>
+    );
+  }
 
   return (
-    <Card className={cn(
-      'overflow-hidden border p-0',
-      DESIGN_SYSTEM.radius.card,
-      config.borderColor,
-      config.bgColor,
-    )}>
-      <CardHeader className={cn(DESIGN_SYSTEM.spacing.padding.compact, 'pb-0')}>
-        <h3 className={cn(
-          DESIGN_SYSTEM.typography.sizes.title,
-          DESIGN_SYSTEM.typography.weights.medium,
-          'flex items-center',
-          config.color,
-        )}>
-          <span className="mr-2">{config.icon}</span>
-          {config.title}
-        </h3>
-      </CardHeader>
-      <CardContent className={DESIGN_SYSTEM.spacing.padding.compact}>
-        <p className={cn(
-          DESIGN_SYSTEM.typography.sizes.body,
-          isDark ? 'text-gray-300' : 'text-gray-600',
-        )}>
-          {config.description}
-        </p>
-
-        {/* Action area */}
-        <div className="mt-4">
-          {config.actionType === 'reauth' && (
-            <Button
-              onClick={handleReauth}
-              disabled={isReauthing}
-              size="sm"
-              variant="default"
-            >
-              {isReauthing ? (
-                <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Reconnecting...
-                </>
-              ) : (
-                <>
-                  <RefreshCw className="h-4 w-4 mr-2" />
-                  {config.actionLabel}
-                </>
+    <form onSubmit={handleSubmit} className="space-y-3">
+      {fields.map((field) => {
+        const isSecret = field.secret;
+        const visible = showSecrets[field.name];
+        const displayLabel = humanizeFieldName(field.label || field.name);
+        return (
+          <div key={field.name} className="space-y-1.5">
+            <label
+              htmlFor={`cred-${field.name}`}
+              className={cn(
+                'text-xs font-medium tracking-wide uppercase',
+                isDark ? 'text-gray-400' : 'text-gray-500',
               )}
-            </Button>
-          )}
-
-          {config.actionType === 'credential_form' && (
-            <InlineCredentialForm
-              sourceConnectionId={sourceConnectionId}
-              shortName={shortName}
-              isDark={isDark}
-              onSuccess={onCredentialUpdated}
-            />
-          )}
-
-          {config.actionType === 'external_link' && providerSettingsUrl && (
-            <Button
-              onClick={() => window.open(providerSettingsUrl, '_blank')}
-              size="sm"
-              variant="outline"
             >
-              <ExternalLink className="h-4 w-4 mr-2" />
-              {config.actionLabel}
-            </Button>
+              {displayLabel}
+            </label>
+            <div className="relative">
+              <input
+                id={`cred-${field.name}`}
+                type={isSecret && !visible ? 'password' : 'text'}
+                required={field.required}
+                value={values[field.name] ?? ''}
+                onChange={(e) => setValues((v) => ({ ...v, [field.name]: e.target.value }))}
+                placeholder={isSecret ? '••••••••' : `Enter ${displayLabel.toLowerCase()}`}
+                className={cn(
+                  'w-full rounded-lg border px-3 py-2.5 pr-10',
+                  DESIGN_SYSTEM.typography.sizes.body,
+                  isDark
+                    ? 'bg-gray-900/60 border-gray-700 text-gray-100 placeholder:text-gray-600'
+                    : 'bg-white border-gray-200 text-gray-900 placeholder:text-gray-400',
+                  'focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary/40',
+                  'transition-colors duration-150',
+                )}
+              />
+              {isSecret && (
+                <button
+                  type="button"
+                  onClick={() => setShowSecrets((s) => ({ ...s, [field.name]: !s[field.name] }))}
+                  className={cn(
+                    'absolute right-2.5 top-1/2 -translate-y-1/2 p-1 rounded-md',
+                    'transition-colors duration-150',
+                    isDark ? 'text-gray-500 hover:text-gray-300 hover:bg-gray-800' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100',
+                  )}
+                >
+                  {visible ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              )}
+            </div>
+          </div>
+        );
+      })}
+      <div className="flex items-center gap-2 pt-1">
+        <button
+          type="submit"
+          disabled={submitting}
+          className={cn(
+            'inline-flex items-center gap-2 px-4 py-2 rounded-lg shadow-sm',
+            DESIGN_SYSTEM.typography.sizes.body,
+            DESIGN_SYSTEM.typography.weights.medium,
+            'transition-all duration-200',
+            'bg-primary text-primary-foreground hover:bg-primary/90',
+            submitting && 'opacity-60 cursor-not-allowed',
           )}
-
-          {config.actionType === 'external_link' && !providerSettingsUrl && (
-            <p className={cn(
-              'text-xs',
-              isDark ? 'text-gray-400' : 'text-gray-500',
-            )}>
-              Please check your auth provider dashboard to resolve this issue.
-            </p>
+        >
+          {submitting ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <KeyRound className="h-3.5 w-3.5" />
           )}
-        </div>
-      </CardContent>
-    </Card>
+          Update Credentials
+        </button>
+        <DeleteButton onDelete={onDelete} isDark={isDark} />
+      </div>
+    </form>
   );
-};
+}
+
+function capitalise(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+function humanizeFieldName(name: string): string {
+  return name
+    .replace(/[_-]/g, ' ')
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}

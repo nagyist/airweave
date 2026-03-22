@@ -926,10 +926,10 @@ const SourceConnectionStateView: React.FC<Props> = ({
             />
           )}
 
-          {/* Show error card if sync failed (non-credential errors) - Only for non-federated sources */}
-          {!isFederatedSource && sourceConnection?.status !== 'needs_reauth' && (currentSyncJob?.status === 'failed') && (
+          {/* Show error card only when API confirms error status (not needs_reauth) */}
+          {!isFederatedSource && sourceConnection?.status === 'error' && (
             <SyncErrorCard
-              error={currentSyncJob?.error || sourceConnection?.last_sync_job?.error || "The last sync failed. Check the logs for more details."}
+              error={sourceConnection?.sync?.last_job?.error || currentSyncJob?.error || "The last sync failed. Check the logs for more details."}
               isDark={isDark}
             />
           )}

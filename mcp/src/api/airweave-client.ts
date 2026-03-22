@@ -123,9 +123,9 @@ export class AirweaveClient {
                     original_entity_id: `mock_${i + 1}`,
                     chunk_index: 0,
                 },
-                access: { viewers: null, is_public: null },
+                access: { viewers: undefined, is_public: undefined },
                 web_url: `https://example.com/doc/${i + 1}`,
-                url: null,
+                url: undefined,
                 raw_source_fields: {},
             });
         }

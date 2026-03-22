@@ -7,8 +7,9 @@ export function formatSearchResponse(
     tier: SearchTier,
     collection: string,
 ) {
-    const formattedResults = searchResponse.results
-        .map((result: SearchResult, index) => {
+    const results = searchResponse.results ?? [];
+    const formattedResults = results
+        .map((result: SearchResult, index: number) => {
             const parts = [
                 `**Result ${index + 1} (Score: ${result.relevance_score.toFixed(3)}):**`,
             ];
@@ -39,7 +40,7 @@ export function formatSearchResponse(
 
     const summaryText = [
         `**Collection:** ${collection} | **Tier:** ${tier}`,
-        `**Results:** ${searchResponse.results.length}`,
+        `**Results:** ${results.length}`,
         "",
         formattedResults || "No results found.",
     ].join("\n");

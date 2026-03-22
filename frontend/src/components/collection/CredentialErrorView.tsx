@@ -284,17 +284,6 @@ export const CredentialErrorView: React.FC<CredentialErrorViewProps> = ({
           {config.description}
         </p>
 
-        {errorMessage && (
-          <div className={cn(
-            'mt-3 p-3 rounded-md font-mono text-xs overflow-auto max-h-32',
-            isDark
-              ? 'bg-gray-800/50 text-gray-300 border border-gray-700'
-              : 'bg-white/80 text-gray-600 border border-gray-200',
-          )}>
-            {errorMessage}
-          </div>
-        )}
-
         {/* Action area */}
         <div className="mt-4">
           {config.actionType === 'reauth' && (

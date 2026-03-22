@@ -101,6 +101,12 @@ function getCategoryConfig(category: string, isDark: boolean): CategoryConfig {
   }
 }
 
+interface AuthField {
+  name: string;
+  title: string;
+  type: string;
+}
+
 const InlineCredentialForm: React.FC<{
   sourceConnectionId: string;
   shortName: string;
@@ -109,18 +115,38 @@ const InlineCredentialForm: React.FC<{
 }> = ({ sourceConnectionId, shortName, isDark, onSuccess }) => {
   const [credentials, setCredentials] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [fieldKey] = useState(() => {
-    // Common field names by source type
-    const fieldNames: Record<string, string> = {
-      stripe: 'api_key',
-      openai: 'api_key',
-      anthropic: 'api_key',
-    };
-    return fieldNames[shortName] || 'api_key';
-  });
+  const [authFields, setAuthFields] = useState<AuthField[]>([]);
+  const [isLoadingFields, setIsLoadingFields] = useState(true);
+
+  // Fetch auth fields from source metadata
+  React.useEffect(() => {
+    (async () => {
+      try {
+        const response = await apiClient.get(`/sources/${shortName}`);
+        if (response.ok) {
+          const data = await response.json();
+          const fields = data.auth_fields?.fields || [];
+          setAuthFields(
+            fields.map((f: any) => ({
+              name: f.name,
+              title: f.title || f.name.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase()),
+              type: f.is_secret ? 'password' : 'text',
+            }))
+          );
+        }
+      } catch {
+        // Fallback to a generic field
+        setAuthFields([{ name: 'api_key', title: 'API Key', type: 'password' }]);
+      } finally {
+        setIsLoadingFields(false);
+      }
+    })();
+  }, [shortName]);
+
+  const allFieldsFilled = authFields.length > 0 && authFields.every(f => credentials[f.name]);
 
   const handleSubmit = useCallback(async () => {
-    if (!credentials[fieldKey]) return;
+    if (!allFieldsFilled) return;
 
     setIsSubmitting(true);
     try {
@@ -128,7 +154,7 @@ const InlineCredentialForm: React.FC<{
         `/source-connections/${sourceConnectionId}`,
         {
           authentication: {
-            credentials: { [fieldKey]: credentials[fieldKey] },
+            credentials: { ...credentials },
           },
         }
       );
@@ -152,37 +178,48 @@ const InlineCredentialForm: React.FC<{
     } finally {
       setIsSubmitting(false);
     }
-  }, [sourceConnectionId, fieldKey, credentials, onSuccess]);
+  }, [sourceConnectionId, credentials, allFieldsFilled, onSuccess]);
+
+  if (isLoadingFields) {
+    return (
+      <div className="mt-3 flex items-center gap-2 text-sm text-gray-400">
+        <Loader2 className="h-4 w-4 animate-spin" />
+        Loading fields...
+      </div>
+    );
+  }
 
   return (
     <div className="mt-3 space-y-3">
-      <div>
-        <label
-          htmlFor={`cred-${fieldKey}`}
-          className={cn(
-            'block text-xs font-medium mb-1',
-            isDark ? 'text-gray-400' : 'text-gray-600'
-          )}
-        >
-          {fieldKey.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
-        </label>
-        <input
-          id={`cred-${fieldKey}`}
-          type="password"
-          value={credentials[fieldKey] || ''}
-          onChange={(e) => setCredentials({ ...credentials, [fieldKey]: e.target.value })}
-          placeholder={`Enter new ${fieldKey.replace(/_/g, ' ')}`}
-          className={cn(
-            'w-full px-3 py-2 rounded-md border text-sm',
-            isDark
-              ? 'bg-gray-800 border-gray-700 text-gray-200 placeholder:text-gray-500'
-              : 'bg-white border-gray-300 text-gray-900 placeholder:text-gray-400'
-          )}
-        />
-      </div>
+      {authFields.map((field) => (
+        <div key={field.name}>
+          <label
+            htmlFor={`cred-${field.name}`}
+            className={cn(
+              'block text-xs font-medium mb-1',
+              isDark ? 'text-gray-400' : 'text-gray-600'
+            )}
+          >
+            {field.title}
+          </label>
+          <input
+            id={`cred-${field.name}`}
+            type={field.type}
+            value={credentials[field.name] || ''}
+            onChange={(e) => setCredentials({ ...credentials, [field.name]: e.target.value })}
+            placeholder={`Enter ${field.title.toLowerCase()}`}
+            className={cn(
+              'w-full px-3 py-2 rounded-md border text-sm',
+              isDark
+                ? 'bg-gray-800 border-gray-700 text-gray-200 placeholder:text-gray-500'
+                : 'bg-white border-gray-300 text-gray-900 placeholder:text-gray-400'
+            )}
+          />
+        </div>
+      ))}
       <Button
         onClick={handleSubmit}
-        disabled={!credentials[fieldKey] || isSubmitting}
+        disabled={!allFieldsFilled || isSubmitting}
         size="sm"
         className="w-full"
       >

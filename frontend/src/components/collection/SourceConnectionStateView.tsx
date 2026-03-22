@@ -917,9 +917,11 @@ const SourceConnectionStateView: React.FC<Props> = ({
               shortName={sourceConnection.short_name}
               isDark={isDark}
               onRefreshAuthUrl={handleRefreshAuthUrl}
-              onCredentialUpdated={() => {
-                fetchSourceConnection();
+              onCredentialUpdated={async () => {
+                await fetchSourceConnection();
                 onConnectionUpdated?.();
+                // Trigger a sync to verify the new credentials
+                handleRunSync();
               }}
             />
           )}

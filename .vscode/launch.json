@@ -10,6 +10,8 @@
                 "--reload",
                 "--reload-dir",
                 "backend/airweave",
+                "--reload-exclude",
+                "local_storage",
                 "--host",
                 "127.0.0.1",
                 "--port",
@@ -25,7 +27,6 @@
             "env": {
                 "LOCAL_DEVELOPMENT": "true",
                 "PYTHONPATH": "${workspaceFolder}/backend",
-                "WATCHFILES_IGNORE_PATHS": "${workspaceFolder}/backend/local_storage,${workspaceFolder}/local_storage"
             }
         },
         {
@@ -123,7 +124,6 @@
                 "PYTHONPATH": "${workspaceFolder}/backend",
                 "AIRWEAVE_DEBUGPY_WORKER_PORT": "7233",
                 "TEMPORAL_SDK_METRICS_PORT": "9091",
-                "WATCHFILES_IGNORE_PATHS": "${workspaceFolder}/backend/local_storage,${workspaceFolder}/local_storage"
             },
             "envFile": "${workspaceFolder}/.env",
             "justMyCode": false,

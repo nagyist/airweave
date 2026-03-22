@@ -230,9 +230,9 @@ const SourceConnectionStateView: React.FC<Props> = ({
 
 
   // Fetch source connection details (only when not provided as prop)
-  const fetchSourceConnection = useCallback(async () => {
-    // If data is provided as prop, use it instead of fetching
-    if (sourceConnectionData) {
+  const fetchSourceConnection = useCallback(async (forceRefresh = false) => {
+    // If data is provided as prop and not forcing a refresh, use it
+    if (sourceConnectionData && !forceRefresh) {
       setSourceConnection(sourceConnectionData);
       return;
     }
@@ -418,8 +418,8 @@ const SourceConnectionStateView: React.FC<Props> = ({
     const syncStatus = storeConnection?.last_sync_job?.status;
     const error = storeConnection?.last_sync_job?.error;
     if (syncStatus === 'failed' || error) {
-      // Refetch to get the last_sync_job.error from backend
-      fetchSourceConnection();
+      // Force refetch from API to get error_category and updated status
+      fetchSourceConnection(true);
     }
   }, [storeConnection?.last_sync_job?.status, storeConnection?.last_sync_job?.error, fetchSourceConnection]);
 
@@ -427,7 +427,7 @@ const SourceConnectionStateView: React.FC<Props> = ({
   useEffect(() => {
     const syncStatus = storeConnection?.last_sync_job?.status;
     if (syncStatus === 'completed' || syncStatus === 'cancelled' || syncStatus === 'failed') {
-      fetchSourceConnection();
+      fetchSourceConnection(true);
     }
   }, [storeConnection?.last_sync_job?.status, fetchSourceConnection]);
 

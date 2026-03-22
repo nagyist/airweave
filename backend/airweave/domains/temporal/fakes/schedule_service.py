@@ -84,9 +84,7 @@ class FakeTemporalScheduleService(TemporalScheduleServiceProtocol):
         reason: str = "",
     ) -> None:
         """Record call."""
-        self._calls.append(
-            ("pause_schedules", source_connection_id, db, ctx, reason)
-        )
+        self._calls.append(("pause_schedules", source_connection_id, db, ctx, reason))
         if self._should_raise:
             raise self._should_raise
 

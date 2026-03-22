@@ -49,8 +49,8 @@ export function createSearchTool(
                 "'classic' (default, AI-optimized with LLM-planned strategy), " +
                 "'agentic' (deepest, multi-step agent with tool calling)"
             ),
-        retrieval_strategy: z.enum(["hybrid", "neural", "keyword"]).optional()
-            .describe("Only for instant tier. 'hybrid' (default, neural + keyword), 'neural' (semantic only), 'keyword' (BM25 only)"),
+        retrieval_strategy: z.enum(["hybrid", "semantic", "keyword"]).optional()
+            .describe("Only for instant tier. 'hybrid' (default, semantic + keyword), 'semantic' (dense/neural only), 'keyword' (BM25 only)"),
         limit: z.number().min(1).max(1000).optional().default(100)
             .describe("Maximum number of results to return"),
         offset: z.number().min(0).optional().default(0)

@@ -197,13 +197,13 @@ describe('MCP Server - V2 Tiered Search', () => {
             await tool.handler({
                 query: 'test',
                 tier: 'instant',
-                retrieval_strategy: 'neural',
+                retrieval_strategy: 'semantic',
             });
 
             const body = JSON.parse(mockFetch.mock.calls[0][1].body);
             expect(body).toMatchObject({
                 query: 'test',
-                retrieval_strategy: 'neural',
+                retrieval_strategy: 'semantic',
             });
         });
 

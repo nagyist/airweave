@@ -10,7 +10,7 @@ export interface AirweaveConfig {
 // ── Search V2 types ──────────────────────────────────────────────────────────
 
 export type SearchTier = "instant" | "classic" | "agentic";
-export type RetrievalStrategy = "hybrid" | "neural" | "keyword";
+export type RetrievalStrategy = "hybrid" | "semantic" | "keyword";
 
 export interface FilterCondition {
     field: string;

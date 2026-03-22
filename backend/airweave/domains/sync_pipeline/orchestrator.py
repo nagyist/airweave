@@ -20,6 +20,7 @@ from airweave.domains.sync_pipeline.stream import AsyncSourceStream
 from airweave.domains.sync_pipeline.worker_pool import AsyncWorkerPool
 from airweave.domains.syncs.cursors.service import SyncCursorService
 from airweave.domains.syncs.protocols import SyncJobServiceProtocol
+from airweave.domains.temporal.protocols import TemporalScheduleServiceProtocol
 from airweave.domains.usage.exceptions import (
     PaymentRequiredError,
     UsageLimitExceededError,
@@ -53,6 +54,7 @@ class SyncOrchestrator:
         usage_ledger: UsageLedgerProtocol,
         sync_cursor_service: SyncCursorService,
         sync_job_service: SyncJobServiceProtocol,
+        temporal_schedule_service: TemporalScheduleServiceProtocol,
     ):
         """Initialize the sync orchestrator with ALL required components."""
         self.entity_pipeline = entity_pipeline
@@ -66,6 +68,7 @@ class SyncOrchestrator:
         self._usage_ledger = usage_ledger
         self._sync_cursor_service = sync_cursor_service
         self._sync_job_service = sync_job_service
+        self._temporal_schedule_service = temporal_schedule_service
 
         # Batch config from context
         self.should_batch = sync_context.should_batch
@@ -683,12 +686,8 @@ class SyncOrchestrator:
         # Pause schedules on credential errors to avoid repeated failures
         if classification.category is not None:
             try:
-                from airweave.core.container import get_container
-
-                container = get_container()
-                temporal_schedule_service = container.temporal_schedule_service
                 async with get_db_context() as pause_db:
-                    await temporal_schedule_service.pause_schedules_for_source_connection(
+                    await self._temporal_schedule_service.pause_schedules_for_source_connection(
                         self.sync_context.source_connection_id,
                         pause_db,
                         self.sync_context,

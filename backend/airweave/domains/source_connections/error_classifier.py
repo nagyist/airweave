@@ -24,6 +24,14 @@ def classify_error(exc: Exception, auth_method: str = "") -> ErrorClassification
         ErrorClassification with category and message, or empty if not a
         credential error.
     """
+    # Unwrap chained exceptions (e.g. SourceValidationError wrapping SourceAuthError)
+    if (
+        not isinstance(exc, (SourceAuthError, SourceTokenRefreshError))
+        and exc.__cause__
+        and isinstance(exc.__cause__, (SourceAuthError, SourceTokenRefreshError))
+    ):
+        return classify_error(exc.__cause__, auth_method)
+
     if isinstance(exc, SourceTokenRefreshError):
         return ErrorClassification(
             category=SourceConnectionErrorCategory.OAUTH_CREDENTIALS_EXPIRED,

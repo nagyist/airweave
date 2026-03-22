@@ -57,12 +57,20 @@ class SyncService(SyncServiceProtocol):
                 )
         except Exception as e:
             ctx.logger.error(f"Error during sync orchestrator creation: {e}")
+
+            # Classify credential errors so the UI shows NEEDS_REAUTH
+            from airweave.domains.source_connections.error_classifier import classify_error
+
+            classification = classify_error(e)
+            error_cat = classification.category.value if classification.category else None
+
             await self._sync_job_service.update_status(
                 sync_job_id=sync_job.id,
                 status=SyncJobStatus.FAILED,
                 ctx=ctx,
                 error=str(e),
                 failed_at=utc_now_naive(),
+                error_category=error_cat,
             )
             raise e
 

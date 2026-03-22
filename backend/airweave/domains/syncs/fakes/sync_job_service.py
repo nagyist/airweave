@@ -31,6 +31,7 @@ class FakeSyncJobService:
         started_at: Optional[datetime] = None,
         completed_at: Optional[datetime] = None,
         failed_at: Optional[datetime] = None,
+        error_category: Optional[str] = None,
     ) -> None:
         """Record call."""
         self._calls.append(

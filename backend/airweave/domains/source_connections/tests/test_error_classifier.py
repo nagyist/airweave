@@ -108,3 +108,24 @@ def test_classify_error_non_auth_returns_empty():
     result = classify_error(RuntimeError("something broke"))
     assert result.category is None
     assert result.message is None
+
+
+def test_classify_error_unwraps_chained_exception():
+    """SourceValidationError wrapping SourceAuthError should classify the cause."""
+    from airweave.domains.sources.exceptions import SourceValidationError
+
+    cause = SourceAuthError(
+        "Bad credentials",
+        source_short_name="github",
+        status_code=401,
+        token_provider_kind=AuthProviderKind.CREDENTIAL,
+    )
+    wrapper = SourceValidationError(
+        short_name="github",
+        reason="credential validation failed",
+    )
+    wrapper.__cause__ = cause
+
+    result = classify_error(wrapper)
+    assert result.category == SourceConnectionErrorCategory.API_KEY_INVALID
+    assert result.message is not None

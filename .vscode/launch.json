@@ -122,7 +122,8 @@
             "env": {
                 "PYTHONPATH": "${workspaceFolder}/backend",
                 "AIRWEAVE_DEBUGPY_WORKER_PORT": "7233",
-                "TEMPORAL_SDK_METRICS_PORT": "9091"
+                "TEMPORAL_SDK_METRICS_PORT": "9091",
+                "WATCHFILES_IGNORE_PATHS": "${workspaceFolder}/backend/local_storage,${workspaceFolder}/local_storage"
             },
             "envFile": "${workspaceFolder}/.env",
             "justMyCode": false,

@@ -24,7 +24,8 @@
             "envFile": "${workspaceFolder}/.env",
             "env": {
                 "LOCAL_DEVELOPMENT": "true",
-                "PYTHONPATH": "${workspaceFolder}/backend"
+                "PYTHONPATH": "${workspaceFolder}/backend",
+                "WATCHFILES_IGNORE_PATHS": "${workspaceFolder}/backend/local_storage,${workspaceFolder}/local_storage"
             }
         },
         {

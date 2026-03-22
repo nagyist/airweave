@@ -10,7 +10,6 @@ from airweave.core.datetime_utils import utc_now_naive
 from airweave.core.events.sync import AccessControlMembershipBatchProcessedEvent
 from airweave.core.protocols.event_bus import EventBus
 from airweave.core.shared_models import SyncJobStatus
-from airweave.core.sync_job_service import sync_job_service
 from airweave.db.session import get_db_context
 from airweave.domains.access_control.pipeline import AccessControlPipeline
 from airweave.domains.sync_pipeline.contexts import SyncContext
@@ -20,6 +19,7 @@ from airweave.domains.sync_pipeline.exceptions import EntityProcessingError, Syn
 from airweave.domains.sync_pipeline.stream import AsyncSourceStream
 from airweave.domains.sync_pipeline.worker_pool import AsyncWorkerPool
 from airweave.domains.syncs.cursors.service import SyncCursorService
+from airweave.domains.syncs.protocols import SyncJobServiceProtocol
 from airweave.domains.usage.exceptions import (
     PaymentRequiredError,
     UsageLimitExceededError,
@@ -52,6 +52,7 @@ class SyncOrchestrator:
         usage_checker: UsageLimitCheckerProtocol,
         usage_ledger: UsageLedgerProtocol,
         sync_cursor_service: SyncCursorService,
+        sync_job_service: SyncJobServiceProtocol,
     ):
         """Initialize the sync orchestrator with ALL required components."""
         self.entity_pipeline = entity_pipeline
@@ -64,6 +65,7 @@ class SyncOrchestrator:
         self._usage_checker = usage_checker
         self._usage_ledger = usage_ledger
         self._sync_cursor_service = sync_cursor_service
+        self._sync_job_service = sync_job_service
 
         # Batch config from context
         self.should_batch = sync_context.should_batch
@@ -182,7 +184,7 @@ class SyncOrchestrator:
         await self.stream.start()
 
         started_at = utc_now_naive()
-        await sync_job_service.update_status(
+        await self._sync_job_service.update_status(
             sync_job_id=self.sync_context.sync_job.id,
             status=SyncJobStatus.RUNNING,
             ctx=self.sync_context,
@@ -522,7 +524,7 @@ class SyncOrchestrator:
         # downstream consumers (search, metadata builders) see the real source.
         await self._update_snapshot_short_name()
 
-        await sync_job_service.update_status(
+        await self._sync_job_service.update_status(
             sync_job_id=self.sync_context.sync_job.id,
             status=SyncJobStatus.COMPLETED,
             ctx=self.sync_context,
@@ -668,7 +670,7 @@ class SyncOrchestrator:
 
         stats = self.runtime.entity_tracker.get_stats()
 
-        await sync_job_service.update_status(
+        await self._sync_job_service.update_status(
             sync_job_id=self.sync_context.sync_job.id,
             status=SyncJobStatus.FAILED,
             ctx=self.sync_context,
@@ -730,7 +732,7 @@ class SyncOrchestrator:
         await self.stream.cancel()
 
         # 3. Update job status to final CANCELLED state
-        await sync_job_service.update_status(
+        await self._sync_job_service.update_status(
             sync_job_id=self.sync_context.sync_job.id,
             status=SyncJobStatus.CANCELLED,
             ctx=self.sync_context,

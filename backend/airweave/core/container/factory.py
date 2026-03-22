@@ -436,6 +436,7 @@ def create_container(settings: Settings) -> Container:
         source_registry=source_deps["source_registry"],
         # Services
         source_lifecycle_service=source_deps["source_lifecycle_service"],
+        sync_job_service=sync_deps["sync_job_service"],
         sync_cursor_service=source_deps["sync_cursor_service"],
         processor=chunk_embed_processor,
         arf_service=arf_service,

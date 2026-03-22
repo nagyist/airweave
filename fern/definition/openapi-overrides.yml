@@ -86,7 +86,7 @@ components:
           enum: [tool_call]
         tool_name:
           type: string
-          description: "Name of the tool: search, read, add_to_results, remove_from_results, count, get_children, get_siblings, get_parent, review_results, return_results_to_user."
+          enum: [search, read, add_to_results, remove_from_results, count, get_children, get_siblings, get_parent, review_results, return_results_to_user]
         duration_ms:
           type: integer
         diagnostics:
@@ -100,8 +100,138 @@ components:
               type: object
               description: Full LLM-generated tool input.
             stats:
-              type: object
-              description: Tool-specific output stats. Shape depends on tool_name.
+              oneOf:
+                - $ref: "#/components/schemas/SearchToolStats"
+                - $ref: "#/components/schemas/ReadToolStats"
+                - $ref: "#/components/schemas/CollectToolStats"
+                - $ref: "#/components/schemas/CountToolStats"
+                - $ref: "#/components/schemas/NavigateToolStats"
+                - $ref: "#/components/schemas/ReviewToolStats"
+                - $ref: "#/components/schemas/FinishToolStats"
+                - $ref: "#/components/schemas/ErrorToolStats"
+              description: Output stats. Shape depends on tool_name.
+
+    EntitySummary:
+      type: object
+      properties:
+        entity_id:
+          type: string
+        name:
+          type: string
+        entity_type:
+          type: string
+        source_name:
+          type: string
+        relevance_score:
+          type: number
+          nullable: true
+
+    SearchToolStats:
+      type: object
+      description: Stats from a search tool call.
+      properties:
+        result_count:
+          type: integer
+          description: Total results returned.
+        new_results:
+          type: integer
+          description: Results not seen in previous searches.
+        first_results:
+          type: array
+          items:
+            $ref: "#/components/schemas/EntitySummary"
+
+    ReadToolStats:
+      type: object
+      description: Stats from a read tool call.
+      properties:
+        found:
+          type: integer
+          description: Entities successfully read.
+        not_found:
+          type: integer
+          description: Entity IDs that weren't found.
+        entities:
+          type: array
+          items:
+            $ref: "#/components/schemas/EntitySummary"
+        context_label:
+          type: string
+          nullable: true
+
+    CollectToolStats:
+      type: object
+      description: Stats from add_to_results or remove_from_results.
+      properties:
+        added:
+          type: integer
+        already_collected:
+          type: integer
+        not_found:
+          type: integer
+        total_collected:
+          type: integer
+          description: Total results collected after this operation.
+        entities:
+          type: array
+          items:
+            $ref: "#/components/schemas/EntitySummary"
+
+    CountToolStats:
+      type: object
+      description: Stats from a count tool call.
+      properties:
+        count:
+          type: integer
+          description: Number of entities matching the filter.
+
+    NavigateToolStats:
+      type: object
+      description: Stats from get_children, get_siblings, or get_parent.
+      properties:
+        result_count:
+          type: integer
+        context_label:
+          type: string
+          description: "Human-readable label, e.g. 'children of chan-engineering'."
+        first_results:
+          type: array
+          items:
+            $ref: "#/components/schemas/EntitySummary"
+
+    ReviewToolStats:
+      type: object
+      description: Stats from review_results.
+      properties:
+        total_collected:
+          type: integer
+        entity_count:
+          type: integer
+        first_results:
+          type: array
+          items:
+            $ref: "#/components/schemas/EntitySummary"
+
+    FinishToolStats:
+      type: object
+      description: Stats from return_results_to_user.
+      properties:
+        accepted:
+          type: boolean
+          description: Whether the agent accepted the result set.
+        total_collected:
+          type: integer
+        warning:
+          type: string
+          nullable: true
+          description: Warning if very few results collected relative to seen.
+
+    ErrorToolStats:
+      type: object
+      description: Stats when a tool call errors.
+      properties:
+        error:
+          type: string
 
     AgenticSearchRerankingEvent:
       type: object

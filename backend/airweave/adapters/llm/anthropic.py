@@ -174,7 +174,9 @@ class AnthropicLLM(BaseLLM):
         api_time = time.monotonic() - api_start
 
         # Parse response content blocks
-        thinking_parts, text_parts, tool_calls = _parse_response_blocks(response.content)
+        thinking_parts, text_parts, tool_calls, thinking_signature = _parse_response_blocks(
+            response.content
+        )
 
         thinking_text = "\n".join(thinking_parts) if thinking_parts else None
         text = "\n".join(text_parts) if text_parts else None
@@ -198,6 +200,7 @@ class AnthropicLLM(BaseLLM):
             text=text,
             thinking=thinking_text,
             tool_calls=tool_calls,
+            thinking_signature=thinking_signature,
             prompt_tokens=prompt_tokens,
             completion_tokens=completion_tokens,
             cache_creation_input_tokens=cache_creation,
@@ -231,15 +234,23 @@ class AnthropicLLM(BaseLLM):
 
 def _parse_response_blocks(
     content: list,
-) -> tuple[list[str], list[str], list[LLMToolCall]]:
-    """Extract thinking parts, text parts and tool calls from Anthropic response blocks."""
+) -> tuple[list[str], list[str], list[LLMToolCall], str | None]:
+    """Extract thinking parts, text parts, tool calls, and thinking signature.
+
+    Returns the signature from the *last* thinking block so it can be sent
+    back in multi-turn conversations (Anthropic requires it).
+    """
     thinking_parts: list[str] = []
     text_parts: list[str] = []
     tool_calls: list[LLMToolCall] = []
+    thinking_signature: str | None = None
 
     for block in content:
         if block.type == "thinking":
             thinking_parts.append(block.thinking)
+            sig = getattr(block, "signature", None)
+            if sig:
+                thinking_signature = sig
         elif block.type == "text":
             text_parts.append(block.text)
         elif block.type == "tool_use":
@@ -254,7 +265,7 @@ def _parse_response_blocks(
                 )
             )
 
-    return thinking_parts, text_parts, tool_calls
+    return thinking_parts, text_parts, tool_calls, thinking_signature
 
 
 def _convert_messages_to_anthropic(messages: list[dict]) -> list[dict]:
@@ -310,10 +321,16 @@ def _build_assistant_blocks(msg: dict) -> list[dict]:
     """Build Anthropic content blocks from a generic assistant message."""
     content_blocks: list[dict] = []
 
-    # Native thinking block
+    # Native thinking block — only include if we have the Anthropic signature.
+    # Without a signature Anthropic rejects the request (HTTP 400).  This
+    # happens on cross-provider fallback (e.g. Together → Anthropic) where
+    # the reasoning text came from a non-Anthropic model.
     thinking = msg.get("_thinking")
-    if thinking:
-        content_blocks.append({"type": "thinking", "thinking": thinking})
+    thinking_signature = msg.get("_thinking_signature")
+    if thinking and thinking_signature:
+        content_blocks.append(
+            {"type": "thinking", "thinking": thinking, "signature": thinking_signature}
+        )
 
     # Text content
     text = msg.get("content")

@@ -56,7 +56,7 @@ def build_assistant_message(response: LLMResponse) -> dict[str, Any]:
     The ``_thinking`` field is an internal marker that each LLM adapter
     converts to the provider-appropriate format via ``_prepare_messages_for_api``:
 
-    - **Anthropic**: native ``thinking`` content blocks.
+    - **Anthropic**: native ``thinking`` content blocks (requires ``_thinking_signature``).
     - **Together AI**: ``reasoning`` field on assistant messages
       (preserved thinking for KV cache reuse).
     - **Cerebras**: embedded in ``content``
@@ -67,6 +67,7 @@ def build_assistant_message(response: LLMResponse) -> dict[str, Any]:
         "role": "assistant",
         "content": response.text,
         "_thinking": response.thinking,
+        "_thinking_signature": response.thinking_signature,
     }
 
     if response.tool_calls:

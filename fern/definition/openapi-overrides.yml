@@ -4,3 +4,69 @@ components:
       examples: null
     SourceConnectionUpdate:
       examples: null
+
+    AgenticSearchEvent:
+      type: object
+      required:
+        - type
+      properties:
+        type:
+          type: string
+          enum:
+            - started
+            - thinking
+            - tool_call
+            - reranking
+            - done
+            - error
+          description: The event type.
+        request_id:
+          type: string
+          description: Request ID (only present on `started` events).
+        tier:
+          type: string
+          description: Search tier (only on `started`).
+        collection_readable_id:
+          type: string
+          description: Collection searched (only on `started`).
+        query:
+          type: string
+          description: The search query (only on `started`).
+        thinking:
+          type: string
+          nullable: true
+          description: Extended reasoning text (only on `thinking` events).
+        text:
+          type: string
+          nullable: true
+          description: Conversational text output (only on `thinking` events).
+        tool_name:
+          type: string
+          description: Name of the tool called (only on `tool_call` events).
+        results:
+          type: array
+          items:
+            $ref: "#/components/schemas/SearchResult"
+          description: Full result set (only on `done` events).
+        message:
+          type: string
+          description: Error message (only on `error` events).
+        duration_ms:
+          type: integer
+          description: Duration of this step in milliseconds.
+        diagnostics:
+          type: object
+          description: Diagnostics data (iteration counts, token usage, tool stats).
+
+paths:
+  /collections/{readable_id}/search/agentic/stream:
+    post:
+      x-fern-streaming:
+        format: sse
+      responses:
+        "200":
+          description: SSE stream of agentic search events.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgenticSearchEvent"

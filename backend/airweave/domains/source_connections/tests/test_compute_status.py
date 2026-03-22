@@ -53,3 +53,56 @@ def test_pending_auth_when_not_authenticated():
     source_conn = SimpleNamespace(is_authenticated=False)
     status = compute_status(source_conn, SyncJobStatus.FAILED)
     assert status == SourceConnectionStatus.PENDING_AUTH
+
+
+# ---------------------------------------------------------------------------
+# SourceConnectionListItem.status computed field
+# ---------------------------------------------------------------------------
+
+
+def test_list_item_needs_reauth_status():
+    """SourceConnectionListItem computed status returns NEEDS_REAUTH when error_category set."""
+    from datetime import datetime, timezone
+
+    from airweave.schemas.source_connection import SourceConnectionListItem
+
+    now = datetime.now(timezone.utc)
+    item = SourceConnectionListItem(
+        id="550e8400-e29b-41d4-a716-446655440000",
+        name="Test",
+        short_name="github",
+        readable_collection_id="col-123",
+        created_at=now,
+        modified_at=now,
+        is_authenticated=True,
+        entity_count=0,
+        federated_search=False,
+        is_active=True,
+        last_job_status="failed",
+        last_job_error_category="api_key_invalid",
+    )
+    assert item.status == SourceConnectionStatus.NEEDS_REAUTH
+
+
+def test_list_item_error_status_without_error_category():
+    """SourceConnectionListItem computed status returns ERROR when no error_category."""
+    from datetime import datetime, timezone
+
+    from airweave.schemas.source_connection import SourceConnectionListItem
+
+    now = datetime.now(timezone.utc)
+    item = SourceConnectionListItem(
+        id="550e8400-e29b-41d4-a716-446655440000",
+        name="Test",
+        short_name="github",
+        readable_collection_id="col-123",
+        created_at=now,
+        modified_at=now,
+        is_authenticated=True,
+        entity_count=0,
+        federated_search=False,
+        is_active=True,
+        last_job_status="failed",
+        last_job_error_category=None,
+    )
+    assert item.status == SourceConnectionStatus.ERROR

@@ -1393,3 +1393,150 @@ def test_stats_from_dict_last_job_missing_status_raises():
     raw = _full_raw_dict(last_job={"completed_at": NOW})
     with pytest.raises(KeyError):
         SourceConnectionStats.from_dict(raw)
+
+
+# ===========================================================================
+# error_category in build_response
+# ===========================================================================
+
+
+@pytest.mark.asyncio
+async def test_build_response_error_category_surfaces_from_last_job():
+    """When the last job has error_category, it appears on the response."""
+    f = _fixture()
+    f.source_registry.seed(_make_registry_entry("slack"))
+    sync_id = uuid4()
+    sc = _make_source_conn(is_authenticated=True, sync_id=sync_id)
+
+    job = _make_sync_job(status=SyncJobStatus.FAILED, error="bad creds")
+    job.error_category = "oauth_credentials_expired"
+    f.sync_job_repo.seed_last_job(sync_id, job)
+
+    result = await f.builder.build_response(None, sc, _make_ctx())
+    assert result.error_category == "oauth_credentials_expired"
+    assert result.error_message == "bad creds"
+    assert result.status == SourceConnectionStatus.NEEDS_REAUTH
+
+
+@pytest.mark.asyncio
+async def test_build_response_no_error_category_when_none():
+    """When last job has no error_category, fields are None."""
+    f = _fixture()
+    f.source_registry.seed(_make_registry_entry("slack"))
+    sync_id = uuid4()
+    sc = _make_source_conn(is_authenticated=True, sync_id=sync_id)
+
+    job = _make_sync_job(status=SyncJobStatus.FAILED, error="random error")
+    job.error_category = None
+    f.sync_job_repo.seed_last_job(sync_id, job)
+
+    result = await f.builder.build_response(None, sc, _make_ctx())
+    assert result.error_category is None
+    assert result.error_message is None
+    assert result.status == SourceConnectionStatus.ERROR
+
+
+# ===========================================================================
+# _resolve_provider_settings_url
+# ===========================================================================
+
+
+def test_resolve_provider_settings_url_no_registry():
+    """Returns None when no auth_provider_registry is injected."""
+    f = _fixture()
+    sc = _make_source_conn(readable_auth_provider_id="composio")
+    result = f.builder._resolve_provider_settings_url(sc)
+    assert result is None
+
+
+def test_resolve_provider_settings_url_no_readable_id():
+    """Returns None when source_conn has no readable_auth_provider_id."""
+    from unittest.mock import MagicMock
+
+    registry = MagicMock()
+    builder = ResponseBuilder(
+        sc_repo=FakeSourceConnectionRepository(),
+        connection_repo=FakeConnectionRepository(),
+        credential_repo=FakeIntegrationCredentialRepository(),
+        source_registry=FakeSourceRegistry(),
+        entity_count_repo=FakeEntityCountRepository(),
+        sync_job_repo=FakeSyncJobRepository(),
+        auth_provider_registry=registry,
+    )
+    sc = _make_source_conn(readable_auth_provider_id=None)
+    result = builder._resolve_provider_settings_url(sc)
+    assert result is None
+    registry.get_settings_url.assert_not_called()
+
+
+def test_resolve_provider_settings_url_returns_url():
+    """Returns URL from registry when available."""
+    from unittest.mock import MagicMock
+
+    registry = MagicMock()
+    registry.get_settings_url.return_value = "https://example.com"
+    builder = ResponseBuilder(
+        sc_repo=FakeSourceConnectionRepository(),
+        connection_repo=FakeConnectionRepository(),
+        credential_repo=FakeIntegrationCredentialRepository(),
+        source_registry=FakeSourceRegistry(),
+        entity_count_repo=FakeEntityCountRepository(),
+        sync_job_repo=FakeSyncJobRepository(),
+        auth_provider_registry=registry,
+    )
+    sc = _make_source_conn(readable_auth_provider_id="composio")
+    result = builder._resolve_provider_settings_url(sc)
+    assert result == "https://example.com"
+
+
+def test_resolve_provider_settings_url_exception_returns_none():
+    """Returns None when registry raises."""
+    from unittest.mock import MagicMock
+
+    registry = MagicMock()
+    registry.get_settings_url.side_effect = RuntimeError("boom")
+    builder = ResponseBuilder(
+        sc_repo=FakeSourceConnectionRepository(),
+        connection_repo=FakeConnectionRepository(),
+        credential_repo=FakeIntegrationCredentialRepository(),
+        source_registry=FakeSourceRegistry(),
+        entity_count_repo=FakeEntityCountRepository(),
+        sync_job_repo=FakeSyncJobRepository(),
+        auth_provider_registry=registry,
+    )
+    sc = _make_source_conn(readable_auth_provider_id="composio")
+    result = builder._resolve_provider_settings_url(sc)
+    assert result is None
+
+
+# ===========================================================================
+# map_sync_job includes error_category
+# ===========================================================================
+
+
+def test_map_sync_job_includes_error_category():
+    """map_sync_job passes through error_category from ORM object."""
+    f = _fixture()
+    job = _make_sync_job(status=SyncJobStatus.FAILED, error="bad key")
+    job.error_category = "api_key_invalid"
+    sc_id = uuid4()
+    result = f.builder.map_sync_job(job, sc_id)
+    assert result.error_category == "api_key_invalid"
+
+
+# ===========================================================================
+# build_list_item with error_category
+# ===========================================================================
+
+
+def test_build_list_item_needs_reauth():
+    """List item status is NEEDS_REAUTH when last_job has error_category."""
+    f = _fixture()
+    stats = _make_stats(
+        is_authenticated=True,
+        last_job_status=SyncJobStatus.FAILED,
+    )
+    # Patch in error_category
+    object.__setattr__(stats.last_job, "error_category", "api_key_invalid")
+    item = f.builder.build_list_item(stats)
+    assert item.status == SourceConnectionStatus.NEEDS_REAUTH

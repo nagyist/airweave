@@ -824,3 +824,114 @@ async def test_ensure_system_schedules_calls_both():
     assert "cleanup-stuck-sync-jobs" in call_ids
     assert "api-key-expiration-notifications" in call_ids
     assert len(call_ids) == 2
+
+
+# ===========================================================================
+# pause/unpause schedules
+# ===========================================================================
+
+
+@pytest.mark.asyncio
+async def test_pause_schedules_no_source_connection():
+    """pause_schedules is a no-op when source connection not found."""
+    sc_repo = AsyncMock()
+    sc_repo.get = AsyncMock(return_value=None)
+    svc = _build_svc(sc_repo=sc_repo)
+
+    await svc.pause_schedules_for_source_connection(uuid4(), AsyncMock(), _mock_ctx())
+    # Should not raise, just return silently
+
+
+@pytest.mark.asyncio
+async def test_pause_schedules_no_sync_id():
+    """pause_schedules is a no-op when source connection has no sync_id."""
+    sc = MagicMock()
+    sc.sync_id = None
+    sc_repo = AsyncMock()
+    sc_repo.get = AsyncMock(return_value=sc)
+    svc = _build_svc(sc_repo=sc_repo)
+
+    await svc.pause_schedules_for_source_connection(uuid4(), AsyncMock(), _mock_ctx())
+
+
+@pytest.mark.asyncio
+async def test_pause_schedules_pauses_all_prefixes():
+    """pause_schedules calls pause on sync-, minute-sync-, daily-cleanup- handles."""
+    sync_id = uuid4()
+    sc = MagicMock()
+    sc.sync_id = sync_id
+    sc_repo = AsyncMock()
+    sc_repo.get = AsyncMock(return_value=sc)
+    svc = _build_svc(sc_repo=sc_repo)
+
+    handle = AsyncMock()
+    mock_client = MagicMock()  # get_schedule_handle is sync
+    mock_client.get_schedule_handle.return_value = handle
+    svc._client = mock_client
+
+    await svc.pause_schedules_for_source_connection(uuid4(), AsyncMock(), _mock_ctx(), reason="test")
+
+    assert handle.pause.call_count == 3
+    expected_ids = {f"sync-{sync_id}", f"minute-sync-{sync_id}", f"daily-cleanup-{sync_id}"}
+    actual_ids = {call.args[0] for call in mock_client.get_schedule_handle.call_args_list}
+    assert actual_ids == expected_ids
+
+
+@pytest.mark.asyncio
+async def test_pause_schedules_swallows_not_found():
+    """pause_schedules swallows RPCError NOT_FOUND gracefully."""
+    sync_id = uuid4()
+    sc = MagicMock()
+    sc.sync_id = sync_id
+    sc_repo = AsyncMock()
+    sc_repo.get = AsyncMock(return_value=sc)
+    svc = _build_svc(sc_repo=sc_repo)
+
+    handle = AsyncMock()
+    handle.pause.side_effect = _rpc_error("not found", RPCStatusCode.NOT_FOUND)
+    mock_client = MagicMock()
+    mock_client.get_schedule_handle.return_value = handle
+    svc._client = mock_client
+
+    # Should not raise
+    await svc.pause_schedules_for_source_connection(uuid4(), AsyncMock(), _mock_ctx())
+
+
+@pytest.mark.asyncio
+async def test_unpause_schedules_unpauses_all_prefixes():
+    """unpause_schedules calls unpause on all schedule handles."""
+    sync_id = uuid4()
+    sc = MagicMock()
+    sc.sync_id = sync_id
+    sc_repo = AsyncMock()
+    sc_repo.get = AsyncMock(return_value=sc)
+    svc = _build_svc(sc_repo=sc_repo)
+
+    handle = AsyncMock()
+    mock_client = MagicMock()
+    mock_client.get_schedule_handle.return_value = handle
+    svc._client = mock_client
+
+    await svc.unpause_schedules_for_source_connection(uuid4(), AsyncMock(), _mock_ctx())
+
+    assert handle.unpause.call_count == 3
+
+
+@pytest.mark.asyncio
+async def test_unpause_schedules_swallows_not_found():
+    """unpause_schedules swallows RPCError NOT_FOUND gracefully."""
+    sync_id = uuid4()
+    sc = MagicMock()
+    sc.sync_id = sync_id
+    sc_repo = AsyncMock()
+    sc_repo.get = AsyncMock(return_value=sc)
+    svc = _build_svc(sc_repo=sc_repo)
+
+    handle = AsyncMock()
+    handle.unpause.side_effect = _rpc_error("not found", RPCStatusCode.NOT_FOUND)
+    mock_client = MagicMock()
+    mock_client.get_schedule_handle.return_value = handle
+    svc._client = mock_client
+
+    # Should not raise
+    await svc.unpause_schedules_for_source_connection(uuid4(), AsyncMock(), _mock_ctx())

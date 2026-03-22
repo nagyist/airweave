@@ -64,3 +64,39 @@ class FakeTemporalScheduleService(TemporalScheduleServiceProtocol):
         self._calls.append(("delete_all_schedules_for_sync", sync_id, db, ctx))
         if self._should_raise:
             raise self._should_raise
+
+    async def delete_schedule_handle(self, schedule_id: str) -> None:
+        """Record call."""
+        self._calls.append(("delete_schedule_handle", schedule_id))
+        if self._should_raise:
+            raise self._should_raise
+
+    async def ensure_system_schedules(self) -> None:
+        """No-op for tests."""
+        self._calls.append(("ensure_system_schedules",))
+
+    async def pause_schedules_for_source_connection(
+        self,
+        source_connection_id: UUID,
+        db: AsyncSession,
+        ctx: ApiContext,
+        *,
+        reason: str = "",
+    ) -> None:
+        """Record call."""
+        self._calls.append(
+            ("pause_schedules", source_connection_id, db, ctx, reason)
+        )
+        if self._should_raise:
+            raise self._should_raise
+
+    async def unpause_schedules_for_source_connection(
+        self,
+        source_connection_id: UUID,
+        db: AsyncSession,
+        ctx: ApiContext,
+    ) -> None:
+        """Record call."""
+        self._calls.append(("unpause_schedules", source_connection_id, db, ctx))
+        if self._should_raise:
+            raise self._should_raise

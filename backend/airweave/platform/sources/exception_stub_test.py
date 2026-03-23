@@ -244,9 +244,7 @@ async def test_immediate_failure():
 @pytest.mark.unit
 async def test_trigger_after_last_entity():
     """trigger_after=-1 should yield all entities then raise."""
-    config = ExceptionStubConfig(
-        entity_count=5, trigger_after=-1, exception_type="runtime_error"
-    )
+    config = ExceptionStubConfig(entity_count=5, trigger_after=-1, exception_type="runtime_error")
     source = await _create_source(config)
 
     entities = []
@@ -261,9 +259,7 @@ async def test_trigger_after_last_entity():
 @pytest.mark.unit
 async def test_no_failure_when_trigger_exceeds_count():
     """When trigger_after >= entity_count, all entities succeed."""
-    config = ExceptionStubConfig(
-        entity_count=5, trigger_after=100, exception_type="runtime_error"
-    )
+    config = ExceptionStubConfig(entity_count=5, trigger_after=100, exception_type="runtime_error")
     source = await _create_source(config)
 
     entities = await _collect_entities(source)

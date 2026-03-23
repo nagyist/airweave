@@ -994,8 +994,7 @@ class ExceptionStubConfig(SourceConfig):
         default=False,
         title="Fail on Validate",
         description=(
-            "If true, validate() raises SourceValidationError "
-            "before sync starts (HTTP 400)."
+            "If true, validate() raises SourceValidationError before sync starts (HTTP 400)."
         ),
     )
 

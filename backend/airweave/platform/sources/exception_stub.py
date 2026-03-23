@@ -186,8 +186,7 @@ class ExceptionStubSource(BaseSource):
             container_id=container_id,
             container_name=f"Exception Stub Container (seed={config.seed})",
             description=(
-                f"Exception test container: {config.exception_type} "
-                f"after {self._resolved_trigger}"
+                f"Exception test container: {config.exception_type} after {self._resolved_trigger}"
             ),
             created_at=datetime(2024, 1, 1, 0, 0, 0),
             seed=config.seed,

@@ -525,7 +525,7 @@ function InlineAuthProviderForm({
     e.preventDefault();
     setSubmitting(true);
     try {
-      const resp = await apiClient.put(`/auth-providers/${providerReadableId}`, {
+      const resp = await apiClient.put(`/auth-providers/${providerReadableId}`, undefined, {
         auth_fields: values,
       });
       if (!resp.ok) {

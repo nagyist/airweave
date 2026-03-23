@@ -918,6 +918,85 @@ class FileStubConfig(SourceConfig):
     )
 
 
+VALID_EXCEPTION_TYPES = {
+    "runtime_error",
+    "sync_failure_error",
+    "entity_processing_error",
+    "source_auth_error",
+    "source_rate_limit_error",
+    "source_server_error",
+    "source_entity_not_found",
+    "source_entity_forbidden",
+    "timeout",
+    "cancelled",
+}
+
+
+class ExceptionStubConfig(SourceConfig):
+    """Exception stub source configuration for testing error handling.
+
+    Configures which exception to raise and when, so you can test
+    how the UI responds to different error scenarios during sync.
+    """
+
+    entity_count: int = Field(
+        default=10,
+        title="Entity Count",
+        description="Total number of entities to generate before/instead of failing",
+        ge=1,
+        le=1000,
+    )
+    seed: int = Field(
+        default=42,
+        title="Random Seed",
+        description="Random seed for reproducible content generation",
+    )
+    exception_type: str = Field(
+        default="runtime_error",
+        title="Exception Type",
+        description=(
+            "Which exception to raise. Options: runtime_error, sync_failure_error, "
+            "entity_processing_error, source_auth_error, source_rate_limit_error, "
+            "source_server_error, source_entity_not_found, source_entity_forbidden, "
+            "timeout, cancelled"
+        ),
+    )
+    trigger_after: int = Field(
+        default=5,
+        title="Trigger After N Entities",
+        description=(
+            "Raise exception after yielding this many entities. "
+            "0 = immediately after container. "
+            "-1 = after the last entity. "
+            "If >= entity_count, no exception is raised (baseline test)."
+        ),
+        ge=-1,
+    )
+    error_message: Optional[str] = Field(
+        default=None,
+        title="Custom Error Message",
+        description="Custom error message. If empty, a descriptive default is generated.",
+    )
+    fail_on_validate: bool = Field(
+        default=False,
+        title="Fail on Validate",
+        description=(
+            "If true, validate() raises SourceValidationError "
+            "before sync starts (HTTP 400)."
+        ),
+    )
+
+    @field_validator("exception_type")
+    @classmethod
+    def validate_exception_type(cls, v: str) -> str:
+        """Validate that exception_type is one of the supported values."""
+        if v not in VALID_EXCEPTION_TYPES:
+            raise ValueError(
+                f"Invalid exception_type '{v}'. Must be one of: {sorted(VALID_EXCEPTION_TYPES)}"
+            )
+        return v
+
+
 class TrelloConfig(SourceConfig):
     """Trello configuration schema."""
 

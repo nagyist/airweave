@@ -366,3 +366,8 @@ try {
 - Never use `Math.random()` — it is banned by ESLint
 - Use `crypto.getRandomValues()` for random bytes/integers
 - Use `crypto.randomUUID()` for UUIDs
+
+### 5. **XSS Prevention**
+- Never assign to `innerHTML` — it is banned by ESLint (CASA-41)
+- Never use `dangerouslySetInnerHTML` — it is banned by ESLint (CASA-41)
+- Use React state-driven rendering and `textContent` instead

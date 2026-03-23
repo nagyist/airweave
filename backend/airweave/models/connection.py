@@ -44,7 +44,7 @@ class Connection(Base):
 
     # Foreign keys
     integration_credential_id: Mapped[Optional[UUID]] = mapped_column(
-        ForeignKey("integration_credential.id"), nullable=True
+        ForeignKey("integration_credential.id", ondelete="SET NULL"), nullable=True
     )
     short_name: Mapped[str] = mapped_column(String, nullable=False)
 
@@ -104,7 +104,7 @@ class Connection(Base):
 
 
 # Event to delete integration credential when Connection is deleted
-@event.listens_for(Connection, "before_delete")
+@event.listens_for(Connection, "after_delete")
 def delete_integration_credential(mapper: Any, connection: Any, target: Any) -> None:
     """When a Connection is deleted, also delete its IntegrationCredential if present."""
     if target.integration_credential_id:

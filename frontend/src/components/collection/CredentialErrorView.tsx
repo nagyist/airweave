@@ -282,16 +282,29 @@ function ActionArea({
       );
     }
 
-    case 'auth_provider_credentials_invalid':
+    case 'auth_provider_credentials_invalid': {
+      const providerReadableId = sourceConnection.auth?.provider_readable_id;
+      if (!providerReadableId) {
+        return (
+          <div className="flex items-center gap-2 pt-1">
+            <a href="/auth-providers" className={primaryStyle}>
+              <ShieldAlert className="h-3.5 w-3.5" />
+              Auth Providers Settings
+            </a>
+            <DeleteButton onDelete={onDelete} isDark={isDark} />
+          </div>
+        );
+      }
       return (
-        <div className="flex items-center gap-2 pt-1">
-          <a href="/auth-providers" className={primaryStyle}>
-            <ShieldAlert className="h-3.5 w-3.5" />
-            Auth Providers Settings
-          </a>
-          <DeleteButton onDelete={onDelete} isDark={isDark} />
-        </div>
+        <InlineAuthProviderForm
+          providerReadableId={providerReadableId}
+          isDark={isDark}
+          onCredentialsUpdated={onCredentialsUpdated}
+          onDelete={onDelete}
+          settingsUrl={sourceConnection.auth?.provider_settings_url}
+        />
       );
+    }
 
     default:
       return null;
@@ -452,6 +465,206 @@ function InlineCredentialForm({
           )}
           Update Credentials
         </button>
+        <DeleteButton onDelete={onDelete} isDark={isDark} />
+      </div>
+    </form>
+  );
+}
+
+function InlineAuthProviderForm({
+  providerReadableId,
+  isDark,
+  onCredentialsUpdated,
+  onDelete,
+  settingsUrl,
+}: {
+  providerReadableId: string;
+  isDark: boolean;
+  onCredentialsUpdated?: () => void;
+  onDelete?: () => void;
+  settingsUrl?: string;
+}) {
+  const [fields, setFields] = useState<AuthField[]>([]);
+  const [values, setValues] = useState<Record<string, string>>({});
+  const [showSecrets, setShowSecrets] = useState<Record<string, boolean>>({});
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [providerName, setProviderName] = useState<string>('');
+
+  const fetchFields = useCallback(async () => {
+    try {
+      // Step 1: get the auth provider connection to find its short_name
+      const connResp = await apiClient.get(`/auth-providers/connections/${providerReadableId}`);
+      const connData = await connResp.json();
+      const shortName = connData?.short_name;
+      if (!shortName) { setFields([]); return; }
+      setProviderName(shortName);
+
+      // Step 2: get auth provider metadata for field definitions
+      const metaResp = await apiClient.get(`/auth-providers/detail/${shortName}`);
+      const metaData = await metaResp.json();
+      const raw = metaData?.auth_fields?.fields ?? [];
+      const parsed: AuthField[] = raw.map((f: any) => ({
+        name: f.name,
+        label: f.title || f.name,
+        type: f.type || 'string',
+        required: f.required ?? true,
+        secret: f.is_secret ?? false,
+      }));
+      setFields(parsed);
+    } catch {
+      setFields([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [providerReadableId]);
+
+  useEffect(() => { fetchFields(); }, [fetchFields]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSubmitting(true);
+    try {
+      const resp = await apiClient.put(`/auth-providers/${providerReadableId}`, {
+        auth_fields: values,
+      });
+      if (!resp.ok) {
+        const body = await resp.json().catch(() => ({}));
+        throw new Error(body.detail || `HTTP ${resp.status}`);
+      }
+      toast({ title: 'Credentials updated', description: 'Connection will be retried on next sync.' });
+      onCredentialsUpdated?.();
+    } catch (err: any) {
+      toast({
+        title: 'Update failed',
+        description: err?.message || 'Could not update credentials.',
+        variant: 'destructive',
+      });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center gap-2 py-2">
+        <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+        <span className={cn(DESIGN_SYSTEM.typography.sizes.body, 'text-muted-foreground')}>
+          Loading credential fields…
+        </span>
+      </div>
+    );
+  }
+
+  if (fields.length === 0) {
+    return (
+      <div className="flex items-center gap-2 pt-1">
+        <a href="/auth-providers" className={cn(
+          'inline-flex items-center gap-2 px-4 py-2 rounded-lg shadow-sm',
+          DESIGN_SYSTEM.typography.sizes.body,
+          DESIGN_SYSTEM.typography.weights.medium,
+          'transition-all duration-200',
+          'bg-primary text-primary-foreground hover:bg-primary/90',
+        )}>
+          <ShieldAlert className="h-3.5 w-3.5" />
+          Auth Providers Settings
+        </a>
+        <DeleteButton onDelete={onDelete} isDark={isDark} />
+      </div>
+    );
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-3">
+      {fields.map((field) => {
+        const isSecret = field.secret;
+        const visible = showSecrets[field.name];
+        const displayLabel = humanizeFieldName(field.label || field.name);
+        return (
+          <div key={field.name} className="space-y-1.5">
+            <label
+              htmlFor={`ap-${field.name}`}
+              className={cn(
+                'text-xs font-medium tracking-wide uppercase',
+                isDark ? 'text-gray-400' : 'text-gray-500',
+              )}
+            >
+              {providerName ? `${capitalise(providerName)} ${displayLabel}` : displayLabel}
+            </label>
+            <div className="relative">
+              <input
+                id={`ap-${field.name}`}
+                type={isSecret && !visible ? 'password' : 'text'}
+                required={field.required}
+                value={values[field.name] ?? ''}
+                onChange={(e) => setValues((v) => ({ ...v, [field.name]: e.target.value }))}
+                placeholder={isSecret ? '••••••••' : `Enter ${displayLabel.toLowerCase()}`}
+                className={cn(
+                  'w-full rounded-lg border px-3 py-2.5 pr-10',
+                  DESIGN_SYSTEM.typography.sizes.body,
+                  isDark
+                    ? 'bg-gray-900/60 border-gray-700 text-gray-100 placeholder:text-gray-600'
+                    : 'bg-white border-gray-200 text-gray-900 placeholder:text-gray-400',
+                  'focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary/40',
+                  'transition-colors duration-150',
+                )}
+              />
+              {isSecret && (
+                <button
+                  type="button"
+                  onClick={() => setShowSecrets((s) => ({ ...s, [field.name]: !s[field.name] }))}
+                  className={cn(
+                    'absolute right-2.5 top-1/2 -translate-y-1/2 p-1 rounded-md',
+                    'transition-colors duration-150',
+                    isDark ? 'text-gray-500 hover:text-gray-300 hover:bg-gray-800' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100',
+                  )}
+                >
+                  {visible ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              )}
+            </div>
+          </div>
+        );
+      })}
+      <div className="flex items-center gap-2 pt-1">
+        <button
+          type="submit"
+          disabled={submitting}
+          className={cn(
+            'inline-flex items-center gap-2 px-4 py-2 rounded-lg shadow-sm',
+            DESIGN_SYSTEM.typography.sizes.body,
+            DESIGN_SYSTEM.typography.weights.medium,
+            'transition-all duration-200',
+            'bg-primary text-primary-foreground hover:bg-primary/90',
+            submitting && 'opacity-60 cursor-not-allowed',
+          )}
+        >
+          {submitting ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <KeyRound className="h-3.5 w-3.5" />
+          )}
+          Update Credentials
+        </button>
+        {settingsUrl && (
+          <a
+            href={settingsUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={cn(
+              'inline-flex items-center gap-2 px-4 py-2 rounded-lg',
+              DESIGN_SYSTEM.typography.sizes.body,
+              DESIGN_SYSTEM.typography.weights.medium,
+              'transition-all duration-200 shadow-sm',
+              isDark
+                ? 'bg-gray-800 text-gray-200 hover:bg-gray-700 border border-gray-600'
+                : 'bg-white text-gray-700 hover:bg-gray-50 border border-gray-200',
+            )}
+          >
+            <ExternalLink className="h-3.5 w-3.5" />
+            {providerName ? `${capitalise(providerName)} Dashboard` : 'Provider Dashboard'}
+          </a>
+        )}
         <DeleteButton onDelete={onDelete} isDark={isDark} />
       </div>
     </form>

@@ -60,6 +60,21 @@ def _sanitize_for_vespa(text: str) -> str:
     )
 
 
+def _sanitize_all_string_fields(obj: Any) -> Any:
+    """Recursively sanitize all string values in a nested structure.
+
+    Walks dicts, lists, and bare strings, applying _sanitize_for_vespa to every
+    string leaf. Non-string leaves (ints, floats, bools, None) pass through unchanged.
+    """
+    if isinstance(obj, str):
+        return _sanitize_for_vespa(obj)
+    if isinstance(obj, dict):
+        return {k: _sanitize_all_string_fields(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_sanitize_all_string_fields(item) for item in obj]
+    return obj
+
+
 def _validate_text_quality(text: str, entity_id: str) -> Optional[str]:
     """Validate text doesn't contain excessive Unicode replacement characters.
 
@@ -186,6 +201,9 @@ class EntityTransformer:
         # Remove None values from top-level fields
         fields = {k: v for k, v in fields.items() if v is not None}
 
+        # Sanitize all string values to strip control chars Vespa rejects
+        fields = _sanitize_all_string_fields(fields)
+
         return VespaDocument(schema=schema, id=doc_id, fields=fields)
 
     def transform_batch(self, entities: List[BaseEntity]) -> Dict[str, List[VespaDocument]]:
@@ -258,18 +276,7 @@ class EntityTransformer:
                 )
                 raise ValueError(validation_error)
 
-            # Sanitize text to remove control characters that Vespa rejects
-            sanitized = _sanitize_for_vespa(entity.textual_representation)
-
-            # Log if we removed control characters
-            if len(sanitized) != len(entity.textual_representation):
-                removed = len(entity.textual_representation) - len(sanitized)
-                self._logger.debug(
-                    f"[VespaTransformer] Removed {removed} control characters from "
-                    f"{entity.entity_id} (type: {entity.__class__.__name__})"
-                )
-
-            fields["textual_representation"] = sanitized
+            fields["textual_representation"] = entity.textual_representation
         return fields
 
     def _add_system_metadata_fields(

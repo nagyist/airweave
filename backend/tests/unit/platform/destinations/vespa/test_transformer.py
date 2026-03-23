@@ -7,6 +7,7 @@ from datetime import datetime
 
 from airweave.platform.destinations.vespa.transformer import (
     EntityTransformer,
+    _sanitize_all_string_fields,
     _sanitize_for_vespa,
     _validate_text_quality,
 )
@@ -632,7 +633,7 @@ class TestEntityTransformerWithValidation:
     def test_transform_accepts_clean_text(self):
         """Test transform accepts entity with clean text."""
         transformer = EntityTransformer()
-        
+
         entity = MagicMock()
         entity.entity_id = "clean-123"
         entity.name = "Clean File"
@@ -657,9 +658,73 @@ class TestEntityTransformerWithValidation:
         entity.airweave_system_metadata.dense_embedding = None
         entity.airweave_system_metadata.sparse_embedding = None
         entity.to_dict.return_value = {"entity_id": "clean-123"}
-        
+
         result = transformer.transform(entity)
-        
+
         assert isinstance(result, VespaDocument)
         assert result.fields["textual_representation"] == "This is clean text without any corruption."
+
+
+class TestSanitizeAllStringFields:
+    """Test _sanitize_all_string_fields recursive sanitizer."""
+
+    def test_sanitizes_bare_string(self):
+        assert _sanitize_all_string_fields("hello\x08world") == "helloworld"
+
+    def test_sanitizes_dict_values(self):
+        result = _sanitize_all_string_fields({"name": "test\x08name", "count": 42})
+        assert result == {"name": "testname", "count": 42}
+
+    def test_sanitizes_nested_list(self):
+        result = _sanitize_all_string_fields(["a\x00b", "c\x08d"])
+        assert result == ["ab", "cd"]
+
+    def test_sanitizes_nested_dicts_in_list(self):
+        """Breadcrumbs are list-of-dicts with string values."""
+        data = [{"name": "folder\x01A", "entity_id": "id\x02x"}]
+        result = _sanitize_all_string_fields(data)
+        assert result == [{"name": "folderA", "entity_id": "idx"}]
+
+    def test_preserves_non_string_types(self):
+        data = {"flag": True, "count": 7, "ratio": 3.14, "empty": None}
+        assert _sanitize_all_string_fields(data) == data
+
+    def test_leaves_clean_strings_unchanged(self):
+        data = {"name": "Hello world", "items": ["a", "b"]}
+        assert _sanitize_all_string_fields(data) == data
+
+
+class TestTransformSanitizesNameField:
+    """Test that transform() sanitizes the name field (production bug regression)."""
+
+    def test_transform_strips_backspace_from_name(self):
+        """Regression: 0x08 in name caused 711 Vespa feed failures."""
+        transformer = EntityTransformer()
+
+        entity = MagicMock()
+        entity.entity_id = "issue-456"
+        entity.name = "Fix bug\x08 in login"
+        entity.textual_representation = None
+        entity.created_at = datetime(2024, 1, 1)
+        entity.updated_at = datetime(2024, 1, 1)
+        entity.breadcrumbs = []
+        entity.access = MagicMock()
+        entity.access.is_public = True
+        entity.access.viewers = []
+        entity.airweave_system_metadata = MagicMock()
+        entity.airweave_system_metadata.entity_type = "LinearIssueEntity"
+        entity.airweave_system_metadata.source_name = "Linear"
+        entity.airweave_system_metadata.sync_id = "sync-1"
+        entity.airweave_system_metadata.sync_job_id = None
+        entity.airweave_system_metadata.hash = "hash-1"
+        entity.airweave_system_metadata.chunk_index = None
+        entity.airweave_system_metadata.original_entity_id = "orig-1"
+        entity.airweave_system_metadata.dense_embedding = None
+        entity.airweave_system_metadata.sparse_embedding = None
+        entity.model_dump.return_value = {"entity_id": "issue-456", "name": "Fix bug\x08 in login"}
+
+        result = transformer.transform(entity)
+
+        assert result.fields["name"] == "Fix bug in login"
+        assert "\x08" not in result.fields["name"]
 

@@ -920,17 +920,25 @@ class FileStubConfig(SourceConfig):
 
 ExceptionType = Literal[
     "runtime_error",
+    "source_auth_error",
+    "source_token_refresh_error",
     "source_server_error",
     "source_rate_limit_error",
     "source_entity_not_found",
     "source_entity_forbidden",
-    "source_token_refresh_error",
     "token_expired",
     "token_credentials_invalid",
     "token_provider_config_error",
     "token_provider_server_error",
     "timeout",
     "cancelled",
+]
+
+AuthProviderKindType = Literal[
+    "oauth",
+    "static",
+    "auth_provider",
+    "credential",
 ]
 
 
@@ -957,6 +965,14 @@ class ExceptionStubConfig(SourceConfig):
         default="runtime_error",
         title="Exception Type",
         description="Which exception to raise during entity generation",
+    )
+    auth_provider_kind: AuthProviderKindType = Field(
+        default="oauth",
+        title="Auth Provider Kind",
+        description=(
+            "Provider kind for auth-related exceptions "
+            "(source_auth_error, source_token_refresh_error, token_* errors)"
+        ),
     )
     trigger_after: int = Field(
         default=5,

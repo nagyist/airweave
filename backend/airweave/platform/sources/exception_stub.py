@@ -14,6 +14,7 @@ from typing import AsyncGenerator, Callable
 from airweave.core.logging import ContextualLogger
 from airweave.domains.browse_tree.types import NodeSelectionData
 from airweave.domains.sources.exceptions import (
+    SourceAuthError,
     SourceEntityForbiddenError,
     SourceEntityNotFoundError,
     SourceRateLimitError,
@@ -51,10 +52,24 @@ AUTHORS = ["Alice Smith", "Bob Johnson", "Charlie Brown", "Diana Prince", "Eve W
 
 def _build_exception_factories(
     error_message: str,
+    auth_provider_kind: AuthProviderKind,
 ) -> dict[str, Callable[[], Exception]]:
     """Build a map of exception_type string -> factory callable."""
+    kind_str = auth_provider_kind.value
+
     return {
         "runtime_error": lambda: RuntimeError(error_message),
+        "source_auth_error": lambda: SourceAuthError(
+            error_message,
+            source_short_name=SHORT_NAME,
+            status_code=401,
+            token_provider_kind=auth_provider_kind,
+        ),
+        "source_token_refresh_error": lambda: SourceTokenRefreshError(
+            error_message,
+            source_short_name=SHORT_NAME,
+            token_provider_kind=auth_provider_kind,
+        ),
         "source_server_error": lambda: SourceServerError(
             error_message,
             source_short_name=SHORT_NAME,
@@ -75,30 +90,25 @@ def _build_exception_factories(
             source_short_name=SHORT_NAME,
             entity_id="exception-stub-entity",
         ),
-        "source_token_refresh_error": lambda: SourceTokenRefreshError(
-            error_message,
-            source_short_name=SHORT_NAME,
-            token_provider_kind=AuthProviderKind.OAUTH,
-        ),
         "token_expired": lambda: TokenExpiredError(
             error_message,
             source_short_name=SHORT_NAME,
-            provider_kind="oauth",
+            provider_kind=kind_str,
         ),
         "token_credentials_invalid": lambda: TokenCredentialsInvalidError(
             error_message,
             source_short_name=SHORT_NAME,
-            provider_kind="oauth",
+            provider_kind=kind_str,
         ),
         "token_provider_config_error": lambda: TokenProviderConfigError(
             error_message,
             source_short_name=SHORT_NAME,
-            provider_kind="oauth",
+            provider_kind=kind_str,
         ),
         "token_provider_server_error": lambda: TokenProviderServerError(
             error_message,
             source_short_name=SHORT_NAME,
-            provider_kind="oauth",
+            provider_kind=kind_str,
             status_code=500,
         ),
         "timeout": lambda: asyncio.TimeoutError(error_message),
@@ -149,7 +159,8 @@ class ExceptionStubSource(BaseSource):
             f"[ExceptionStub] {config.exception_type} triggered after "
             f"{trigger} entities (simulated failure)"
         )
-        instance._exception_factories = _build_exception_factories(msg)
+        provider_kind = AuthProviderKind(config.auth_provider_kind)
+        instance._exception_factories = _build_exception_factories(msg, provider_kind)
         instance._error_message = msg
 
         return instance

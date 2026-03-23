@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from airweave.domains.sources.exceptions import (
+    SourceAuthError,
     SourceEntityForbiddenError,
     SourceEntityNotFoundError,
     SourceRateLimitError,
@@ -80,6 +81,40 @@ async def test_runtime_error():
 
     with pytest.raises(RuntimeError, match=r"\[ExceptionStub\]"):
         await _collect_entities(source)
+
+
+@pytest.mark.unit
+async def test_source_auth_error():
+    """Verify SourceAuthError is raised with configured provider kind."""
+    config = ExceptionStubConfig(
+        exception_type="source_auth_error",
+        trigger_after=0,
+        auth_provider_kind="oauth",
+    )
+    source = await _create_source(config)
+
+    with pytest.raises(SourceAuthError, match=r"\[ExceptionStub\]") as exc_info:
+        await _collect_entities(source)
+
+    assert exc_info.value.status_code == 401
+
+
+@pytest.mark.unit
+async def test_source_auth_error_static_provider():
+    """Verify SourceAuthError uses the configured auth_provider_kind."""
+    config = ExceptionStubConfig(
+        exception_type="source_auth_error",
+        trigger_after=0,
+        auth_provider_kind="static",
+    )
+    source = await _create_source(config)
+
+    with pytest.raises(SourceAuthError) as exc_info:
+        await _collect_entities(source)
+
+    from airweave.domains.sources.token_providers.protocol import AuthProviderKind
+
+    assert exc_info.value.token_provider_kind == AuthProviderKind.STATIC
 
 
 @pytest.mark.unit

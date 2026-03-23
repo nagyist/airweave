@@ -1,7 +1,7 @@
 """Add error_category column to sync_job table.
 
 Revision ID: a1b2c3d4e5f8
-Revises: 7f3a9c2b1d4e
+Revises: s5t6u7v8w9x0
 Create Date: 2026-03-21
 """
 
@@ -11,7 +11,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision = "a1b2c3d4e5f8"
-down_revision = "7f3a9c2b1d4e"
+down_revision = "s5t6u7v8w9x0"
 branch_labels = None
 depends_on = None
 

@@ -1,6 +1,6 @@
 """Configuration classes for platform components."""
 
-from typing import Optional
+from typing import Literal, Optional
 
 from pydantic import Field, field_validator
 
@@ -918,7 +918,7 @@ class FileStubConfig(SourceConfig):
     )
 
 
-VALID_EXCEPTION_TYPES = {
+ExceptionType = Literal[
     "runtime_error",
     "sync_failure_error",
     "entity_processing_error",
@@ -929,7 +929,7 @@ VALID_EXCEPTION_TYPES = {
     "source_entity_forbidden",
     "timeout",
     "cancelled",
-}
+]
 
 
 class ExceptionStubConfig(SourceConfig):
@@ -951,15 +951,10 @@ class ExceptionStubConfig(SourceConfig):
         title="Random Seed",
         description="Random seed for reproducible content generation",
     )
-    exception_type: str = Field(
+    exception_type: ExceptionType = Field(
         default="runtime_error",
         title="Exception Type",
-        description=(
-            "Which exception to raise. Options: runtime_error, sync_failure_error, "
-            "entity_processing_error, source_auth_error, source_rate_limit_error, "
-            "source_server_error, source_entity_not_found, source_entity_forbidden, "
-            "timeout, cancelled"
-        ),
+        description="Which exception to raise during entity generation",
     )
     trigger_after: int = Field(
         default=5,
@@ -985,16 +980,6 @@ class ExceptionStubConfig(SourceConfig):
             "before sync starts (HTTP 400)."
         ),
     )
-
-    @field_validator("exception_type")
-    @classmethod
-    def validate_exception_type(cls, v: str) -> str:
-        """Validate that exception_type is one of the supported values."""
-        if v not in VALID_EXCEPTION_TYPES:
-            raise ValueError(
-                f"Invalid exception_type '{v}'. Must be one of: {sorted(VALID_EXCEPTION_TYPES)}"
-            )
-        return v
 
 
 class TrelloConfig(SourceConfig):

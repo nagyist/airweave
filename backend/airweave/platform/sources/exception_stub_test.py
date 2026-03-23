@@ -280,6 +280,8 @@ async def test_entities_are_deterministic():
 
 @pytest.mark.unit
 async def test_invalid_exception_type():
-    """Invalid exception_type should be rejected by config validation."""
-    with pytest.raises(ValueError, match="Invalid exception_type"):
+    """Invalid exception_type should be rejected by Literal validation."""
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):
         ExceptionStubConfig(exception_type="nonexistent_error")

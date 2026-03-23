@@ -20,7 +20,6 @@ from airweave.domains.sources.exceptions import (
     SourceRateLimitError,
     SourceServerError,
     SourceTokenRefreshError,
-    SourceValidationError,
 )
 from airweave.domains.sources.token_providers.exceptions import (
     TokenCredentialsInvalidError,
@@ -242,10 +241,6 @@ class ExceptionStubSource(BaseSource):
             raise self._exception_factories[config.exception_type]()
 
     async def validate(self) -> None:
-        """Validate the source — optionally raises SourceValidationError for testing."""
+        """Validate the source — raises the configured exception type if fail_on_validate is set."""
         if self._config.fail_on_validate:
-            msg = self._config.error_message or (
-                "[ExceptionStub] SourceValidationError triggered "
-                "(fail_on_validate=True, simulated validation failure)"
-            )
-            raise SourceValidationError(SHORT_NAME, msg)
+            raise self._exception_factories[self._config.exception_type]()

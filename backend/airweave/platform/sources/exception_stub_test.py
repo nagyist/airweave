@@ -12,7 +12,6 @@ from airweave.domains.sources.exceptions import (
     SourceRateLimitError,
     SourceServerError,
     SourceTokenRefreshError,
-    SourceValidationError,
 )
 from airweave.domains.sources.token_providers.exceptions import (
     TokenCredentialsInvalidError,
@@ -276,11 +275,28 @@ async def test_no_failure_when_trigger_exceeds_count():
 
 @pytest.mark.unit
 async def test_fail_on_validate():
-    """validate() should raise SourceValidationError when fail_on_validate=True."""
-    config = ExceptionStubConfig(fail_on_validate=True)
+    """validate() should raise the configured exception_type when fail_on_validate=True."""
+    config = ExceptionStubConfig(
+        fail_on_validate=True,
+        exception_type="source_auth_error",
+        auth_provider_kind="oauth",
+    )
     source = await _create_source(config)
 
-    with pytest.raises(SourceValidationError, match=r"\[ExceptionStub\]"):
+    with pytest.raises(SourceAuthError, match=r"\[ExceptionStub\]"):
+        await source.validate()
+
+
+@pytest.mark.unit
+async def test_fail_on_validate_server_error():
+    """validate() can raise any configured exception type."""
+    config = ExceptionStubConfig(
+        fail_on_validate=True,
+        exception_type="source_server_error",
+    )
+    source = await _create_source(config)
+
+    with pytest.raises(SourceServerError, match=r"\[ExceptionStub\]"):
         await source.validate()
 
 
@@ -311,15 +327,16 @@ async def test_custom_error_message():
 
 @pytest.mark.unit
 async def test_custom_error_message_on_validate():
-    """Custom error_message should appear in SourceValidationError."""
+    """Custom error_message should appear in validate exception."""
     custom_msg = "Custom validation error for testing"
     config = ExceptionStubConfig(
         fail_on_validate=True,
+        exception_type="runtime_error",
         error_message=custom_msg,
     )
     source = await _create_source(config)
 
-    with pytest.raises(SourceValidationError, match=custom_msg):
+    with pytest.raises(RuntimeError, match=custom_msg):
         await source.validate()
 
 

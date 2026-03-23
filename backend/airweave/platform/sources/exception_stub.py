@@ -14,19 +14,24 @@ from typing import AsyncGenerator, Callable
 from airweave.core.logging import ContextualLogger
 from airweave.domains.browse_tree.types import NodeSelectionData
 from airweave.domains.sources.exceptions import (
-    SourceAuthError,
     SourceEntityForbiddenError,
     SourceEntityNotFoundError,
     SourceRateLimitError,
     SourceServerError,
+    SourceTokenRefreshError,
     SourceValidationError,
+)
+from airweave.domains.sources.token_providers.exceptions import (
+    TokenCredentialsInvalidError,
+    TokenExpiredError,
+    TokenProviderConfigError,
+    TokenProviderServerError,
 )
 from airweave.domains.sources.token_providers.protocol import (
     AuthProviderKind,
     SourceAuthProvider,
 )
 from airweave.domains.storage.file_service import FileService
-from airweave.domains.sync_pipeline.exceptions import EntityProcessingError, SyncFailureError
 from airweave.domains.syncs.cursors.cursor import SyncCursor
 from airweave.platform.configs.auth import StubAuthConfig
 from airweave.platform.configs.config import ExceptionStubConfig
@@ -50,23 +55,15 @@ def _build_exception_factories(
     """Build a map of exception_type string -> factory callable."""
     return {
         "runtime_error": lambda: RuntimeError(error_message),
-        "sync_failure_error": lambda: SyncFailureError(error_message),
-        "entity_processing_error": lambda: EntityProcessingError(error_message),
-        "source_auth_error": lambda: SourceAuthError(
+        "source_server_error": lambda: SourceServerError(
             error_message,
             source_short_name=SHORT_NAME,
-            status_code=401,
-            token_provider_kind=AuthProviderKind.STATIC,
+            status_code=500,
         ),
         "source_rate_limit_error": lambda: SourceRateLimitError(
             retry_after=30.0,
             source_short_name=SHORT_NAME,
             message=error_message,
-        ),
-        "source_server_error": lambda: SourceServerError(
-            error_message,
-            source_short_name=SHORT_NAME,
-            status_code=500,
         ),
         "source_entity_not_found": lambda: SourceEntityNotFoundError(
             error_message,
@@ -77,6 +74,32 @@ def _build_exception_factories(
             error_message,
             source_short_name=SHORT_NAME,
             entity_id="exception-stub-entity",
+        ),
+        "source_token_refresh_error": lambda: SourceTokenRefreshError(
+            error_message,
+            source_short_name=SHORT_NAME,
+            token_provider_kind=AuthProviderKind.OAUTH,
+        ),
+        "token_expired": lambda: TokenExpiredError(
+            error_message,
+            source_short_name=SHORT_NAME,
+            provider_kind="oauth",
+        ),
+        "token_credentials_invalid": lambda: TokenCredentialsInvalidError(
+            error_message,
+            source_short_name=SHORT_NAME,
+            provider_kind="oauth",
+        ),
+        "token_provider_config_error": lambda: TokenProviderConfigError(
+            error_message,
+            source_short_name=SHORT_NAME,
+            provider_kind="oauth",
+        ),
+        "token_provider_server_error": lambda: TokenProviderServerError(
+            error_message,
+            source_short_name=SHORT_NAME,
+            provider_kind="oauth",
+            status_code=500,
         ),
         "timeout": lambda: asyncio.TimeoutError(error_message),
         "cancelled": lambda: asyncio.CancelledError(error_message),

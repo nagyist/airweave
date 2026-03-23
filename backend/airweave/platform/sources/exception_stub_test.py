@@ -6,14 +6,19 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from airweave.domains.sources.exceptions import (
-    SourceAuthError,
     SourceEntityForbiddenError,
     SourceEntityNotFoundError,
     SourceRateLimitError,
     SourceServerError,
+    SourceTokenRefreshError,
     SourceValidationError,
 )
-from airweave.domains.sync_pipeline.exceptions import EntityProcessingError, SyncFailureError
+from airweave.domains.sources.token_providers.exceptions import (
+    TokenCredentialsInvalidError,
+    TokenExpiredError,
+    TokenProviderConfigError,
+    TokenProviderServerError,
+)
 from airweave.platform.configs.config import ExceptionStubConfig
 from airweave.platform.entities.stub import SmallStubEntity, StubContainerEntity
 from airweave.platform.sources.exception_stub import ExceptionStubSource
@@ -78,32 +83,52 @@ async def test_runtime_error():
 
 
 @pytest.mark.unit
-async def test_sync_failure_error():
-    """Verify SyncFailureError is raised."""
-    config = ExceptionStubConfig(exception_type="sync_failure_error", trigger_after=0)
+async def test_source_token_refresh_error():
+    """Verify SourceTokenRefreshError is raised."""
+    config = ExceptionStubConfig(exception_type="source_token_refresh_error", trigger_after=0)
     source = await _create_source(config)
 
-    with pytest.raises(SyncFailureError, match=r"\[ExceptionStub\]"):
+    with pytest.raises(SourceTokenRefreshError, match=r"\[ExceptionStub\]"):
         await _collect_entities(source)
 
 
 @pytest.mark.unit
-async def test_entity_processing_error():
-    """Verify EntityProcessingError is raised."""
-    config = ExceptionStubConfig(exception_type="entity_processing_error", trigger_after=0)
+async def test_token_expired():
+    """Verify TokenExpiredError is raised."""
+    config = ExceptionStubConfig(exception_type="token_expired", trigger_after=0)
     source = await _create_source(config)
 
-    with pytest.raises(EntityProcessingError, match=r"\[ExceptionStub\]"):
+    with pytest.raises(TokenExpiredError, match=r"\[ExceptionStub\]"):
         await _collect_entities(source)
 
 
 @pytest.mark.unit
-async def test_source_auth_error():
-    """Verify SourceAuthError is raised."""
-    config = ExceptionStubConfig(exception_type="source_auth_error", trigger_after=0)
+async def test_token_credentials_invalid():
+    """Verify TokenCredentialsInvalidError is raised."""
+    config = ExceptionStubConfig(exception_type="token_credentials_invalid", trigger_after=0)
     source = await _create_source(config)
 
-    with pytest.raises(SourceAuthError, match=r"\[ExceptionStub\]"):
+    with pytest.raises(TokenCredentialsInvalidError, match=r"\[ExceptionStub\]"):
+        await _collect_entities(source)
+
+
+@pytest.mark.unit
+async def test_token_provider_config_error():
+    """Verify TokenProviderConfigError is raised."""
+    config = ExceptionStubConfig(exception_type="token_provider_config_error", trigger_after=0)
+    source = await _create_source(config)
+
+    with pytest.raises(TokenProviderConfigError, match=r"\[ExceptionStub\]"):
+        await _collect_entities(source)
+
+
+@pytest.mark.unit
+async def test_token_provider_server_error():
+    """Verify TokenProviderServerError is raised."""
+    config = ExceptionStubConfig(exception_type="token_provider_server_error", trigger_after=0)
+    source = await _create_source(config)
+
+    with pytest.raises(TokenProviderServerError, match=r"\[ExceptionStub\]"):
         await _collect_entities(source)
 
 

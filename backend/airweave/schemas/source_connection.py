@@ -701,6 +701,10 @@ class SourceConnection(BaseModel):
         None,
         description="URL to the auth provider's settings dashboard (for auth_provider errors)",
     )
+    provider_short_name: Optional[str] = Field(
+        None,
+        description="Auth provider short_name (e.g. 'composio', 'pipedream') for display",
+    )
 
     # Source configuration
     federated_search: bool = Field(

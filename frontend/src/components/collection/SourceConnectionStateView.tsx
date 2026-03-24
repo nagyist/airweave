@@ -93,6 +93,7 @@ interface SourceConnection {
   error_category?: string;
   error_message?: string;
   provider_settings_url?: string;
+  provider_short_name?: string;
   // Source configuration
   federated_search?: boolean;  // Whether this source uses federated search
   // Legacy fields that may still exist

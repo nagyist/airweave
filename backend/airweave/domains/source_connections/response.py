@@ -7,6 +7,7 @@ response schemas from multiple data sources.
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Optional
 from uuid import UUID
 
@@ -43,6 +44,17 @@ from airweave.schemas.source_connection import (
 from airweave.schemas.source_connection import (
     SourceConnection as SourceConnectionSchema,
 )
+
+
+@dataclass(frozen=True, slots=True)
+class _ProviderInfo:
+    """Resolved auth provider info for credential error UI."""
+
+    settings_url: Optional[str] = None
+    short_name: Optional[str] = None
+
+
+_EMPTY_PROVIDER_INFO = _ProviderInfo()
 
 # Generic user-safe messages per error category (raw exception details stay in SyncJobDetails.error)
 _GENERIC_ERROR_MESSAGES: dict[str, str] = {
@@ -120,11 +132,9 @@ class ResponseBuilder(ResponseBuilderProtocol):
             last_job_status = sync_details.last_job.status
             last_job_error_category = getattr(sync_details.last_job, "error_category", None)
 
-        provider_settings_url = None
+        provider_info = _EMPTY_PROVIDER_INFO
         if last_job_error_category and self._auth_provider_registry:
-            provider_settings_url = await self._resolve_provider_settings_url(
-                db, source_conn, ctx
-            )
+            provider_info = await self._resolve_provider_info(db, source_conn, ctx)
 
         return SourceConnectionSchema(
             id=source_conn.id,
@@ -146,7 +156,8 @@ class ResponseBuilder(ResponseBuilderProtocol):
             error_message=_GENERIC_ERROR_MESSAGES.get(last_job_error_category, None)
             if last_job_error_category
             else None,
-            provider_settings_url=provider_settings_url,
+            provider_settings_url=provider_info.settings_url,
+            provider_short_name=provider_info.short_name,
             federated_search=federated_search,
         )
 
@@ -404,30 +415,31 @@ class ResponseBuilder(ResponseBuilderProtocol):
             ctx.logger.warning(f"Failed to get entity summary: {e}")
         return None
 
-    async def _resolve_provider_settings_url(
+    async def _resolve_provider_info(
         self,
         db: Optional[AsyncSession],
         source_conn: SourceConnection,
         ctx: ApiContext,
-    ) -> Optional[str]:
-        """Resolve auth provider settings URL for credential error UI.
+    ) -> _ProviderInfo:
+        """Resolve auth provider settings URL and short_name for credential error UI.
 
         The source connection stores a readable_auth_provider_id (e.g. "my-composio")
         which is the Connection.readable_id, not the auth provider short_name.
-        We need to look up the Connection to get its short_name for the registry.
+        We look up the Connection to get its short_name for the registry.
         """
         if not self._auth_provider_registry or not source_conn.readable_auth_provider_id:
-            return None
+            return _EMPTY_PROVIDER_INFO
         try:
             if db:
                 connection = await self._connection_repo.get_by_readable_id(
                     db, source_conn.readable_auth_provider_id, ctx
                 )
                 if connection:
-                    return self._auth_provider_registry.get_settings_url(connection.short_name)
-            return None
+                    url = self._auth_provider_registry.get_settings_url(connection.short_name)
+                    return _ProviderInfo(settings_url=url, short_name=connection.short_name)
+            return _EMPTY_PROVIDER_INFO
         except Exception:
-            return None
+            return _EMPTY_PROVIDER_INFO
 
     def _get_federated_search(self, source_conn: SourceConnection) -> bool:
         """Get federated_search flag from the source registry."""

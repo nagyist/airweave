@@ -48,7 +48,11 @@ def classify_error(exc: Exception, auth_method: str = "") -> ErrorClassification
         credential error.
     """
     # Unwrap chained exceptions (e.g. SourceValidationError wrapping a classifiable cause)
-    if not isinstance(exc, _CLASSIFIABLE) and exc.__cause__ and isinstance(exc.__cause__, _CLASSIFIABLE):
+    if (
+        not isinstance(exc, _CLASSIFIABLE)
+        and exc.__cause__
+        and isinstance(exc.__cause__, _CLASSIFIABLE)
+    ):
         return classify_error(exc.__cause__, auth_method)
 
     # --- AuthProviderError hierarchy (direct auth provider failures) ---

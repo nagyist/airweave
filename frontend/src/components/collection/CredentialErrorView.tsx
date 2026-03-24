@@ -22,6 +22,7 @@ interface SourceConnection {
   error_category?: string;
   error_message?: string;
   provider_settings_url?: string;
+  provider_short_name?: string;
   auth?: {
     method?: string;
     authenticated?: boolean;
@@ -203,8 +204,7 @@ function AuthProviderActions({
   secondaryStyle: string;
 }) {
   const settingsUrl = sourceConnection.provider_settings_url;
-  const providerId = sourceConnection.auth?.provider_readable_id;
-  const providerName = providerId?.split('-')[0];
+  const providerName = sourceConnection.provider_short_name;
 
   return (
     <div className="flex items-center gap-2 pt-1">

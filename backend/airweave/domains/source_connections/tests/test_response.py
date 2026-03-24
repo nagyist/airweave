@@ -1442,17 +1442,18 @@ async def test_build_response_no_error_category_when_none():
 
 
 @pytest.mark.asyncio
-async def test_resolve_provider_settings_url_no_registry():
-    """Returns None when no auth_provider_registry is injected."""
+async def test_resolve_provider_info_no_registry():
+    """Returns empty ProviderInfo when no auth_provider_registry is injected."""
     f = _fixture()
     sc = _make_source_conn(readable_auth_provider_id="my-composio")
-    result = await f.builder._resolve_provider_settings_url(None, sc, _make_ctx())
-    assert result is None
+    result = await f.builder._resolve_provider_info(None, sc, _make_ctx())
+    assert result.settings_url is None
+    assert result.short_name is None
 
 
 @pytest.mark.asyncio
-async def test_resolve_provider_settings_url_no_readable_id():
-    """Returns None when source_conn has no readable_auth_provider_id."""
+async def test_resolve_provider_info_no_readable_id():
+    """Returns empty ProviderInfo when source_conn has no readable_auth_provider_id."""
     from unittest.mock import MagicMock
 
     registry = MagicMock()
@@ -1466,14 +1467,15 @@ async def test_resolve_provider_settings_url_no_readable_id():
         auth_provider_registry=registry,
     )
     sc = _make_source_conn(readable_auth_provider_id=None)
-    result = await builder._resolve_provider_settings_url(None, sc, _make_ctx())
-    assert result is None
+    result = await builder._resolve_provider_info(None, sc, _make_ctx())
+    assert result.settings_url is None
+    assert result.short_name is None
     registry.get_settings_url.assert_not_called()
 
 
 @pytest.mark.asyncio
-async def test_resolve_provider_settings_url_returns_url():
-    """Returns URL from registry when connection lookup resolves short_name."""
+async def test_resolve_provider_info_returns_url_and_short_name():
+    """Returns ProviderInfo with url and short_name when connection lookup resolves."""
     from types import SimpleNamespace
     from unittest.mock import AsyncMock, MagicMock
 
@@ -1494,14 +1496,15 @@ async def test_resolve_provider_settings_url_returns_url():
         auth_provider_registry=registry,
     )
     sc = _make_source_conn(readable_auth_provider_id="my-composio")
-    result = await builder._resolve_provider_settings_url(AsyncMock(), sc, _make_ctx())
-    assert result == "https://platform.composio.dev/"
+    result = await builder._resolve_provider_info(AsyncMock(), sc, _make_ctx())
+    assert result.settings_url == "https://platform.composio.dev/"
+    assert result.short_name == "composio"
     registry.get_settings_url.assert_called_once_with("composio")
 
 
 @pytest.mark.asyncio
-async def test_resolve_provider_settings_url_exception_returns_none():
-    """Returns None when registry raises."""
+async def test_resolve_provider_info_exception_returns_empty():
+    """Returns empty ProviderInfo when registry raises."""
     from types import SimpleNamespace
     from unittest.mock import AsyncMock, MagicMock
 
@@ -1522,8 +1525,9 @@ async def test_resolve_provider_settings_url_exception_returns_none():
         auth_provider_registry=registry,
     )
     sc = _make_source_conn(readable_auth_provider_id="my-composio")
-    result = await builder._resolve_provider_settings_url(AsyncMock(), sc, _make_ctx())
-    assert result is None
+    result = await builder._resolve_provider_info(AsyncMock(), sc, _make_ctx())
+    assert result.settings_url is None
+    assert result.short_name is None
 
 
 # ===========================================================================

@@ -54,6 +54,7 @@ class TestSchedulePauseUnpause:
                 return resp.json()
         except httpx.ConnectError:
             pytest.skip("Temporal REST API not available")
+            return None  # unreachable — pytest.skip raises
 
     async def _is_schedule_paused(self, schedule_id: str) -> Optional[bool]:
         """Return True if the schedule is paused, False if running, None if not found."""
@@ -91,6 +92,7 @@ class TestSchedulePauseUnpause:
             elapsed += 2
 
         pytest.fail(f"Sync did not reach terminal state within {timeout}s")
+        return {}  # unreachable — pytest.fail raises
 
     async def _create_stripe_connection(
         self,

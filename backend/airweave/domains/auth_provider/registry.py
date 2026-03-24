@@ -92,7 +92,7 @@ class AuthProviderRegistry(AuthProviderRegistryProtocol):
         blocked_sources: list[str] = getattr(provider_cls, "BLOCKED_SOURCES", [])
         field_name_mapping: dict[str, str] = getattr(provider_cls, "FIELD_NAME_MAPPING", {})
         slug_name_mapping: dict[str, str] = getattr(provider_cls, "SLUG_NAME_MAPPING", {})
-        settings_url: str = getattr(provider_cls, "settings_url", "")
+        settings_url: str = getattr(provider_cls, "SETTINGS_URL", "")
 
         # ------------------------------------------------------------------
         # Precompute fields

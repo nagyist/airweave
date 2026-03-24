@@ -89,6 +89,13 @@ export interface SourceConnectionEntitySummary {
   last_updated?: string;
 }
 
+export type ErrorCategory =
+  | 'oauth_credentials_expired'
+  | 'api_key_invalid'
+  | 'client_credentials_invalid'
+  | 'auth_provider_account_gone'
+  | 'auth_provider_credentials_invalid';
+
 export interface SourceConnection {
   id: string;
   name: string;
@@ -104,7 +111,7 @@ export interface SourceConnection {
   last_sync_job?: SourceConnectionLastSyncJob;
   entities?: SourceConnectionEntitySummary;
   // Credential error info
-  error_category?: string;
+  error_category?: ErrorCategory;
   error_message?: string;
   provider_settings_url?: string;
   provider_short_name?: string;

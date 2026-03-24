@@ -122,7 +122,7 @@ class TestSchedulePauseUnpause:
         # Create a connection with an invalid API key so the sync will fail
         # with a credential error (SourceAuthError / API_KEY_INVALID).
         connection = await self._create_stripe_connection_with_schedule(
-            api_client, collection, api_key="sk_test_invalid_key_that_will_401"
+            api_client, collection, api_key="sk_test_fakeinvalidkey000000000000"
         )
         conn_id = connection["id"]
         sync_id = await self._get_sync_id(api_client, conn_id)
@@ -169,7 +169,7 @@ class TestSchedulePauseUnpause:
 
         # Create connection with invalid key → sync fails → schedules pause
         connection = await self._create_stripe_connection_with_schedule(
-            api_client, collection, api_key="sk_test_invalid_key_that_will_401"
+            api_client, collection, api_key="sk_test_fakeinvalidkey000000000000"
         )
         conn_id = connection["id"]
         sync_id = await self._get_sync_id(api_client, conn_id)
@@ -188,7 +188,7 @@ class TestSchedulePauseUnpause:
         # Update credentials (still invalid, but the update itself triggers unpause)
         resp = await api_client.patch(
             f"/source-connections/{conn_id}",
-            json={"authentication": {"credentials": {"api_key": "sk_test_new_key"}}},
+            json={"authentication": {"credentials": {"api_key": "sk_test_anotherfakekey0000000000"}}},
         )
         assert resp.status_code == 200
 
@@ -212,7 +212,7 @@ class TestSchedulePauseUnpause:
         connection = await self._create_stripe_connection_with_schedule(
             api_client,
             collection,
-            api_key="sk_test_invalid_key_that_will_401",
+            api_key="sk_test_fakeinvalidkey000000000000",
             cron="* * * * *",
         )
         conn_id = connection["id"]
@@ -257,7 +257,7 @@ class TestSchedulePauseUnpause:
             pytest.skip("Temporal tests only run locally")
 
         connection = await self._create_stripe_connection_with_schedule(
-            api_client, collection, api_key="sk_test_invalid_key_that_will_401"
+            api_client, collection, api_key="sk_test_fakeinvalidkey000000000000"
         )
         conn_id = connection["id"]
 
@@ -287,7 +287,7 @@ class TestSchedulePauseUnpause:
             pytest.skip("Temporal tests only run locally")
 
         connection = await self._create_stripe_connection_with_schedule(
-            api_client, collection, api_key="sk_test_invalid_key_that_will_401"
+            api_client, collection, api_key="sk_test_fakeinvalidkey000000000000"
         )
         conn_id = connection["id"]
 

@@ -23,6 +23,10 @@ from airweave.core.exceptions import NotFoundException
 from airweave.core.logging import ContextualLogger, LoggerConfigurator
 from airweave.core.shared_models import FeatureFlag
 from airweave.domains.auth_provider._base import BaseAuthProvider
+from airweave.domains.auth_provider.exceptions import (
+    AuthProviderAccountNotFoundError,
+    AuthProviderAuthError,
+)
 from airweave.domains.auth_provider.protocols import AuthProviderRegistryProtocol
 from airweave.domains.connections.protocols import ConnectionRepositoryProtocol
 from airweave.domains.credentials.protocols import IntegrationCredentialServiceProtocol
@@ -31,8 +35,15 @@ from airweave.domains.source_connections.protocols import (
     SourceConnectionRepositoryProtocol,
 )
 from airweave.domains.sources.exceptions import (
+    SourceAuthError,
     SourceCreationError,
     SourceNotFoundError,
+    SourceValidationError,
+)
+from airweave.domains.sources.token_providers.exceptions import (
+    TokenCredentialsInvalidError,
+    TokenExpiredError,
+    TokenProviderAccountGoneError,
 )
 from airweave.domains.sources.protocols import (
     SourceLifecycleServiceProtocol,
@@ -155,12 +166,20 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
             config=config,
         )
 
-        # 7. Validate credentials early so failures surface as NEEDS_REAUTH
+        # 7. Validate credentials early so failures surface as NEEDS_REAUTH.
+        #    Only catch auth-related exceptions — transient errors (server 5xx,
+        #    rate limits, network timeouts) must propagate so they don't
+        #    incorrectly pause schedules or set NEEDS_REAUTH status.
         try:
             await source.validate()
-        except Exception as exc:
-            from airweave.domains.sources.exceptions import SourceValidationError
-
+        except (
+            SourceAuthError,
+            AuthProviderAuthError,
+            AuthProviderAccountNotFoundError,
+            TokenCredentialsInvalidError,
+            TokenExpiredError,
+            TokenProviderAccountGoneError,
+        ) as exc:
             raise SourceValidationError(
                 short_name=source_connection_data.short_name,
                 reason=f"credential validation failed: {exc}",

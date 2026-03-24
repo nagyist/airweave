@@ -1117,53 +1117,5 @@ async def test_reinitiate_oauth_preserves_byoc_credentials(monkeypatch):
     assert init_kwargs["client_id"] == "byoc-id"
     assert init_kwargs["client_secret"] == "byoc-secret"
     assert init_kwargs["template_configs"] == {"subdomain": "acme"}
-    assert init_kwargs["redirect_url"] == "https://app.example.com/callback"
-
     # Verify payload was reused from old init session
     assert init_kwargs["payload"]["name"] == "My GitHub"
-
-
-# ---------------------------------------------------------------------------
-# _validate_redirect_url
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.parametrize(
-    "url, expected",
-    [
-        (None, None),
-        ("", None),
-        ("/collections/my-col", "/collections/my-col"),
-        ("/", "/"),
-    ],
-)
-def test_validate_redirect_url_allows_relative_and_none(url, expected):
-    from airweave.domains.source_connections.create import _validate_redirect_url
-
-    assert _validate_redirect_url(url) == expected
-
-
-def test_validate_redirect_url_allows_same_origin(monkeypatch):
-    from airweave.domains.source_connections import create as create_module
-
-    monkeypatch.setattr(create_module, "core_settings", MagicMock(app_url="https://app.airweave.ai"))
-
-    from airweave.domains.source_connections.create import _validate_redirect_url
-
-    assert _validate_redirect_url("https://app.airweave.ai/callback") == "https://app.airweave.ai/callback"
-
-
-def test_validate_redirect_url_rejects_external():
-    from airweave.domains.source_connections.create import _validate_redirect_url
-
-    with pytest.raises(HTTPException) as exc_info:
-        _validate_redirect_url("https://evil.com/phish")
-    assert exc_info.value.status_code == 400
-
-
-def test_validate_redirect_url_rejects_protocol_relative():
-    from airweave.domains.source_connections.create import _validate_redirect_url
-
-    with pytest.raises(HTTPException) as exc_info:
-        _validate_redirect_url("//evil.com/phish")
-    assert exc_info.value.status_code == 400

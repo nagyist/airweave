@@ -883,14 +883,6 @@ def determine_auth_method(source_conn: Any) -> AuthenticationMethod:
     return AuthenticationMethod.OAUTH_BROWSER
 
 
-class ReinitiateOAuthRequest(BaseModel):
-    """Request body for re-initiating an OAuth flow."""
-
-    redirect_url: Optional[str] = Field(
-        None, description="URL to redirect to after OAuth completes"
-    )
-
-
 class VerifyOAuthRequest(BaseModel):
     """Request body for verifying OAuth flow ownership."""
 

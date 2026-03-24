@@ -3,7 +3,6 @@
 import hashlib
 import secrets
 from typing import Any, Optional
-from urllib.parse import urlparse
 from uuid import UUID
 
 from fastapi import HTTPException
@@ -11,7 +10,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import schemas
 from airweave.api.context import ApiContext
-from airweave.core.config import settings as core_settings
 from airweave.core.events.source_connection import SourceConnectionLifecycleEvent
 from airweave.core.events.sync import SyncLifecycleEvent
 from airweave.core.exceptions import NotFoundException
@@ -57,27 +55,6 @@ from airweave.schemas.source_connection import (
 from airweave.schemas.source_connection import (
     SourceConnection as SourceConnectionSchema,
 )
-
-
-def _validate_redirect_url(url: Optional[str]) -> Optional[str]:
-    """Validate that a redirect URL is safe (relative or same-origin as app_url).
-
-    Returns the validated URL or None. Raises HTTPException on invalid external URLs.
-    """
-    if not url:
-        return None
-    # Allow relative paths (but not protocol-relative URLs like //evil.com)
-    if url.startswith("/") and not url.startswith("//"):
-        return url
-    # Allow same-origin as app_url
-    parsed = urlparse(url)
-    app_parsed = urlparse(core_settings.app_url)
-    if parsed.scheme in ("http", "https") and parsed.netloc == app_parsed.netloc:
-        return url
-    raise HTTPException(
-        status_code=400,
-        detail="redirect_url must be a relative path or match the application origin.",
-    )
 
 
 class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
@@ -191,16 +168,11 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
         *,
         id: UUID,
         ctx: ApiContext,
-        redirect_url: Optional[str] = None,
     ) -> SourceConnectionSchema:
         """Create a fresh OAuth session for an un-authenticated connection.
 
         If the connection has a credential error (NEEDS_REAUTH), re-initiation
         is allowed even though ``is_authenticated`` is still True.
-
-        Args:
-            redirect_url: Where to redirect after OAuth completes. If provided,
-                   overrides the URL stored in the previous init session.
         """
         source_conn = await self._sc_repo.get(db, id=id, ctx=ctx)
         if not source_conn:
@@ -219,7 +191,7 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
         byoc_consumer_key: Optional[str] = None
         byoc_consumer_secret: Optional[str] = None
         template_configs: Optional[dict[str, Any]] = None
-        resolved_redirect_url: Optional[str] = _validate_redirect_url(redirect_url)
+        resolved_redirect_url: Optional[str] = None
         payload: Optional[dict[str, Any]] = None
         old_init = None
 

@@ -863,7 +863,7 @@ class TestCompleteConnectionCommon:
         )
         sc_id = uuid4()
         svc._sc_repo.update = AsyncMock(
-            return_value=SimpleNamespace(id=sc_id, connection_id=uuid4())
+            return_value=SimpleNamespace(id=sc_id, connection_id=uuid4(), sync_id=None)
         )
         svc._init_session_repo.mark_completed = AsyncMock()
         svc._source_registry.get = MagicMock(
@@ -928,7 +928,7 @@ class TestCompleteConnectionCommon:
         )
         sc_id = uuid4()
         svc._sc_repo.update = AsyncMock(
-            return_value=SimpleNamespace(id=sc_id, connection_id=conn_id)
+            return_value=SimpleNamespace(id=sc_id, connection_id=conn_id, sync_id=None)
         )
         svc._init_session_repo.mark_completed = AsyncMock()
         svc._sync_record_service.resolve_destination_ids = AsyncMock(return_value=[uuid4()])
@@ -994,7 +994,7 @@ class TestCompleteConnectionCommon:
         )
         sc_id = uuid4()
         svc._sc_repo.update = AsyncMock(
-            return_value=SimpleNamespace(id=sc_id, connection_id=conn_id)
+            return_value=SimpleNamespace(id=sc_id, connection_id=conn_id, sync_id=None)
         )
         svc._init_session_repo.mark_completed = AsyncMock()
         svc._source_registry.get = MagicMock(

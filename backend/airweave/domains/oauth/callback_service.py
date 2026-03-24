@@ -14,6 +14,7 @@ from uuid import UUID, uuid4
 from fastapi import HTTPException
 from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
+from temporalio.service import RPCError
 
 from airweave import schemas
 from airweave.api.context import ApiContext, ConnectContext
@@ -579,7 +580,7 @@ class OAuthCallbackService:
                 await self._temporal_schedule_service.unpause_schedules_for_sync(
                     source_conn.sync_id,
                 )
-            except Exception:
+            except (RPCError, OSError):
                 logger.warning("Failed to unpause schedules after OAuth re-auth", exc_info=True)
 
         return source_conn

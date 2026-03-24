@@ -1,4 +1,4 @@
-"""Tests for error_classifier.classify_error()."""
+"""Tests for classifier.classify_error()."""
 
 import pytest
 
@@ -24,7 +24,7 @@ from airweave.domains.sources.token_providers.protocol import AuthProviderKind
 
 
 @pytest.mark.parametrize(
-    "exc, auth_method, expected_category",
+    "exc, expected_category",
     [
         # SourceTokenRefreshError → OAUTH_CREDENTIALS_EXPIRED
         (
@@ -33,7 +33,6 @@ from airweave.domains.sources.token_providers.protocol import AuthProviderKind
                 source_short_name="github",
                 token_provider_kind=AuthProviderKind.OAUTH,
             ),
-            "",
             SourceConnectionErrorCategory.OAUTH_CREDENTIALS_EXPIRED,
         ),
         # SourceAuthError + CREDENTIAL → API_KEY_INVALID
@@ -44,7 +43,6 @@ from airweave.domains.sources.token_providers.protocol import AuthProviderKind
                 status_code=401,
                 token_provider_kind=AuthProviderKind.CREDENTIAL,
             ),
-            "direct",
             SourceConnectionErrorCategory.API_KEY_INVALID,
         ),
         # SourceAuthError + STATIC → API_KEY_INVALID
@@ -55,10 +53,9 @@ from airweave.domains.sources.token_providers.protocol import AuthProviderKind
                 status_code=401,
                 token_provider_kind=AuthProviderKind.STATIC,
             ),
-            "direct",
             SourceConnectionErrorCategory.API_KEY_INVALID,
         ),
-        # SourceAuthError + OAUTH (non-BYOC) → OAUTH_CREDENTIALS_EXPIRED
+        # SourceAuthError + OAUTH → OAUTH_CREDENTIALS_EXPIRED
         (
             SourceAuthError(
                 "oauth failed",
@@ -66,19 +63,7 @@ from airweave.domains.sources.token_providers.protocol import AuthProviderKind
                 status_code=401,
                 token_provider_kind=AuthProviderKind.OAUTH,
             ),
-            "oauth_token",
             SourceConnectionErrorCategory.OAUTH_CREDENTIALS_EXPIRED,
-        ),
-        # SourceAuthError + OAUTH + BYOC → CLIENT_CREDENTIALS_INVALID
-        (
-            SourceAuthError(
-                "oauth failed",
-                source_short_name="custom",
-                status_code=401,
-                token_provider_kind=AuthProviderKind.OAUTH,
-            ),
-            "oauth_byoc",
-            SourceConnectionErrorCategory.CLIENT_CREDENTIALS_INVALID,
         ),
         # SourceAuthError + AUTH_PROVIDER → AUTH_PROVIDER_CREDENTIALS_INVALID
         (
@@ -88,7 +73,6 @@ from airweave.domains.sources.token_providers.protocol import AuthProviderKind
                 status_code=401,
                 token_provider_kind=AuthProviderKind.AUTH_PROVIDER,
             ),
-            "",
             SourceConnectionErrorCategory.AUTH_PROVIDER_CREDENTIALS_INVALID,
         ),
     ],
@@ -97,12 +81,11 @@ from airweave.domains.sources.token_providers.protocol import AuthProviderKind
         "credential_api_key",
         "static_api_key",
         "oauth_expired",
-        "oauth_byoc",
         "auth_provider_invalid",
     ],
 )
-def test_classify_error(exc, auth_method, expected_category):
-    result = classify_error(exc, auth_method)
+def test_classify_error(exc, expected_category):
+    result = classify_error(exc)
     assert result.category == expected_category
     assert result.message is not None
 
@@ -113,7 +96,7 @@ def test_classify_error(exc, auth_method, expected_category):
 
 
 @pytest.mark.parametrize(
-    "exc, auth_method, expected_category",
+    "exc, expected_category",
     [
         # TokenCredentialsInvalidError + AUTH_PROVIDER → AUTH_PROVIDER_CREDENTIALS_INVALID
         (
@@ -122,7 +105,6 @@ def test_classify_error(exc, auth_method, expected_category):
                 source_short_name="jira",
                 provider_kind=AuthProviderKind.AUTH_PROVIDER,
             ),
-            "",
             SourceConnectionErrorCategory.AUTH_PROVIDER_CREDENTIALS_INVALID,
         ),
         # TokenCredentialsInvalidError + OAUTH → OAUTH_CREDENTIALS_EXPIRED
@@ -132,18 +114,7 @@ def test_classify_error(exc, auth_method, expected_category):
                 source_short_name="gmail",
                 provider_kind=AuthProviderKind.OAUTH,
             ),
-            "oauth_token",
             SourceConnectionErrorCategory.OAUTH_CREDENTIALS_EXPIRED,
-        ),
-        # TokenCredentialsInvalidError + OAUTH + BYOC → CLIENT_CREDENTIALS_INVALID
-        (
-            TokenCredentialsInvalidError(
-                "client secret invalid",
-                source_short_name="custom",
-                provider_kind=AuthProviderKind.OAUTH,
-            ),
-            "oauth_byoc",
-            SourceConnectionErrorCategory.CLIENT_CREDENTIALS_INVALID,
         ),
         # TokenCredentialsInvalidError + CREDENTIAL → API_KEY_INVALID
         (
@@ -152,7 +123,6 @@ def test_classify_error(exc, auth_method, expected_category):
                 source_short_name="stripe",
                 provider_kind=AuthProviderKind.CREDENTIAL,
             ),
-            "",
             SourceConnectionErrorCategory.API_KEY_INVALID,
         ),
         # TokenProviderAccountGoneError → AUTH_PROVIDER_ACCOUNT_GONE
@@ -163,7 +133,6 @@ def test_classify_error(exc, auth_method, expected_category):
                 provider_kind=AuthProviderKind.AUTH_PROVIDER,
                 account_id="acc-123",
             ),
-            "",
             SourceConnectionErrorCategory.AUTH_PROVIDER_ACCOUNT_GONE,
         ),
         # TokenExpiredError → OAUTH_CREDENTIALS_EXPIRED
@@ -173,21 +142,19 @@ def test_classify_error(exc, auth_method, expected_category):
                 source_short_name="github",
                 provider_kind=AuthProviderKind.OAUTH,
             ),
-            "",
             SourceConnectionErrorCategory.OAUTH_CREDENTIALS_EXPIRED,
         ),
     ],
     ids=[
         "token_creds_auth_provider",
         "token_creds_oauth",
-        "token_creds_oauth_byoc",
         "token_creds_credential",
         "token_account_gone",
         "token_expired",
     ],
 )
-def test_classify_token_provider_error(exc, auth_method, expected_category):
-    result = classify_error(exc, auth_method)
+def test_classify_token_provider_error(exc, expected_category):
+    result = classify_error(exc)
     assert result.category == expected_category
     assert result.message is not None
 

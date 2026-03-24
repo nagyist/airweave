@@ -227,7 +227,6 @@ async def test_credential_error_propagates_error_category():
                 collection=MagicMock(),
                 source_connection=MagicMock(),
                 ctx=_mock_ctx(),
-                authentication_method="oauth_token",
             )
 
     assert len(fake_job_svc._calls) == 1

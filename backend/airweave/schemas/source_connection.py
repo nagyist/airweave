@@ -435,7 +435,7 @@ class SourceConnectionListItem(BaseModel):
     authentication_method: Optional[str] = Field(None, exclude=True)
     is_active: bool = Field(True, exclude=True)
     last_job_status: Optional[str] = Field(None, exclude=True)
-    last_job_error_category: Optional[SourceConnectionErrorCategory] = Field(None, exclude=True)
+    last_job_error_category: Optional[str] = Field(None, exclude=True)
 
     model_config = {
         "json_schema_extra": {

@@ -136,7 +136,7 @@ class TestHandleSyncFailure:
         temporal_schedule_service = AsyncMock()
 
         ctx = _make_sync_context()
-        ctx.authentication_method = "oauth_token"
+
         ctx.sync_job.started_at = None
 
         orc = _make_orchestrator(
@@ -173,7 +173,7 @@ class TestHandleSyncFailure:
         temporal_schedule_service = AsyncMock()
 
         ctx = _make_sync_context()
-        ctx.authentication_method = ""
+
         ctx.sync_job.started_at = None
 
         orc = _make_orchestrator(
@@ -203,7 +203,7 @@ class TestHandleSyncFailure:
         )
 
         ctx = _make_sync_context()
-        ctx.authentication_method = "oauth_token"
+
         ctx.sync_job.started_at = None
 
         orc = _make_orchestrator(

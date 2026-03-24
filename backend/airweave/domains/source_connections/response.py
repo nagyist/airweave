@@ -64,9 +64,6 @@ _GENERIC_ERROR_MESSAGES: dict[SourceConnectionErrorCategory, str] = {
     SourceConnectionErrorCategory.API_KEY_INVALID: (
         "The API key for this connection is no longer valid."
     ),
-    SourceConnectionErrorCategory.CLIENT_CREDENTIALS_INVALID: (
-        "The OAuth client credentials (client ID or secret) are invalid."
-    ),
     SourceConnectionErrorCategory.AUTH_PROVIDER_ACCOUNT_GONE: (
         "The connected account on the auth provider has been deleted or deactivated."
     ),

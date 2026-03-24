@@ -92,7 +92,6 @@ export interface SourceConnectionEntitySummary {
 export type ErrorCategory =
   | 'oauth_credentials_expired'
   | 'api_key_invalid'
-  | 'client_credentials_invalid'
   | 'auth_provider_account_gone'
   | 'auth_provider_credentials_invalid';
 

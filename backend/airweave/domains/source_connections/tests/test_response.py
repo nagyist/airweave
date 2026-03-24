@@ -1411,14 +1411,12 @@ def test_stats_from_dict_last_job_missing_status_raises():
     [
         ("oauth_credentials_expired", "OAuth authorization has expired"),
         ("api_key_invalid", "API key for this connection"),
-        ("client_credentials_invalid", "OAuth client credentials"),
         ("auth_provider_account_gone", "auth provider has been deleted"),
         ("auth_provider_credentials_invalid", "credentials on the auth provider"),
     ],
     ids=[
         "oauth_expired",
         "api_key",
-        "client_creds",
         "account_gone",
         "provider_creds",
     ],

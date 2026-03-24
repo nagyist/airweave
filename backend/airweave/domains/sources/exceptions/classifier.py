@@ -35,13 +35,11 @@ _CLASSIFIABLE = (
 )
 
 
-def classify_error(exc: Exception, auth_method: str = "") -> ErrorClassification:
+def classify_error(exc: Exception) -> ErrorClassification:
     """Classify an exception into an error category for UI remediation.
 
     Args:
         exc: The exception that caused the sync failure.
-        auth_method: The authentication_method string from the source connection
-            (fallback when token_provider_kind is not available).
 
     Returns:
         ErrorClassification with category and message, or empty if not a
@@ -53,7 +51,7 @@ def classify_error(exc: Exception, auth_method: str = "") -> ErrorClassification
         and exc.__cause__
         and isinstance(exc.__cause__, _CLASSIFIABLE)
     ):
-        return classify_error(exc.__cause__, auth_method)
+        return classify_error(exc.__cause__)
 
     # --- AuthProviderError hierarchy (direct auth provider failures) ---
     if isinstance(exc, AuthProviderAccountNotFoundError):
@@ -77,7 +75,7 @@ def classify_error(exc: Exception, auth_method: str = "") -> ErrorClassification
 
     # --- Legacy SourceAuthError ---
     if isinstance(exc, SourceAuthError):
-        return _classify_by_provider_kind(exc.token_provider_kind, exc, auth_method)
+        return _classify_by_provider_kind(exc.token_provider_kind, exc)
 
     # --- TokenProviderError hierarchy ---
     if isinstance(exc, TokenProviderAccountGoneError):
@@ -93,7 +91,7 @@ def classify_error(exc: Exception, auth_method: str = "") -> ErrorClassification
         )
 
     if isinstance(exc, TokenCredentialsInvalidError):
-        return _classify_by_provider_kind(exc.provider_kind, exc, auth_method)
+        return _classify_by_provider_kind(exc.provider_kind, exc)
 
     # Not a credential error — return empty classification
     return ErrorClassification(category=None, message=None)
@@ -102,21 +100,15 @@ def classify_error(exc: Exception, auth_method: str = "") -> ErrorClassification
 def _classify_by_provider_kind(
     kind: str,
     exc: Exception,
-    auth_method: str,
 ) -> ErrorClassification:
     """Map a provider_kind string to an error category."""
-    if kind == AuthProviderKind.CREDENTIAL:
+    if kind in (AuthProviderKind.CREDENTIAL, AuthProviderKind.STATIC):
         return ErrorClassification(
             category=SourceConnectionErrorCategory.API_KEY_INVALID,
             message=str(exc),
         )
 
     if kind == AuthProviderKind.OAUTH:
-        if auth_method == "oauth_byoc":
-            return ErrorClassification(
-                category=SourceConnectionErrorCategory.CLIENT_CREDENTIALS_INVALID,
-                message=str(exc),
-            )
         return ErrorClassification(
             category=SourceConnectionErrorCategory.OAUTH_CREDENTIALS_EXPIRED,
             message=str(exc),
@@ -125,12 +117,6 @@ def _classify_by_provider_kind(
     if kind == AuthProviderKind.AUTH_PROVIDER:
         return ErrorClassification(
             category=SourceConnectionErrorCategory.AUTH_PROVIDER_CREDENTIALS_INVALID,
-            message=str(exc),
-        )
-
-    if kind == AuthProviderKind.STATIC:
-        return ErrorClassification(
-            category=SourceConnectionErrorCategory.API_KEY_INVALID,
             message=str(exc),
         )
 

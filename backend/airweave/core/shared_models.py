@@ -71,7 +71,6 @@ class SourceConnectionErrorCategory(str, Enum):
 
     OAUTH_CREDENTIALS_EXPIRED = "oauth_credentials_expired"
     API_KEY_INVALID = "api_key_invalid"
-    CLIENT_CREDENTIALS_INVALID = "client_credentials_invalid"
     AUTH_PROVIDER_ACCOUNT_GONE = "auth_provider_account_gone"
     AUTH_PROVIDER_CREDENTIALS_INVALID = "auth_provider_credentials_invalid"
 

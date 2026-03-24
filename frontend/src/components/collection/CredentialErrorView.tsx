@@ -48,14 +48,6 @@ const CATEGORY_CONFIG: Record<ErrorCategory, {
     borderColor: { dark: 'border-red-800/30', light: 'border-red-200' },
     bgColor: { dark: 'bg-red-900/10', light: 'bg-red-50' },
   },
-  client_credentials_invalid: {
-    icon: KeyRound,
-    title: 'Client Credentials Invalid',
-    description: 'The OAuth client credentials (client ID or secret) are invalid. Please update them below.',
-    iconColor: { dark: 'text-red-400', light: 'text-red-600' },
-    borderColor: { dark: 'border-red-800/30', light: 'border-red-200' },
-    bgColor: { dark: 'bg-red-900/10', light: 'bg-red-50' },
-  },
   auth_provider_account_gone: {
     icon: Unplug,
     title: 'Auth Provider Account Not Found',
@@ -262,7 +254,6 @@ function ActionArea({
       );
 
     case 'api_key_invalid':
-    case 'client_credentials_invalid':
       return (
         <InlineCredentialForm
           sourceConnection={sourceConnection}

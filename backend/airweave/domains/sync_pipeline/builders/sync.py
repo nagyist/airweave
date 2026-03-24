@@ -35,7 +35,6 @@ class SyncContextBuilder:
         source_short_name: str,
         force_full_sync: bool = False,
         execution_config: Optional[SyncConfig] = None,
-        authentication_method: str = "",
     ) -> SyncContext:
         """Build data-only SyncContext.
 
@@ -50,7 +49,6 @@ class SyncContextBuilder:
             source_short_name: Source short name (extracted from source instance)
             force_full_sync: If True, forces a full sync
             execution_config: Optional execution config
-            authentication_method: Auth method string from source connection
 
         Returns:
             SyncContext with all data fields populated.
@@ -76,7 +74,6 @@ class SyncContextBuilder:
             execution_config=execution_config,
             force_full_sync=force_full_sync,
             source_short_name=source_short_name,
-            authentication_method=authentication_method,
             logger=logger,
         )
 

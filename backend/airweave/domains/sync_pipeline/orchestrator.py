@@ -669,7 +669,7 @@ class SyncOrchestrator:
             f"Sync job {self.sync_context.sync_job.id} failed: {error_message}", exc_info=True
         )
 
-        classification = classify_error(error, self.sync_context.authentication_method)
+        classification = classify_error(error)
 
         stats = self.runtime.entity_tracker.get_stats()
 

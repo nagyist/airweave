@@ -44,7 +44,6 @@ class SyncService(SyncServiceProtocol):
         force_full_sync: bool = False,
         execution_config: Optional[SyncConfig] = None,
         access_token: Optional[str] = None,
-        authentication_method: Optional[str] = None,
     ) -> schemas.Sync:
         """Run a sync."""
         try:
@@ -64,7 +63,7 @@ class SyncService(SyncServiceProtocol):
             ctx.logger.error(f"Error during sync orchestrator creation: {e}")
 
             # Classify credential errors so the UI shows NEEDS_REAUTH
-            classification = classify_error(e, authentication_method or "")
+            classification = classify_error(e)
 
             await self._sync_job_service.update_status(
                 sync_job_id=sync_job.id,

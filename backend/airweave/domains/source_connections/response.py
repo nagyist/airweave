@@ -122,7 +122,9 @@ class ResponseBuilder(ResponseBuilderProtocol):
 
         provider_settings_url = None
         if last_job_error_category and self._auth_provider_registry:
-            provider_settings_url = self._resolve_provider_settings_url(source_conn)
+            provider_settings_url = await self._resolve_provider_settings_url(
+                db, source_conn, ctx
+            )
 
         return SourceConnectionSchema(
             id=source_conn.id,
@@ -402,14 +404,28 @@ class ResponseBuilder(ResponseBuilderProtocol):
             ctx.logger.warning(f"Failed to get entity summary: {e}")
         return None
 
-    def _resolve_provider_settings_url(self, source_conn: SourceConnection) -> Optional[str]:
-        """Resolve auth provider settings URL for credential error UI."""
+    async def _resolve_provider_settings_url(
+        self,
+        db: Optional[AsyncSession],
+        source_conn: SourceConnection,
+        ctx: ApiContext,
+    ) -> Optional[str]:
+        """Resolve auth provider settings URL for credential error UI.
+
+        The source connection stores a readable_auth_provider_id (e.g. "my-composio")
+        which is the Connection.readable_id, not the auth provider short_name.
+        We need to look up the Connection to get its short_name for the registry.
+        """
         if not self._auth_provider_registry or not source_conn.readable_auth_provider_id:
             return None
         try:
-            return self._auth_provider_registry.get_settings_url(
-                source_conn.readable_auth_provider_id
-            )
+            if db:
+                connection = await self._connection_repo.get_by_readable_id(
+                    db, source_conn.readable_auth_provider_id, ctx
+                )
+                if connection:
+                    return self._auth_provider_registry.get_settings_url(connection.short_name)
+            return None
         except Exception:
             return None
 

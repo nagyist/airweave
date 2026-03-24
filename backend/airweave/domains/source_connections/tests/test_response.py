@@ -1441,15 +1441,17 @@ async def test_build_response_no_error_category_when_none():
 # ===========================================================================
 
 
-def test_resolve_provider_settings_url_no_registry():
+@pytest.mark.asyncio
+async def test_resolve_provider_settings_url_no_registry():
     """Returns None when no auth_provider_registry is injected."""
     f = _fixture()
-    sc = _make_source_conn(readable_auth_provider_id="composio")
-    result = f.builder._resolve_provider_settings_url(sc)
+    sc = _make_source_conn(readable_auth_provider_id="my-composio")
+    result = await f.builder._resolve_provider_settings_url(None, sc, _make_ctx())
     assert result is None
 
 
-def test_resolve_provider_settings_url_no_readable_id():
+@pytest.mark.asyncio
+async def test_resolve_provider_settings_url_no_readable_id():
     """Returns None when source_conn has no readable_auth_provider_id."""
     from unittest.mock import MagicMock
 
@@ -1464,48 +1466,63 @@ def test_resolve_provider_settings_url_no_readable_id():
         auth_provider_registry=registry,
     )
     sc = _make_source_conn(readable_auth_provider_id=None)
-    result = builder._resolve_provider_settings_url(sc)
+    result = await builder._resolve_provider_settings_url(None, sc, _make_ctx())
     assert result is None
     registry.get_settings_url.assert_not_called()
 
 
-def test_resolve_provider_settings_url_returns_url():
-    """Returns URL from registry when available."""
-    from unittest.mock import MagicMock
+@pytest.mark.asyncio
+async def test_resolve_provider_settings_url_returns_url():
+    """Returns URL from registry when connection lookup resolves short_name."""
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock, MagicMock
 
     registry = MagicMock()
-    registry.get_settings_url.return_value = "https://example.com"
+    registry.get_settings_url.return_value = "https://platform.composio.dev/"
+
+    conn = SimpleNamespace(short_name="composio")
+    conn_repo = FakeConnectionRepository()
+    conn_repo.seed_readable("my-composio", conn)
+
     builder = ResponseBuilder(
         sc_repo=FakeSourceConnectionRepository(),
-        connection_repo=FakeConnectionRepository(),
+        connection_repo=conn_repo,
         credential_repo=FakeIntegrationCredentialRepository(),
         source_registry=FakeSourceRegistry(),
         entity_count_repo=FakeEntityCountRepository(),
         sync_job_repo=FakeSyncJobRepository(),
         auth_provider_registry=registry,
     )
-    sc = _make_source_conn(readable_auth_provider_id="composio")
-    result = builder._resolve_provider_settings_url(sc)
-    assert result == "https://example.com"
+    sc = _make_source_conn(readable_auth_provider_id="my-composio")
+    result = await builder._resolve_provider_settings_url(AsyncMock(), sc, _make_ctx())
+    assert result == "https://platform.composio.dev/"
+    registry.get_settings_url.assert_called_once_with("composio")
 
 
-def test_resolve_provider_settings_url_exception_returns_none():
+@pytest.mark.asyncio
+async def test_resolve_provider_settings_url_exception_returns_none():
     """Returns None when registry raises."""
-    from unittest.mock import MagicMock
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock, MagicMock
 
     registry = MagicMock()
     registry.get_settings_url.side_effect = RuntimeError("boom")
+
+    conn = SimpleNamespace(short_name="composio")
+    conn_repo = FakeConnectionRepository()
+    conn_repo.seed_readable("my-composio", conn)
+
     builder = ResponseBuilder(
         sc_repo=FakeSourceConnectionRepository(),
-        connection_repo=FakeConnectionRepository(),
+        connection_repo=conn_repo,
         credential_repo=FakeIntegrationCredentialRepository(),
         source_registry=FakeSourceRegistry(),
         entity_count_repo=FakeEntityCountRepository(),
         sync_job_repo=FakeSyncJobRepository(),
         auth_provider_registry=registry,
     )
-    sc = _make_source_conn(readable_auth_provider_id="composio")
-    result = builder._resolve_provider_settings_url(sc)
+    sc = _make_source_conn(readable_auth_provider_id="my-composio")
+    result = await builder._resolve_provider_settings_url(AsyncMock(), sc, _make_ctx())
     assert result is None
 
 

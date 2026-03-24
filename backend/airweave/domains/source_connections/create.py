@@ -596,7 +596,7 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
                 client_id=initiation_result.client_id,
                 client_secret=initiation_result.client_secret,
                 oauth_client_mode=initiation_result.oauth_client_mode,
-                redirect_url=_validate_redirect_url(obj_in.redirect_url),
+                redirect_url=obj_in.redirect_url,
                 template_configs=template_configs,
                 additional_overrides=initiation_result.additional_overrides,
                 initiator_user_id=initiator_user_id,

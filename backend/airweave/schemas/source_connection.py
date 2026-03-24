@@ -884,6 +884,7 @@ class VerifyOAuthRequest(BaseModel):
 def compute_status(
     source_conn: Any,
     last_job_status: Optional[SyncJobStatus] = None,
+    error_category: Optional[str] = None,
 ) -> SourceConnectionStatus:
     """DEPRECATED: Use SourceConnectionListItem computed field instead.
 
@@ -901,8 +902,6 @@ def compute_status(
         if last_job_status in (SyncJobStatus.RUNNING, SyncJobStatus.CANCELLING):
             return SourceConnectionStatus.SYNCING
         elif last_job_status == SyncJobStatus.FAILED:
-            # Check for error_category to determine NEEDS_REAUTH vs ERROR
-            error_category = getattr(source_conn, "_error_category", None)
             if error_category:
                 return SourceConnectionStatus.NEEDS_REAUTH
             return SourceConnectionStatus.ERROR

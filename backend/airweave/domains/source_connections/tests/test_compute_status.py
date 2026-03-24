@@ -11,9 +11,8 @@ def test_needs_reauth_when_failed_with_error_category():
     source_conn = SimpleNamespace(
         is_authenticated=True,
         is_active=True,
-        _error_category="oauth_credentials_expired",
     )
-    status = compute_status(source_conn, SyncJobStatus.FAILED)
+    status = compute_status(source_conn, SyncJobStatus.FAILED, "oauth_credentials_expired")
     assert status == SourceConnectionStatus.NEEDS_REAUTH
 
 
@@ -22,7 +21,6 @@ def test_error_when_failed_without_error_category():
     source_conn = SimpleNamespace(
         is_authenticated=True,
         is_active=True,
-        _error_category=None,
     )
     status = compute_status(source_conn, SyncJobStatus.FAILED)
     assert status == SourceConnectionStatus.ERROR

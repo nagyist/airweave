@@ -886,7 +886,7 @@ const SourceConnectionStateView: React.FC<Props> = ({
                   title="Settings"
                 >
                   <SourceConnectionSettings
-                    sourceConnection={sourceConnection as any}
+                    sourceConnection={sourceConnection}
                     onUpdate={handleConnectionUpdate as any}
                     onDelete={onConnectionDeleted}
                     isDark={isDark}
@@ -910,7 +910,7 @@ const SourceConnectionStateView: React.FC<Props> = ({
           {/* Show credential error view for needs_reauth status */}
           {!isFederatedSource && sourceConnection?.status === 'needs_reauth' && sourceConnection?.error_category && (
             <CredentialErrorView
-              sourceConnection={sourceConnection as any}
+              sourceConnection={sourceConnection}
               onRefreshAuthUrl={handleRefreshAuthUrl}
               isRefreshing={isRefreshingAuth}
               onDelete={undefined}

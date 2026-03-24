@@ -18,14 +18,15 @@ interface SourceConnection {
   id: string;
   name: string;
   short_name: string;
+  status?: string;
   error_category?: string;
   error_message?: string;
+  provider_settings_url?: string;
   auth?: {
     method?: string;
     authenticated?: boolean;
     auth_url?: string;
     provider_readable_id?: string;
-    provider_settings_url?: string;
   };
 }
 
@@ -188,6 +189,45 @@ function DeleteButton({ onDelete, isDark }: { onDelete?: () => void; isDark: boo
   );
 }
 
+function AuthProviderActions({
+  sourceConnection,
+  isDark,
+  onDelete,
+  primaryStyle,
+  secondaryStyle,
+}: {
+  sourceConnection: SourceConnection;
+  isDark: boolean;
+  onDelete?: () => void;
+  primaryStyle: string;
+  secondaryStyle: string;
+}) {
+  const settingsUrl = sourceConnection.provider_settings_url;
+  const providerId = sourceConnection.auth?.provider_readable_id;
+  const providerName = providerId?.split('-')[0];
+
+  return (
+    <div className="flex items-center gap-2 pt-1">
+      {settingsUrl && (
+        <a
+          href={settingsUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className={secondaryStyle}
+        >
+          <ExternalLink className="h-3.5 w-3.5" />
+          Open {providerName ? capitalise(providerName) : 'Provider'} Dashboard
+        </a>
+      )}
+      <a href="/auth-providers" className={primaryStyle}>
+        <ShieldAlert className="h-3.5 w-3.5" />
+        Auth Providers Settings
+      </a>
+      <DeleteButton onDelete={onDelete} isDark={isDark} />
+    </div>
+  );
+}
+
 function ActionArea({
   category,
   sourceConnection,
@@ -255,59 +295,17 @@ function ActionArea({
         />
       );
 
-    case 'auth_provider_account_gone': {
-      const settingsUrl = sourceConnection.auth?.provider_settings_url;
-      const providerId = sourceConnection.auth?.provider_readable_id;
-      const providerName = providerId?.split('-')[0];
-
+    case 'auth_provider_account_gone':
+    case 'auth_provider_credentials_invalid':
       return (
-        <div className="flex items-center gap-2 pt-1">
-          {settingsUrl && (
-            <a
-              href={settingsUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className={secondaryStyle}
-            >
-              <ExternalLink className="h-3.5 w-3.5" />
-              Open {providerName ? capitalise(providerName) : 'Provider'} Dashboard
-            </a>
-          )}
-          <a href="/auth-providers" className={primaryStyle}>
-            <ShieldAlert className="h-3.5 w-3.5" />
-            Auth Providers Settings
-          </a>
-          <DeleteButton onDelete={onDelete} isDark={isDark} />
-        </div>
+        <AuthProviderActions
+          sourceConnection={sourceConnection}
+          isDark={isDark}
+          onDelete={onDelete}
+          primaryStyle={primaryStyle}
+          secondaryStyle={secondaryStyle}
+        />
       );
-    }
-
-    case 'auth_provider_credentials_invalid': {
-      const settingsUrl = sourceConnection.auth?.provider_settings_url;
-      const providerId = sourceConnection.auth?.provider_readable_id;
-      const providerName = providerId?.split('-')[0];
-
-      return (
-        <div className="flex items-center gap-2 pt-1">
-          {settingsUrl && (
-            <a
-              href={settingsUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className={secondaryStyle}
-            >
-              <ExternalLink className="h-3.5 w-3.5" />
-              Open {providerName ? capitalise(providerName) : 'Provider'} Dashboard
-            </a>
-          )}
-          <a href="/auth-providers" className={primaryStyle}>
-            <ShieldAlert className="h-3.5 w-3.5" />
-            Auth Providers Settings
-          </a>
-          <DeleteButton onDelete={onDelete} isDark={isDark} />
-        </div>
-      );
-    }
 
     default:
       return null;

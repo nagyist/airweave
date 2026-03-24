@@ -40,7 +40,10 @@ class AuthProviderRegistry(AuthProviderRegistryProtocol):
         """Get the settings dashboard URL for an auth provider, or None."""
         try:
             entry = self._entries[short_name]
-            return entry.settings_url or None
+            url = entry.settings_url or None
+            if url and not url.startswith("https://"):
+                return None
+            return url
         except KeyError:
             return None
 

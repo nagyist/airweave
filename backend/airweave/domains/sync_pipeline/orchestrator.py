@@ -12,6 +12,7 @@ from airweave.core.protocols.event_bus import EventBus
 from airweave.core.shared_models import SyncJobStatus
 from airweave.db.session import get_db_context
 from airweave.domains.access_control.pipeline import AccessControlPipeline
+from airweave.domains.source_connections.error_classifier import classify_error
 from airweave.domains.sync_pipeline.contexts import SyncContext
 from airweave.domains.sync_pipeline.contexts.runtime import SyncRuntime
 from airweave.domains.sync_pipeline.entity.pipeline import EntityPipeline
@@ -661,8 +662,6 @@ class SyncOrchestrator:
 
     async def _handle_sync_failure(self, error: Exception) -> None:
         """Handle sync failure by updating job status with error details."""
-        from airweave.domains.source_connections.error_classifier import classify_error
-
         error_message = get_error_message(error)
         self.sync_context.logger.error(
             f"Sync job {self.sync_context.sync_job.id} failed: {error_message}", exc_info=True

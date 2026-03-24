@@ -38,3 +38,9 @@ def test_get_settings_url_empty_returns_none():
 def test_get_settings_url_unknown_returns_none():
     reg = AuthProviderRegistry()
     assert reg.get_settings_url("nonexistent") is None
+
+
+def test_get_settings_url_rejects_non_https():
+    reg = AuthProviderRegistry()
+    reg._entries["evil"] = _stub_entry("evil", "http://insecure.example.com/")
+    assert reg.get_settings_url("evil") is None

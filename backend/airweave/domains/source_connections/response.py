@@ -19,7 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from airweave import schemas
 from airweave.api.context import ApiContext
 from airweave.core.config import settings as core_settings
-from airweave.core.shared_models import SyncJobStatus
+from airweave.core.shared_models import SourceConnectionErrorCategory, SyncJobStatus
 from airweave.domains.connections.protocols import ConnectionRepositoryProtocol
 from airweave.domains.credentials.protocols import IntegrationCredentialRepositoryProtocol
 from airweave.domains.entities.protocols import EntityCountRepositoryProtocol
@@ -43,6 +43,25 @@ from airweave.schemas.source_connection import (
 from airweave.schemas.source_connection import (
     SourceConnection as SourceConnectionSchema,
 )
+
+# Generic user-safe messages per error category (raw exception details stay in SyncJobDetails.error)
+_GENERIC_ERROR_MESSAGES: dict[str, str] = {
+    SourceConnectionErrorCategory.OAUTH_CREDENTIALS_EXPIRED.value: (
+        "Your OAuth authorization has expired or been revoked."
+    ),
+    SourceConnectionErrorCategory.API_KEY_INVALID.value: (
+        "The API key for this connection is no longer valid."
+    ),
+    SourceConnectionErrorCategory.CLIENT_CREDENTIALS_INVALID.value: (
+        "The OAuth client credentials (client ID or secret) are invalid."
+    ),
+    SourceConnectionErrorCategory.AUTH_PROVIDER_ACCOUNT_GONE.value: (
+        "The connected account on the auth provider has been deleted or deactivated."
+    ),
+    SourceConnectionErrorCategory.AUTH_PROVIDER_CREDENTIALS_INVALID.value: (
+        "The credentials on the auth provider need to be refreshed or re-configured."
+    ),
+}
 
 
 class ResponseBuilder(ResponseBuilderProtocol):
@@ -97,14 +116,9 @@ class ResponseBuilder(ResponseBuilderProtocol):
 
         last_job_status = None
         last_job_error_category = None
-        last_job_error_message = None
         if sync_details and sync_details.last_job:
             last_job_status = sync_details.last_job.status
             last_job_error_category = getattr(sync_details.last_job, "error_category", None)
-            last_job_error_message = sync_details.last_job.error
-
-        # Attach error_category so compute_status can read it
-        source_conn._error_category = last_job_error_category  # type: ignore[attr-defined]
 
         provider_settings_url = None
         if last_job_error_category and self._auth_provider_registry:
@@ -117,7 +131,7 @@ class ResponseBuilder(ResponseBuilderProtocol):
             description=source_conn.description,
             short_name=source_conn.short_name,
             readable_collection_id=source_conn.readable_collection_id,
-            status=compute_status(source_conn, last_job_status),
+            status=compute_status(source_conn, last_job_status, last_job_error_category),
             created_at=source_conn.created_at,
             modified_at=source_conn.modified_at,
             auth=auth,
@@ -127,7 +141,9 @@ class ResponseBuilder(ResponseBuilderProtocol):
             sync_id=source_conn.sync_id,
             entities=entities,
             error_category=last_job_error_category,
-            error_message=last_job_error_message if last_job_error_category else None,
+            error_message=_GENERIC_ERROR_MESSAGES.get(last_job_error_category, None)
+            if last_job_error_category
+            else None,
             provider_settings_url=provider_settings_url,
             federated_search=federated_search,
         )

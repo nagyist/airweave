@@ -1414,7 +1414,7 @@ async def test_build_response_error_category_surfaces_from_last_job():
 
     result = await f.builder.build_response(None, sc, _make_ctx())
     assert result.error_category == "oauth_credentials_expired"
-    assert result.error_message == "bad creds"
+    assert result.error_message == "Your OAuth authorization has expired or been revoked."
     assert result.status == SourceConnectionStatus.NEEDS_REAUTH
 
 

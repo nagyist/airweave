@@ -28,6 +28,7 @@ from airweave.core.protocols import EventBus
 from airweave.core.redis_client import redis_client
 from airweave.domains.collections.protocols import CollectionRepositoryProtocol
 from airweave.domains.connections.protocols import ConnectionRepositoryProtocol
+from airweave.domains.credentials.protocols import IntegrationCredentialRepositoryProtocol
 from airweave.domains.source_connections.protocols import SourceConnectionRepositoryProtocol
 from airweave.domains.syncs.protocols import (
     SyncJobRepositoryProtocol,
@@ -63,6 +64,8 @@ class RunSyncActivity:
     sync_service: SyncServiceProtocol
     sync_job_service: SyncJobServiceProtocol
     collection_repo: CollectionRepositoryProtocol
+    conn_repo: ConnectionRepositoryProtocol
+    credential_repo: IntegrationCredentialRepositoryProtocol
 
     @activity.defn(name="run_sync_activity")
     async def run(  # noqa: C901
@@ -150,12 +153,10 @@ class RunSyncActivity:
                     source_connection_id = source_conn.id
                     # Resolve authentication_method via Connection → IntegrationCredential
                     if source_conn.connection_id:
-                        conn = await crud.connection.get(
-                            db=db, id=source_conn.connection_id, ctx=ctx
-                        )
+                        conn = await self.conn_repo.get(db, id=source_conn.connection_id, ctx=ctx)
                         if conn and conn.integration_credential_id:
-                            cred = await crud.integration_credential.get(
-                                db=db, id=conn.integration_credential_id, ctx=ctx
+                            cred = await self.credential_repo.get(
+                                db, id=conn.integration_credential_id, ctx=ctx
                             )
                             if cred:
                                 authentication_method = cred.authentication_method

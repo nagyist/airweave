@@ -50,6 +50,8 @@ def create_activities() -> list:
             sync_service=sync_service,
             sync_job_service=sync_job_service,
             collection_repo=collection_repo,
+            conn_repo=conn_repo,
+            credential_repo=container.cred_repo,
         ).run,
         CreateSyncJobActivity(
             event_bus=event_bus,

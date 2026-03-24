@@ -23,86 +23,16 @@ import {
 } from '@/components/ui/tooltip';
 import { DESIGN_SYSTEM } from '@/lib/design-system';
 import { useCollectionCreationStore } from '@/stores/collectionCreationStore';
-import type { SingleActionCheckResponse } from '@/types';
+import type {
+  SingleActionCheckResponse,
+  SourceConnection,
+  SourceConnectionAuth as AuthenticationInfo,
+  SourceConnectionLastSyncJob as LastSyncJob,
+  SourceConnectionSchedule as Schedule,
+  SourceConnectionEntitySummary as EntitySummary,
+} from '@/types';
 import { useUsageStore } from '@/lib/stores/usage';
 import { parseCronExpression, formatTimeUntil } from '@/utils/cronParser';
-
-// Source Connection interface - matches backend schema
-interface LastSyncJob {
-  id?: string;
-  status?: string;
-  started_at?: string;
-  completed_at?: string;
-  duration_seconds?: number;
-  entities_inserted?: number;
-  entities_updated?: number;
-  entities_deleted?: number;
-  entities_failed?: number;
-  error?: string;
-  error_details?: Record<string, any>;
-}
-
-interface Schedule {
-  cron?: string;  // Backend uses 'cron', not 'cron_expression'
-  next_run?: string;  // Backend uses 'next_run', not 'next_run_at'
-  continuous?: boolean;  // Backend uses 'continuous', not 'is_continuous'
-  cursor_field?: string;
-  cursor_value?: any;
-}
-
-interface AuthenticationInfo {
-  method?: string;
-  authenticated?: boolean;  // Backend uses 'authenticated', not 'is_authenticated'
-  authenticated_at?: string;
-  expires_at?: string;
-  auth_url?: string;  // Backend uses 'auth_url', not 'authentication_url'
-  auth_url_expires?: string;  // Backend uses 'auth_url_expires'
-  provider_id?: string;  // Backend uses 'provider_id'
-  provider_readable_id?: string;  // Backend uses 'provider_readable_id'
-  redirect_url?: string;
-}
-
-interface EntityTypeStats {
-  count: number;
-  last_updated?: string;
-  sync_status: string;
-}
-
-interface EntitySummary {
-  total_entities: number;
-  by_type: Record<string, EntityTypeStats>;
-  last_updated?: string;
-}
-
-interface SourceConnection {
-  id: string;
-  name: string;
-  description?: string;
-  short_name: string;
-  readable_collection_id: string;
-  status?: string;
-  created_at: string;
-  modified_at: string;
-  // Authentication is now in the auth object
-  auth?: AuthenticationInfo;  // Contains authenticated, method, etc.
-  config?: Record<string, any>;  // Changed from config_fields
-  schedule?: Schedule;
-  last_sync_job?: LastSyncJob;
-  entities?: EntitySummary;  // Changed from entity_states array to entities object
-  // Credential error info
-  error_category?: string;
-  error_message?: string;
-  provider_settings_url?: string;
-  provider_short_name?: string;
-  // Source configuration
-  federated_search?: boolean;  // Whether this source uses federated search
-  // Legacy fields that may still exist
-  sync_id?: string;
-  organization_id?: string;
-  connection_id?: string;
-  created_by_email?: string;
-  modified_by_email?: string;
-}
 
 interface Props {
   sourceConnectionId: string;
@@ -253,8 +183,13 @@ const SourceConnectionStateView: React.FC<Props> = ({
   const handleRefreshAuthUrl = useCallback(async () => {
     setIsRefreshingAuth(true);
     try {
+      const isNeedsReauth = sourceConnection?.status === 'needs_reauth';
+      const params = new URLSearchParams();
+      if (isNeedsReauth) params.set('force', 'true');
+      if (isNeedsReauth) params.set('redirect_url', window.location.href);
+      const qs = params.toString() ? `?${params.toString()}` : '';
       const response = await apiClient.post(
-        `/source-connections/${sourceConnectionId}/reinitiate-oauth`
+        `/source-connections/${sourceConnectionId}/reinitiate-oauth${qs}`
       );
       if (response.ok) {
         const data = await response.json();
@@ -265,6 +200,13 @@ const SourceConnectionStateView: React.FC<Props> = ({
           );
         }
         setSourceConnection(data);
+
+        // For NEEDS_REAUTH: redirect to OAuth provider immediately
+        if (isNeedsReauth && data.auth?.auth_url) {
+          window.location.href = data.auth.auth_url;
+          return;
+        }
+
         toast({
           title: "Ready",
           description: "Click 'Connect now' to authorize.",
@@ -290,7 +232,7 @@ const SourceConnectionStateView: React.FC<Props> = ({
     } finally {
       setIsRefreshingAuth(false);
     }
-  }, [sourceConnectionId]);
+  }, [sourceConnectionId, sourceConnection?.status]);
 
   useEffect(() => {
     const isNotAuthorized = sourceConnectionData?.status === 'pending_auth' || !sourceConnectionData?.auth?.authenticated;

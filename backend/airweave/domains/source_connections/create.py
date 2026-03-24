@@ -3,6 +3,7 @@
 import hashlib
 import secrets
 from typing import Any, Optional
+from urllib.parse import urlparse
 from uuid import UUID
 
 from fastapi import HTTPException
@@ -10,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import schemas
 from airweave.api.context import ApiContext
+from airweave.core.config import settings as core_settings
 from airweave.core.events.source_connection import SourceConnectionLifecycleEvent
 from airweave.core.events.sync import SyncLifecycleEvent
 from airweave.core.exceptions import NotFoundException
@@ -54,6 +56,27 @@ from airweave.schemas.source_connection import (
 from airweave.schemas.source_connection import (
     SourceConnection as SourceConnectionSchema,
 )
+
+
+def _validate_redirect_url(url: Optional[str]) -> Optional[str]:
+    """Validate that a redirect URL is safe (relative or same-origin as app_url).
+
+    Returns the validated URL or None. Raises HTTPException on invalid external URLs.
+    """
+    if not url:
+        return None
+    # Allow relative paths
+    if url.startswith("/"):
+        return url
+    # Allow same-origin as app_url
+    parsed = urlparse(url)
+    app_parsed = urlparse(core_settings.app_url)
+    if parsed.scheme in ("http", "https") and parsed.netloc == app_parsed.netloc:
+        return url
+    raise HTTPException(
+        status_code=400,
+        detail="redirect_url must be a relative path or match the application origin.",
+    )
 
 
 class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
@@ -193,7 +216,7 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
         byoc_consumer_key: Optional[str] = None
         byoc_consumer_secret: Optional[str] = None
         template_configs: Optional[dict[str, Any]] = None
-        resolved_redirect_url: Optional[str] = redirect_url  # Prefer caller-supplied URL
+        resolved_redirect_url: Optional[str] = _validate_redirect_url(redirect_url)
         payload: Optional[dict[str, Any]] = None
         old_init = None
 
@@ -573,7 +596,7 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
                 client_id=initiation_result.client_id,
                 client_secret=initiation_result.client_secret,
                 oauth_client_mode=initiation_result.oauth_client_mode,
-                redirect_url=obj_in.redirect_url,
+                redirect_url=_validate_redirect_url(obj_in.redirect_url),
                 template_configs=template_configs,
                 additional_overrides=initiation_result.additional_overrides,
                 initiator_user_id=initiator_user_id,

@@ -6,13 +6,10 @@ response schemas from multiple data sources.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Optional
 from uuid import UUID
-
-if TYPE_CHECKING:
-    from airweave.domains.auth_provider.protocols import AuthProviderRegistryProtocol
 
 from croniter import croniter
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -44,6 +41,9 @@ from airweave.schemas.source_connection import (
 from airweave.schemas.source_connection import (
     SourceConnection as SourceConnectionSchema,
 )
+
+if TYPE_CHECKING:
+    from airweave.domains.auth_provider.protocols import AuthProviderRegistryProtocol
 
 
 @dataclass(frozen=True, slots=True)
@@ -113,6 +113,14 @@ class ResponseBuilder(ResponseBuilderProtocol):
         claim_token: Optional[str] = None,
     ) -> SourceConnectionSchema:
         """Build complete SourceConnection response from an ORM object."""
+        sync_details = await self._build_sync_details(db, source_conn, ctx)
+
+        last_job_status = None
+        last_job_error_category = None
+        if sync_details and sync_details.last_job:
+            last_job_status = sync_details.last_job.status
+            last_job_error_category = getattr(sync_details.last_job, "error_category", None)
+
         auth = await self._build_auth_details(
             db,
             source_conn,
@@ -120,17 +128,11 @@ class ResponseBuilder(ResponseBuilderProtocol):
             auth_url_override=auth_url_override,
             auth_url_expiry_override=auth_url_expiry_override,
             claim_token=claim_token,
+            has_credential_error=last_job_error_category is not None,
         )
         schedule = await self._build_schedule_details(db, source_conn, ctx)
-        sync_details = await self._build_sync_details(db, source_conn, ctx)
         entities = await self._build_entity_summary(db, source_conn, ctx)
         federated_search = self._get_federated_search(source_conn)
-
-        last_job_status = None
-        last_job_error_category = None
-        if sync_details and sync_details.last_job:
-            last_job_status = sync_details.last_job.status
-            last_job_error_category = getattr(sync_details.last_job, "error_category", None)
 
         provider_info = _EMPTY_PROVIDER_INFO
         if last_job_error_category and self._auth_provider_registry:
@@ -216,6 +218,7 @@ class ResponseBuilder(ResponseBuilderProtocol):
         auth_url_override: Optional[str] = None,
         auth_url_expiry_override: Optional[datetime] = None,
         claim_token: Optional[str] = None,
+        has_credential_error: bool = False,
     ) -> AuthenticationDetails:
         """Build authentication details section."""
         actual_auth_method = await self._resolve_auth_method(db, source_conn, ctx)
@@ -237,9 +240,13 @@ class ResponseBuilder(ResponseBuilderProtocol):
             auth_url = auth_url_override
             auth_url_expires = auth_url_expiry_override
         elif source_conn.connection_init_session_id:
-            auth_url, auth_url_expires, redirect_url = await self._resolve_oauth_pending(
+            resolved_auth_url, auth_url_expires, redirect_url = await self._resolve_oauth_pending(
                 db, source_conn, ctx
             )
+            # Only expose auth_url when the connection needs (re-)authentication
+            # or when a fresh claim_token signals an active OAuth initiation
+            if not source_conn.is_authenticated or has_credential_error or claim_token:
+                auth_url = resolved_auth_url
 
         return AuthenticationDetails(
             method=actual_auth_method,

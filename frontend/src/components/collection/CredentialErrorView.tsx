@@ -6,6 +6,7 @@ import { getAppIconUrl } from '@/lib/utils/icons';
 import { DESIGN_SYSTEM } from '@/lib/design-system';
 import { apiClient } from '@/lib/api';
 import { toast } from '@/hooks/use-toast';
+import type { SourceConnection } from '@/types';
 
 type ErrorCategory =
   | 'oauth_credentials_expired'
@@ -13,23 +14,6 @@ type ErrorCategory =
   | 'client_credentials_invalid'
   | 'auth_provider_account_gone'
   | 'auth_provider_credentials_invalid';
-
-interface SourceConnection {
-  id: string;
-  name: string;
-  short_name: string;
-  status?: string;
-  error_category?: string;
-  error_message?: string;
-  provider_settings_url?: string;
-  provider_short_name?: string;
-  auth?: {
-    method?: string;
-    authenticated?: boolean;
-    auth_url?: string;
-    provider_readable_id?: string;
-  };
-}
 
 interface CredentialErrorViewProps {
   sourceConnection: SourceConnection;

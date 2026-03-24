@@ -43,6 +43,9 @@ from airweave.domains.temporal.protocols import TemporalScheduleServiceProtocol
 from airweave.platform.temporal.client import temporal_client
 from airweave.platform.temporal.workflows import RunSourceConnectionWorkflow
 
+# Schedule ID prefixes for the three schedule types per sync.
+SCHEDULE_PREFIXES = ("sync-", "minute-sync-", "daily-cleanup-")
+
 _MINUTE_LEVEL_RE = re.compile(r"^(\*/([1-5]?\d)|([0-5]?\d)) \* \* \* \*$")
 
 
@@ -425,7 +428,7 @@ class TemporalScheduleService(TemporalScheduleServiceProtocol):
         ctx: ApiContext,
     ) -> None:
         """Delete all schedules (regular + minute + daily cleanup) for a sync."""
-        for prefix in ("sync-", "minute-sync-", "daily-cleanup-"):
+        for prefix in SCHEDULE_PREFIXES:
             schedule_id = f"{prefix}{sync_id}"
             try:
                 await self._delete_schedule_by_id(schedule_id, sync_id, db, ctx)
@@ -467,7 +470,7 @@ class TemporalScheduleService(TemporalScheduleServiceProtocol):
         sync_id = sc.sync_id
         client = await self._get_client()
 
-        for prefix in ("sync-", "minute-sync-", "daily-cleanup-"):
+        for prefix in SCHEDULE_PREFIXES:
             schedule_id = f"{prefix}{sync_id}"
             try:
                 handle = client.get_schedule_handle(schedule_id)
@@ -495,7 +498,7 @@ class TemporalScheduleService(TemporalScheduleServiceProtocol):
         sync_id = sc.sync_id
         client = await self._get_client()
 
-        for prefix in ("sync-", "minute-sync-", "daily-cleanup-"):
+        for prefix in SCHEDULE_PREFIXES:
             schedule_id = f"{prefix}{sync_id}"
             try:
                 handle = client.get_schedule_handle(schedule_id)

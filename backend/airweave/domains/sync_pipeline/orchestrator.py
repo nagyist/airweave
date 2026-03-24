@@ -12,7 +12,7 @@ from airweave.core.protocols.event_bus import EventBus
 from airweave.core.shared_models import SyncJobStatus
 from airweave.db.session import get_db_context
 from airweave.domains.access_control.pipeline import AccessControlPipeline
-from airweave.domains.source_connections.error_classifier import classify_error
+from airweave.domains.errors.credential_error_classifier import classify_error
 from airweave.domains.sync_pipeline.contexts import SyncContext
 from airweave.domains.sync_pipeline.contexts.runtime import SyncRuntime
 from airweave.domains.sync_pipeline.entity.pipeline import EntityPipeline

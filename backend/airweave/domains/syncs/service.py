@@ -10,7 +10,7 @@ from airweave.api.context import ApiContext
 from airweave.core.datetime_utils import utc_now_naive
 from airweave.core.shared_models import SyncJobStatus
 from airweave.db.session import get_db_context
-from airweave.domains.source_connections.error_classifier import classify_error
+from airweave.domains.errors.credential_error_classifier import classify_error
 from airweave.domains.sync_pipeline.config import SyncConfig
 from airweave.domains.sync_pipeline.protocols import SyncFactoryProtocol
 from airweave.domains.syncs.protocols import SyncJobServiceProtocol, SyncServiceProtocol
@@ -41,6 +41,7 @@ class SyncService(SyncServiceProtocol):
         force_full_sync: bool = False,
         execution_config: Optional[SyncConfig] = None,
         access_token: Optional[str] = None,
+        authentication_method: Optional[str] = None,
     ) -> schemas.Sync:
         """Run a sync."""
         try:
@@ -60,7 +61,7 @@ class SyncService(SyncServiceProtocol):
             ctx.logger.error(f"Error during sync orchestrator creation: {e}")
 
             # Classify credential errors so the UI shows NEEDS_REAUTH
-            classification = classify_error(e)
+            classification = classify_error(e, authentication_method or "")
             error_cat = classification.category.value if classification.category else None
 
             await self._sync_job_service.update_status(

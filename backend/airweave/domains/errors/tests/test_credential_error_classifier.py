@@ -7,7 +7,7 @@ from airweave.domains.auth_provider.exceptions import (
     AuthProviderAccountNotFoundError,
     AuthProviderAuthError,
 )
-from airweave.domains.source_connections.error_classifier import classify_error
+from airweave.domains.errors.credential_error_classifier import classify_error
 from airweave.domains.sources.exceptions import SourceAuthError, SourceTokenRefreshError
 from airweave.domains.sources.token_providers.exceptions import (
     TokenCredentialsInvalidError,

@@ -106,6 +106,7 @@ class RunSyncActivity:
         # contain outdated destination_connection_ids after migrations)
         sync_id = UUID(sync_dict["id"])
         collection_id = UUID(collection_dict["id"])
+        authentication_method: Optional[str] = None
         async with get_db_context() as db:
             # Fetch sync with connections to get current destination_connection_ids
             try:
@@ -147,6 +148,7 @@ class RunSyncActivity:
                 )
                 if source_conn:
                     source_connection_id = source_conn.id
+                    authentication_method = getattr(source_conn, "authentication_method", None)
                     ctx.logger.info(
                         f"Resolved SourceConnection.id={source_connection_id} "
                         f"(internal Connection.id={sync.source_connection_id})"
@@ -196,6 +198,7 @@ class RunSyncActivity:
                     ctx,
                     access_token,
                     force_full_sync,
+                    authentication_method=authentication_method,
                 )
             )
 
@@ -415,6 +418,7 @@ class RunSyncActivity:
         ctx: BaseContext,
         access_token: Optional[str] = None,
         force_full_sync: bool = False,
+        authentication_method: Optional[str] = None,
     ):
         """Run the actual sync service."""
         from airweave import crud
@@ -444,6 +448,7 @@ class RunSyncActivity:
                 force_full_sync=force_full_sync,
                 execution_config=execution_config,
                 access_token=access_token,
+                authentication_method=authentication_method,
             )
         except NotFoundException as e:
             if "Source connection record not found" in str(e) or "Connection not found" in str(e):

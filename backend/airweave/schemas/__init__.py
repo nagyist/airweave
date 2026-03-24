@@ -97,6 +97,7 @@ from .source_connection import (
     EntityTypeStats,
     ScheduleDetails,
     SourceConnection,
+    ReinitiateOAuthRequest,
     SourceConnectionCreate,
     SourceConnectionJob,
     SourceConnectionListItem,

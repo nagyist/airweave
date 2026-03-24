@@ -153,13 +153,12 @@ class FakeSourceConnectionService:
         *,
         id: UUID,
         ctx: ApiContext,
-        force: bool = False,
         redirect_url: Optional[str] = None,
     ) -> SourceConnectionSchema:
-        self._calls.append(("reinitiate_oauth", db, id, ctx, force, redirect_url))
+        self._calls.append(("reinitiate_oauth", db, id, ctx, redirect_url))
         if self._create_service:
             return await self._create_service.reinitiate_oauth(
-                db, id=id, ctx=ctx, force=force, redirect_url=redirect_url
+                db, id=id, ctx=ctx, redirect_url=redirect_url
             )
         raise NotImplementedError("FakeSourceConnectionService.reinitiate_oauth not wired")
 

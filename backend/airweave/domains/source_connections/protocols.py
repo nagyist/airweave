@@ -194,7 +194,6 @@ class SourceConnectionCreateServiceProtocol(Protocol):
         *,
         id: UUID,
         ctx: ApiContext,
-        force: bool = False,
         redirect_url: Optional[str] = None,
     ) -> SourceConnectionSchema:
         """Create a fresh OAuth session for an un-authenticated connection."""
@@ -279,7 +278,6 @@ class SourceConnectionServiceProtocol(Protocol):
         *,
         id: UUID,
         ctx: ApiContext,
-        force: bool = False,
         redirect_url: Optional[str] = None,
     ) -> SourceConnectionSchema:
         """Create a fresh OAuth session for an un-authenticated connection."""

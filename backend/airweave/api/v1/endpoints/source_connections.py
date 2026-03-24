@@ -138,8 +138,8 @@ When a user creates an OAuth source connection but never completes authenticatio
 This endpoint creates a new init session and redirect session, returning a fresh
 `auth_url` and `claim_token` so the user can retry authentication.
 
-Only works on connections where `is_authenticated` is false, unless `force=true`
-is passed (used for NEEDS_REAUTH flows where credentials are stale).""",
+Only works on connections where `is_authenticated` is false, or where the
+last sync failed with a credential error (NEEDS_REAUTH).""",
     responses={
         200: {"model": schemas.SourceConnection, "description": "Connection with fresh auth URL"},
         400: {"description": "Connection is already authenticated"},
@@ -150,7 +150,6 @@ async def reinitiate_oauth(
     *,
     db: AsyncSession = Depends(get_db),
     source_connection_id: UUID = Path(...),
-    force: bool = Query(False, description="Skip the is_authenticated guard for NEEDS_REAUTH"),
     body: Optional[schemas.ReinitiateOAuthRequest] = None,
     ctx: ApiContext = Depends(deps.get_context),
     sc_service: SourceConnectionServiceProtocol = Inject(SourceConnectionServiceProtocol),
@@ -158,7 +157,7 @@ async def reinitiate_oauth(
     """Create a fresh OAuth session for an un-authenticated connection."""
     redirect_url = body.redirect_url if body else None
     return await sc_service.reinitiate_oauth(
-        db, id=source_connection_id, ctx=ctx, force=force, redirect_url=redirect_url
+        db, id=source_connection_id, ctx=ctx, redirect_url=redirect_url
     )
 
 

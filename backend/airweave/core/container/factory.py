@@ -363,6 +363,7 @@ def create_container(settings: Settings) -> Container:
         temporal_workflow_service=sync_deps["temporal_workflow_service"],
         event_bus=event_bus,
         auth_provider_service=auth_provider_service,
+        sync_job_repo=source_deps["sync_job_repo"],
     )
     source_connection_service = SourceConnectionService(
         sc_repo=source_deps["sc_repo"],

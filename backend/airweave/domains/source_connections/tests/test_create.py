@@ -25,6 +25,7 @@ from airweave.domains.sources.exceptions import SourceValidationError
 from airweave.domains.sources.fakes.lifecycle import FakeSourceLifecycleService
 from airweave.domains.sources.fakes.registry import FakeSourceRegistry
 from airweave.domains.sources.fakes.validation import FakeSourceValidationService
+from airweave.domains.syncs.fakes.sync_job_repository import FakeSyncJobRepository
 from airweave.domains.syncs.fakes.sync_lifecycle_service import FakeSyncLifecycleService
 from airweave.domains.syncs.fakes.sync_record_service import FakeSyncRecordService
 from airweave.domains.temporal.fakes.service import FakeTemporalWorkflowService
@@ -92,6 +93,7 @@ def _service(entry) -> SourceConnectionCreationService:
         temporal_workflow_service=FakeTemporalWorkflowService(),
         event_bus=AsyncMock(),
         auth_provider_service=FakeAuthProviderService(),
+        sync_job_repo=FakeSyncJobRepository(),
     )
 
 
@@ -1002,14 +1004,22 @@ async def test_reinitiate_oauth_already_authenticated():
     assert "already authenticated" in exc_info.value.detail
 
 
-async def test_reinitiate_oauth_force_bypasses_authenticated_guard(monkeypatch):
-    """force=True allows re-auth even when is_authenticated=True (NEEDS_REAUTH flow)."""
+async def test_reinitiate_oauth_allowed_when_credential_error(monkeypatch):
+    """Authenticated connection with a credential error allows re-auth (NEEDS_REAUTH flow)."""
     entry = _entry(oauth_type="access_only")
     svc = _service(entry)
 
+    sync_id = uuid4()
     sc_id = uuid4()
     sc = _shell_source_conn(sc_id=sc_id, is_authenticated=True)
+    sc.sync_id = sync_id
     svc._sc_repo.seed(sc_id, sc)
+
+    # Seed a failed job with error_category so _has_credential_error returns True
+    sync_job_repo = FakeSyncJobRepository()
+    job = SimpleNamespace(error_category="api_key_invalid")
+    sync_job_repo.seed_last_job(sync_id, job)
+    svc._sync_job_repo = sync_job_repo
 
     svc._source_validation.validate_config = MagicMock(return_value={})
     svc._oauth_flow_service.seed_initiate_browser_flow_result(
@@ -1034,7 +1044,7 @@ async def test_reinitiate_oauth_force_bypasses_authenticated_guard(monkeypatch):
     db.add = MagicMock()
     db.refresh = AsyncMock()
 
-    result = await svc.reinitiate_oauth(db, id=sc_id, ctx=_ctx(), force=True)
+    result = await svc.reinitiate_oauth(db, id=sc_id, ctx=_ctx())
     assert result is expected_response
 
 

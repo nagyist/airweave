@@ -4,7 +4,6 @@ Called exclusively from RunSyncActivity (Temporal worker).
 """
 
 from typing import Optional
-from uuid import UUID
 
 from airweave import schemas
 from airweave.api.context import ApiContext
@@ -46,7 +45,6 @@ class SyncService(SyncServiceProtocol):
         execution_config: Optional[SyncConfig] = None,
         access_token: Optional[str] = None,
         authentication_method: Optional[str] = None,
-        source_connection_id: Optional[UUID] = None,
     ) -> schemas.Sync:
         """Run a sync."""
         try:
@@ -78,15 +76,12 @@ class SyncService(SyncServiceProtocol):
             )
 
             # Pause schedules on credential errors to avoid repeated failures
-            if classification.category is not None and source_connection_id:
+            if classification.category is not None and sync:
                 try:
-                    async with get_db_context() as pause_db:
-                        await self._temporal_schedule_service.pause_schedules_for_source_connection(
-                            source_connection_id,
-                            pause_db,
-                            ctx,
-                            reason=f"Credential error: {classification.category.value}",
-                        )
+                    await self._temporal_schedule_service.pause_schedules_for_sync(
+                        sync.id,
+                        reason=f"Credential error: {classification.category.value}",
+                    )
                 except Exception:
                     ctx.logger.warning(
                         "Failed to pause schedules after credential error", exc_info=True

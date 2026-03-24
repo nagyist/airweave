@@ -576,8 +576,8 @@ class OAuthCallbackService:
 
             # Unpause schedules — OAuth re-auth may fix a NEEDS_REAUTH state
             try:
-                await self._temporal_schedule_service.unpause_schedules_for_source_connection(
-                    source_conn.id, uow.session, ctx
+                await self._temporal_schedule_service.unpause_schedules_for_sync(
+                    source_conn.sync_id,
                 )
             except Exception:
                 logger.warning("Failed to unpause schedules after OAuth re-auth", exc_info=True)

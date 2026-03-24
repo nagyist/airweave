@@ -92,24 +92,20 @@ class TemporalScheduleServiceProtocol(Protocol):
         """
         ...
 
-    async def pause_schedules_for_source_connection(
+    async def pause_schedules_for_sync(
         self,
-        source_connection_id: UUID,
-        db: AsyncSession,
-        ctx: ApiContext,
+        sync_id: UUID,
         *,
         reason: str = "",
     ) -> None:
-        """Pause all schedules for a source connection (credential error)."""
+        """Pause all schedules for a sync (credential error)."""
         ...
 
-    async def unpause_schedules_for_source_connection(
+    async def unpause_schedules_for_sync(
         self,
-        source_connection_id: UUID,
-        db: AsyncSession,
-        ctx: ApiContext,
+        sync_id: UUID,
     ) -> None:
-        """Unpause all schedules for a source connection (credential fixed)."""
+        """Unpause all schedules for a sync (credential fixed)."""
         ...
 
     async def ensure_system_schedules(self) -> None:

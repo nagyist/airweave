@@ -75,26 +75,22 @@ class FakeTemporalScheduleService(TemporalScheduleServiceProtocol):
         """No-op for tests."""
         self._calls.append(("ensure_system_schedules",))
 
-    async def pause_schedules_for_source_connection(
+    async def pause_schedules_for_sync(
         self,
-        source_connection_id: UUID,
-        db: AsyncSession,
-        ctx: ApiContext,
+        sync_id: UUID,
         *,
         reason: str = "",
     ) -> None:
         """Record call."""
-        self._calls.append(("pause_schedules", source_connection_id, db, ctx, reason))
+        self._calls.append(("pause_schedules", sync_id, reason))
         if self._should_raise:
             raise self._should_raise
 
-    async def unpause_schedules_for_source_connection(
+    async def unpause_schedules_for_sync(
         self,
-        source_connection_id: UUID,
-        db: AsyncSession,
-        ctx: ApiContext,
+        sync_id: UUID,
     ) -> None:
         """Record call."""
-        self._calls.append(("unpause_schedules", source_connection_id, db, ctx))
+        self._calls.append(("unpause_schedules", sync_id))
         if self._should_raise:
             raise self._should_raise

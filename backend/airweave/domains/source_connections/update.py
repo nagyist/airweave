@@ -129,8 +129,8 @@ class SourceConnectionUpdateService(SourceConnectionUpdateServiceProtocol):
 
                 # Unpause schedules — credential update may fix a NEEDS_REAUTH state
                 try:
-                    await self._temporal_schedule_service.unpause_schedules_for_source_connection(
-                        source_conn.id, uow.session, ctx
+                    await self._temporal_schedule_service.unpause_schedules_for_sync(
+                        source_conn.sync_id,
                     )
                 except Exception:
                     ctx.logger.warning(

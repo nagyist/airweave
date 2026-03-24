@@ -2267,4 +2267,4 @@ class TestVerifyOAuthFlow:
                 has_claim_token=True,
             )
 
-        temporal_schedule_service.unpause_schedules_for_source_connection.assert_awaited_once()
+        temporal_schedule_service.unpause_schedules_for_sync.assert_awaited_once()

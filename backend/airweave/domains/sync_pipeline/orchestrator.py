@@ -684,13 +684,10 @@ class SyncOrchestrator:
         # Pause schedules on credential errors to avoid repeated failures
         if classification.category is not None:
             try:
-                async with get_db_context() as pause_db:
-                    await self._temporal_schedule_service.pause_schedules_for_source_connection(
-                        self.sync_context.source_connection_id,
-                        pause_db,
-                        self.sync_context,
-                        reason=f"Credential error: {classification.category.value}",
-                    )
+                await self._temporal_schedule_service.pause_schedules_for_sync(
+                    self.sync_context.sync.id,
+                    reason=f"Credential error: {classification.category.value}",
+                )
             except Exception as pause_err:
                 self.sync_context.logger.warning(
                     f"Failed to pause schedules after credential error: {pause_err}",

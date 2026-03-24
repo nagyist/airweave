@@ -454,20 +454,13 @@ class TemporalScheduleService(TemporalScheduleServiceProtocol):
         except Exception as e:
             logger.info(f"Schedule handle {schedule_id} not deleted: {e}")
 
-    async def pause_schedules_for_source_connection(
+    async def pause_schedules_for_sync(
         self,
-        source_connection_id: UUID,
-        db: AsyncSession,
-        ctx: ApiContext,
+        sync_id: UUID,
         *,
         reason: str = "",
     ) -> None:
-        """Pause all Temporal schedules for a source connection."""
-        sc = await self._sc_repo.get(db, source_connection_id, ctx)
-        if not sc or not sc.sync_id:
-            return
-
-        sync_id = sc.sync_id
+        """Pause all Temporal schedules for a sync."""
         client = await self._get_client()
 
         for prefix in SCHEDULE_PREFIXES:
@@ -484,18 +477,11 @@ class TemporalScheduleService(TemporalScheduleServiceProtocol):
             except Exception as e:
                 logger.warning(f"Failed to pause schedule {schedule_id}: {e}")
 
-    async def unpause_schedules_for_source_connection(
+    async def unpause_schedules_for_sync(
         self,
-        source_connection_id: UUID,
-        db: AsyncSession,
-        ctx: ApiContext,
+        sync_id: UUID,
     ) -> None:
-        """Unpause all Temporal schedules for a source connection."""
-        sc = await self._sc_repo.get(db, source_connection_id, ctx)
-        if not sc or not sc.sync_id:
-            return
-
-        sync_id = sc.sync_id
+        """Unpause all Temporal schedules for a sync."""
         client = await self._get_client()
 
         for prefix in SCHEDULE_PREFIXES:

@@ -152,11 +152,8 @@ class TestHandleSyncFailure:
             token_provider_kind=AuthProviderKind.OAUTH,
         )
 
-        with patch("airweave.domains.sync_pipeline.orchestrator.get_db_context") as mock_db_ctx:
-            mock_db_ctx.return_value.__aenter__ = AsyncMock(return_value=AsyncMock())
-            mock_db_ctx.return_value.__aexit__ = AsyncMock(return_value=False)
-            with patch("airweave.domains.sync_pipeline.orchestrator.business_events"):
-                await orc._handle_sync_failure(exc)
+        with patch("airweave.domains.sync_pipeline.orchestrator.business_events"):
+            await orc._handle_sync_failure(exc)
 
         # Verify error_category was passed to update_status
         sync_job_service.update_status.assert_awaited_once()
@@ -165,9 +162,9 @@ class TestHandleSyncFailure:
         assert call_kwargs["status"] == SyncJobStatus.FAILED
 
         # Verify pause_schedules was called
-        temporal_schedule_service.pause_schedules_for_source_connection.assert_awaited_once()
-        pause_kwargs = temporal_schedule_service.pause_schedules_for_source_connection.call_args
-        assert pause_kwargs[0][0] == ctx.source_connection_id
+        temporal_schedule_service.pause_schedules_for_sync.assert_awaited_once()
+        pause_kwargs = temporal_schedule_service.pause_schedules_for_sync.call_args
+        assert pause_kwargs[0][0] == ctx.sync.id
 
     @pytest.mark.asyncio
     async def test_non_credential_error_no_category_no_pause(self):
@@ -191,7 +188,7 @@ class TestHandleSyncFailure:
         call_kwargs = sync_job_service.update_status.call_args.kwargs
         assert call_kwargs["error_category"] is None
 
-        temporal_schedule_service.pause_schedules_for_source_connection.assert_not_awaited()
+        temporal_schedule_service.pause_schedules_for_sync.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_pause_failure_is_nonfatal(self):
@@ -201,7 +198,7 @@ class TestHandleSyncFailure:
 
         sync_job_service = AsyncMock()
         temporal_schedule_service = AsyncMock()
-        temporal_schedule_service.pause_schedules_for_source_connection.side_effect = OSError(
+        temporal_schedule_service.pause_schedules_for_sync.side_effect = OSError(
             "connection refused"
         )
 
@@ -222,11 +219,8 @@ class TestHandleSyncFailure:
             token_provider_kind=AuthProviderKind.OAUTH,
         )
 
-        with patch("airweave.domains.sync_pipeline.orchestrator.get_db_context") as mock_db_ctx:
-            mock_db_ctx.return_value.__aenter__ = AsyncMock(return_value=AsyncMock())
-            mock_db_ctx.return_value.__aexit__ = AsyncMock(return_value=False)
-            with patch("airweave.domains.sync_pipeline.orchestrator.business_events"):
-                await orc._handle_sync_failure(exc)  # should not raise
+        with patch("airweave.domains.sync_pipeline.orchestrator.business_events"):
+            await orc._handle_sync_failure(exc)  # should not raise
 
         # Job was still updated
         sync_job_service.update_status.assert_awaited_once()

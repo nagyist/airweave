@@ -210,7 +210,6 @@ class RunSyncActivity:
                     access_token,
                     force_full_sync,
                     authentication_method=authentication_method,
-                    source_connection_id=source_connection_id,
                 )
             )
 
@@ -431,7 +430,6 @@ class RunSyncActivity:
         access_token: Optional[str] = None,
         force_full_sync: bool = False,
         authentication_method: Optional[str] = None,
-        source_connection_id: Optional[UUID] = None,
     ):
         """Run the actual sync service."""
         from airweave import crud
@@ -462,7 +460,6 @@ class RunSyncActivity:
                 execution_config=execution_config,
                 access_token=access_token,
                 authentication_method=authentication_method,
-                source_connection_id=source_connection_id,
             )
         except NotFoundException as e:
             if "Source connection record not found" in str(e) or "Connection not found" in str(e):

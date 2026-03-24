@@ -195,7 +195,7 @@ class TestHandleSyncFailure:
 
     @pytest.mark.asyncio
     async def test_pause_failure_is_nonfatal(self):
-        """If pause_schedules raises OSError, _handle_sync_failure still completes."""
+        """If pause_schedules raises, _handle_sync_failure still completes."""
         from airweave.domains.sources.exceptions import SourceAuthError
         from airweave.domains.sources.token_providers.protocol import AuthProviderKind
 

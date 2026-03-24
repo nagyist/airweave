@@ -4,8 +4,6 @@ import asyncio
 import time
 from typing import Optional
 
-from temporalio.service import RPCError
-
 from airweave import schemas
 from airweave.analytics import business_events
 from airweave.core.datetime_utils import utc_now_naive
@@ -691,9 +689,9 @@ class SyncOrchestrator:
                         self.sync_context.source_connection_id,
                         pause_db,
                         self.sync_context,
-                        reason=f"Credential error: {classification.category}",
+                        reason=f"Credential error: {classification.category.value}",
                     )
-            except (RPCError, OSError) as pause_err:
+            except Exception as pause_err:
                 self.sync_context.logger.warning(
                     f"Failed to pause schedules after credential error: {pause_err}",
                     exc_info=True,

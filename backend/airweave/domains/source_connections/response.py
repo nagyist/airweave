@@ -57,20 +57,20 @@ class _ProviderInfo:
 _EMPTY_PROVIDER_INFO = _ProviderInfo()
 
 # Generic user-safe messages per error category (raw exception details stay in SyncJobDetails.error)
-_GENERIC_ERROR_MESSAGES: dict[str, str] = {
-    SourceConnectionErrorCategory.OAUTH_CREDENTIALS_EXPIRED.value: (
+_GENERIC_ERROR_MESSAGES: dict[SourceConnectionErrorCategory, str] = {
+    SourceConnectionErrorCategory.OAUTH_CREDENTIALS_EXPIRED: (
         "Your OAuth authorization has expired or been revoked."
     ),
-    SourceConnectionErrorCategory.API_KEY_INVALID.value: (
+    SourceConnectionErrorCategory.API_KEY_INVALID: (
         "The API key for this connection is no longer valid."
     ),
-    SourceConnectionErrorCategory.CLIENT_CREDENTIALS_INVALID.value: (
+    SourceConnectionErrorCategory.CLIENT_CREDENTIALS_INVALID: (
         "The OAuth client credentials (client ID or secret) are invalid."
     ),
-    SourceConnectionErrorCategory.AUTH_PROVIDER_ACCOUNT_GONE.value: (
+    SourceConnectionErrorCategory.AUTH_PROVIDER_ACCOUNT_GONE: (
         "The connected account on the auth provider has been deleted or deactivated."
     ),
-    SourceConnectionErrorCategory.AUTH_PROVIDER_CREDENTIALS_INVALID.value: (
+    SourceConnectionErrorCategory.AUTH_PROVIDER_CREDENTIALS_INVALID: (
         "The credentials on the auth provider need to be refreshed or re-configured."
     ),
 }
@@ -119,7 +119,7 @@ class ResponseBuilder(ResponseBuilderProtocol):
         last_job_error_category = None
         if sync_details and sync_details.last_job:
             last_job_status = sync_details.last_job.status
-            last_job_error_category = getattr(sync_details.last_job, "error_category", None)
+            last_job_error_category = sync_details.last_job.error_category
 
         auth = await self._build_auth_details(
             db,
@@ -202,7 +202,7 @@ class ResponseBuilder(ResponseBuilderProtocol):
             entities_deleted=job.entities_deleted,
             entities_failed=job.entities_skipped,
             error=job.error,
-            error_category=getattr(job, "error_category", None),
+            error_category=job.error_category,
         )
 
     # ------------------------------------------------------------------
@@ -380,7 +380,7 @@ class ResponseBuilder(ResponseBuilderProtocol):
                     entities_deleted=job.entities_deleted or 0,
                     entities_failed=job.entities_skipped or 0,
                     error=job.error,
-                    error_category=getattr(job, "error_category", None),
+                    error_category=job.error_category,
                 )
 
                 return schemas.SyncDetails(

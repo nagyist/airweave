@@ -194,6 +194,72 @@ async def test_run_forwards_optional_kwargs():
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.asyncio
+async def test_credential_error_propagates_error_category():
+    """Factory raising a credential error → error_category set on job update."""
+    from airweave.core.shared_models import SourceConnectionErrorCategory
+    from airweave.domains.sources.exceptions import SourceValidationError
+    from airweave.domains.sources.token_providers.exceptions import TokenExpiredError
+    from airweave.domains.sources.token_providers.protocol import AuthProviderKind
+
+    cause = TokenExpiredError(
+        "JWT expired", source_short_name="github", provider_kind=AuthProviderKind.OAUTH
+    )
+    wrapper = SourceValidationError(short_name="github", reason="credential validation failed")
+    wrapper.__cause__ = cause
+
+    fake_job_svc = FakeSyncJobService()
+    fake_factory = MagicMock()
+    fake_factory.create_orchestrator = AsyncMock(side_effect=wrapper)
+
+    svc = SyncService(sync_job_service=fake_job_svc, sync_factory=fake_factory)
+
+    with patch("airweave.domains.syncs.service.get_db_context") as mock_db_ctx:
+        mock_db_ctx.return_value.__aenter__ = AsyncMock(return_value=AsyncMock())
+        mock_db_ctx.return_value.__aexit__ = AsyncMock(return_value=False)
+
+        with pytest.raises(SourceValidationError):
+            await svc.run(
+                sync=_mock_sync(),
+                sync_job=_mock_sync_job(),
+                collection=MagicMock(),
+                source_connection=MagicMock(),
+                ctx=_mock_ctx(),
+                authentication_method="oauth_token",
+            )
+
+    assert len(fake_job_svc._calls) == 1
+    call = fake_job_svc._calls[0]
+    # error_category is the last element in the tuple
+    assert call[-1] == SourceConnectionErrorCategory.OAUTH_CREDENTIALS_EXPIRED
+
+
+@pytest.mark.asyncio
+async def test_non_credential_error_has_no_error_category():
+    """Non-auth factory error → error_category=None on job update."""
+    fake_job_svc = FakeSyncJobService()
+    fake_factory = MagicMock()
+    fake_factory.create_orchestrator = AsyncMock(side_effect=RuntimeError("bad config"))
+
+    svc = SyncService(sync_job_service=fake_job_svc, sync_factory=fake_factory)
+
+    with patch("airweave.domains.syncs.service.get_db_context") as mock_db_ctx:
+        mock_db_ctx.return_value.__aenter__ = AsyncMock(return_value=AsyncMock())
+        mock_db_ctx.return_value.__aexit__ = AsyncMock(return_value=False)
+
+        with pytest.raises(RuntimeError):
+            await svc.run(
+                sync=_mock_sync(),
+                sync_job=_mock_sync_job(),
+                collection=MagicMock(),
+                source_connection=MagicMock(),
+                ctx=_mock_ctx(),
+            )
+
+    call = fake_job_svc._calls[0]
+    assert call[-1] is None
+
+
 def test_stores_injected_deps():
     fake_job = FakeSyncJobService()
     fake_factory = MagicMock()

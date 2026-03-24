@@ -13,7 +13,11 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator, model_validator
 
-from airweave.core.shared_models import SourceConnectionStatus, SyncJobStatus
+from airweave.core.shared_models import (
+    SourceConnectionErrorCategory,
+    SourceConnectionStatus,
+    SyncJobStatus,
+)
 
 
 class AuthenticationMethod(str, Enum):
@@ -431,7 +435,7 @@ class SourceConnectionListItem(BaseModel):
     authentication_method: Optional[str] = Field(None, exclude=True)
     is_active: bool = Field(True, exclude=True)
     last_job_status: Optional[str] = Field(None, exclude=True)
-    last_job_error_category: Optional[str] = Field(None, exclude=True)
+    last_job_error_category: Optional[SourceConnectionErrorCategory] = Field(None, exclude=True)
 
     model_config = {
         "json_schema_extra": {
@@ -549,7 +553,7 @@ class SyncJobDetails(BaseModel):
     entities_deleted: int = 0
     entities_failed: int = 0
     error: Optional[str] = None
-    error_category: Optional[str] = None
+    error_category: Optional[SourceConnectionErrorCategory] = None
 
 
 class SyncDetails(BaseModel):
@@ -689,7 +693,7 @@ class SourceConnection(BaseModel):
     )
 
     # Credential error info
-    error_category: Optional[str] = Field(
+    error_category: Optional[SourceConnectionErrorCategory] = Field(
         None,
         description="Error category when status is needs_reauth (e.g. oauth_credentials_expired)",
     )
@@ -818,7 +822,7 @@ class SourceConnectionJob(BaseModel):
         description="Error message if the job failed",
         json_schema_extra={"example": None},
     )
-    error_category: Optional[str] = Field(
+    error_category: Optional[SourceConnectionErrorCategory] = Field(
         None,
         description="Error category for credential errors (e.g. oauth_credentials_expired)",
         json_schema_extra={"example": None},
@@ -879,6 +883,14 @@ def determine_auth_method(source_conn: Any) -> AuthenticationMethod:
     return AuthenticationMethod.OAUTH_BROWSER
 
 
+class ReinitiateOAuthRequest(BaseModel):
+    """Request body for re-initiating an OAuth flow."""
+
+    redirect_url: Optional[str] = Field(
+        None, description="URL to redirect to after OAuth completes"
+    )
+
+
 class VerifyOAuthRequest(BaseModel):
     """Request body for verifying OAuth flow ownership."""
 
@@ -888,7 +900,7 @@ class VerifyOAuthRequest(BaseModel):
 def compute_status(
     source_conn: Any,
     last_job_status: Optional[SyncJobStatus] = None,
-    error_category: Optional[str] = None,
+    error_category: Optional[SourceConnectionErrorCategory] = None,
 ) -> SourceConnectionStatus:
     """DEPRECATED: Use SourceConnectionListItem computed field instead.
 

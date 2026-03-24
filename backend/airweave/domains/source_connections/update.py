@@ -6,6 +6,7 @@ from uuid import UUID
 
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
+from temporalio.service import RPCError
 
 from airweave import schemas
 from airweave.api.context import ApiContext
@@ -132,7 +133,7 @@ class SourceConnectionUpdateService(SourceConnectionUpdateServiceProtocol):
                     await self._temporal_schedule_service.unpause_schedules_for_source_connection(
                         source_conn.id, uow.session, ctx
                     )
-                except Exception:
+                except (RPCError, OSError):
                     ctx.logger.warning(
                         "Failed to unpause schedules after credential update", exc_info=True
                     )

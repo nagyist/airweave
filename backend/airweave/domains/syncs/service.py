@@ -62,7 +62,6 @@ class SyncService(SyncServiceProtocol):
 
             # Classify credential errors so the UI shows NEEDS_REAUTH
             classification = classify_error(e, authentication_method or "")
-            error_cat = classification.category.value if classification.category else None
 
             await self._sync_job_service.update_status(
                 sync_job_id=sync_job.id,
@@ -70,7 +69,7 @@ class SyncService(SyncServiceProtocol):
                 ctx=ctx,
                 error=str(e),
                 failed_at=utc_now_naive(),
-                error_category=error_cat,
+                error_category=classification.category,
             )
             raise e
 

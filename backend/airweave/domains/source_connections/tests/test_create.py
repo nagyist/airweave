@@ -1002,6 +1002,42 @@ async def test_reinitiate_oauth_already_authenticated():
     assert "already authenticated" in exc_info.value.detail
 
 
+async def test_reinitiate_oauth_force_bypasses_authenticated_guard(monkeypatch):
+    """force=True allows re-auth even when is_authenticated=True (NEEDS_REAUTH flow)."""
+    entry = _entry(oauth_type="access_only")
+    svc = _service(entry)
+
+    sc_id = uuid4()
+    sc = _shell_source_conn(sc_id=sc_id, is_authenticated=True)
+    svc._sc_repo.seed(sc_id, sc)
+
+    svc._source_validation.validate_config = MagicMock(return_value={})
+    svc._oauth_flow_service.seed_initiate_browser_flow_result(
+        OAuthBrowserInitiationResult(
+            provider_auth_url="https://provider.example.com/auth",
+            client_id=None,
+            client_secret=None,
+            oauth_client_mode="platform_default",
+            additional_overrides={},
+        )
+    )
+
+    expected_response = MagicMock(id=sc_id)
+    svc._response_builder.build_response = AsyncMock(return_value=expected_response)
+
+    from airweave.domains.source_connections import create as create_module
+
+    monkeypatch.setattr(create_module, "UnitOfWork", _FakeUOW)
+    monkeypatch.setattr(svc, "_create_redirect_session", _fake_create_redirect_session)
+
+    db = AsyncMock()
+    db.add = MagicMock()
+    db.refresh = AsyncMock()
+
+    result = await svc.reinitiate_oauth(db, id=sc_id, ctx=_ctx(), force=True)
+    assert result is expected_response
+
+
 async def test_reinitiate_oauth_not_found():
     """Returns 404 when connection doesn't exist."""
     svc = _service(_entry())
@@ -1112,4 +1148,12 @@ def test_validate_redirect_url_rejects_external():
 
     with pytest.raises(HTTPException) as exc_info:
         _validate_redirect_url("https://evil.com/phish")
+    assert exc_info.value.status_code == 400
+
+
+def test_validate_redirect_url_rejects_protocol_relative():
+    from airweave.domains.source_connections.create import _validate_redirect_url
+
+    with pytest.raises(HTTPException) as exc_info:
+        _validate_redirect_url("//evil.com/phish")
     assert exc_info.value.status_code == 400

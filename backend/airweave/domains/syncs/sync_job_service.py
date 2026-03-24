@@ -11,7 +11,7 @@ from airweave import schemas
 from airweave.api.context import ApiContext
 from airweave.core.datetime_utils import utc_now_naive
 from airweave.core.logging import logger
-from airweave.core.shared_models import SyncJobStatus
+from airweave.core.shared_models import SourceConnectionErrorCategory, SyncJobStatus
 from airweave.db.session import get_db_context
 from airweave.domains.sync_pipeline.pipeline.entity_tracker import SyncStats
 from airweave.domains.syncs.protocols import SyncJobRepositoryProtocol, SyncJobServiceProtocol
@@ -44,7 +44,7 @@ class SyncJobService(SyncJobServiceProtocol):
         completed_at: Optional[datetime],
         failed_at: Optional[datetime],
         error: Optional[str],
-        error_category: Optional[str] = None,
+        error_category: Optional[SourceConnectionErrorCategory] = None,
     ) -> TimestampUpdate:
         """Build timestamp / error fields for the ORM update."""
         update = TimestampUpdate()
@@ -71,7 +71,7 @@ class SyncJobService(SyncJobServiceProtocol):
         started_at: Optional[datetime] = None,
         completed_at: Optional[datetime] = None,
         failed_at: Optional[datetime] = None,
-        error_category: Optional[str] = None,
+        error_category: Optional[SourceConnectionErrorCategory] = None,
     ) -> None:
         """Update sync job status with provided details.
 

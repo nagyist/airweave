@@ -184,12 +184,11 @@ const SourceConnectionStateView: React.FC<Props> = ({
     setIsRefreshingAuth(true);
     try {
       const isNeedsReauth = sourceConnection?.status === 'needs_reauth';
-      const params = new URLSearchParams();
-      if (isNeedsReauth) params.set('force', 'true');
-      if (isNeedsReauth) params.set('redirect_url', window.location.href);
-      const qs = params.toString() ? `?${params.toString()}` : '';
+      const qs = isNeedsReauth ? '?force=true' : '';
+      const body = isNeedsReauth ? { redirect_url: window.location.pathname } : undefined;
       const response = await apiClient.post(
-        `/source-connections/${sourceConnectionId}/reinitiate-oauth${qs}`
+        `/source-connections/${sourceConnectionId}/reinitiate-oauth${qs}`,
+        body,
       );
       if (response.ok) {
         const data = await response.json();

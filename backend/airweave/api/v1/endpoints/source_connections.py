@@ -151,13 +151,12 @@ async def reinitiate_oauth(
     db: AsyncSession = Depends(get_db),
     source_connection_id: UUID = Path(...),
     force: bool = Query(False, description="Skip the is_authenticated guard for NEEDS_REAUTH"),
-    redirect_url: Optional[str] = Query(
-        None, description="URL to redirect to after OAuth completes"
-    ),
+    body: Optional[schemas.ReinitiateOAuthRequest] = None,
     ctx: ApiContext = Depends(deps.get_context),
     sc_service: SourceConnectionServiceProtocol = Inject(SourceConnectionServiceProtocol),
 ) -> schemas.SourceConnection:
     """Create a fresh OAuth session for an un-authenticated connection."""
+    redirect_url = body.redirect_url if body else None
     return await sc_service.reinitiate_oauth(
         db, id=source_connection_id, ctx=ctx, force=force, redirect_url=redirect_url
     )

@@ -102,6 +102,7 @@ def _make_sync_job(
     entities_deleted=2,
     entities_skipped=1,
     error=None,
+    error_category=None,
 ):
     """Build a lightweight sync job ORM stand-in."""
     return SimpleNamespace(
@@ -114,6 +115,7 @@ def _make_sync_job(
         entities_deleted=entities_deleted,
         entities_skipped=entities_skipped,
         error=error,
+        error_category=error_category,
     )
 
 
@@ -908,6 +910,7 @@ async def test_sync_details_null_entity_counts_default_to_zero():
         entities_deleted=None,
         entities_skipped=None,
         error=None,
+        error_category=None,
     )
     f.sync_job_repo.seed_last_job(sync_id, job)
 
@@ -1233,6 +1236,7 @@ def test_map_sync_job(case: MapJobCase):
         entities_deleted=case.entities_deleted,
         entities_skipped=case.entities_skipped,
         error=case.error,
+        error_category=None,
     )
 
     result = _fixture().builder.map_sync_job(job, sc_id)
@@ -1259,6 +1263,7 @@ def test_map_sync_job_preserves_all_fields():
         entities_deleted=25,
         entities_skipped=10,
         error="Connection refused",
+        error_category=None,
     )
     result = _fixture().builder.map_sync_job(job, sc_id)
 
@@ -1401,20 +1406,39 @@ def test_stats_from_dict_last_job_missing_status_raises():
 
 
 @pytest.mark.asyncio
-async def test_build_response_error_category_surfaces_from_last_job():
-    """When the last job has error_category, it appears on the response."""
+@pytest.mark.parametrize(
+    "category, expected_message_fragment",
+    [
+        ("oauth_credentials_expired", "OAuth authorization has expired"),
+        ("api_key_invalid", "API key for this connection"),
+        ("client_credentials_invalid", "OAuth client credentials"),
+        ("auth_provider_account_gone", "auth provider has been deleted"),
+        ("auth_provider_credentials_invalid", "credentials on the auth provider"),
+    ],
+    ids=[
+        "oauth_expired",
+        "api_key",
+        "client_creds",
+        "account_gone",
+        "provider_creds",
+    ],
+)
+async def test_build_response_error_category_surfaces_from_last_job(
+    category, expected_message_fragment
+):
+    """Each error category surfaces correct error_message and NEEDS_REAUTH status."""
     f = _fixture()
     f.source_registry.seed(_make_registry_entry("slack"))
     sync_id = uuid4()
     sc = _make_source_conn(is_authenticated=True, sync_id=sync_id)
 
     job = _make_sync_job(status=SyncJobStatus.FAILED, error="bad creds")
-    job.error_category = "oauth_credentials_expired"
+    job.error_category = category
     f.sync_job_repo.seed_last_job(sync_id, job)
 
     result = await f.builder.build_response(None, sc, _make_ctx())
-    assert result.error_category == "oauth_credentials_expired"
-    assert result.error_message == "Your OAuth authorization has expired or been revoked."
+    assert result.error_category == category
+    assert expected_message_fragment in result.error_message
     assert result.status == SourceConnectionStatus.NEEDS_REAUTH
 
 

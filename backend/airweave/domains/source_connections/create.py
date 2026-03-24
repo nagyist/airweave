@@ -65,8 +65,8 @@ def _validate_redirect_url(url: Optional[str]) -> Optional[str]:
     """
     if not url:
         return None
-    # Allow relative paths
-    if url.startswith("/"):
+    # Allow relative paths (but not protocol-relative URLs like //evil.com)
+    if url.startswith("/") and not url.startswith("//"):
         return url
     # Allow same-origin as app_url
     parsed = urlparse(url)

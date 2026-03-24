@@ -33,7 +33,7 @@ class LastJobInfo:
 
     status: SyncJobStatus
     completed_at: Optional[datetime]
-    error_category: Optional[str] = None
+    error_category: Optional[SourceConnectionErrorCategory] = None
 
 
 @dataclass(frozen=True, slots=True)

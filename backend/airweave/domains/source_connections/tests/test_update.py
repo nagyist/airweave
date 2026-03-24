@@ -475,6 +475,7 @@ def test_cron_validation(case: CronCase):
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.asyncio
 async def test_credential_update_triggers_unpause():
     """Successful direct auth credential update calls unpause_schedules."""
     conn_id = uuid4()
@@ -515,6 +516,7 @@ async def test_credential_update_triggers_unpause():
     assert any(c[0] == "unpause_schedules" for c in temporal._calls)
 
 
+@pytest.mark.asyncio
 async def test_credential_update_unpause_failure_is_nonfatal():
     """If unpause raises, the update still succeeds."""
     conn_id = uuid4()
@@ -539,7 +541,7 @@ async def test_credential_update_unpause_failure_is_nonfatal():
     validation.seed_auth_result("github", _AuthPayload(token="secret"))
 
     temporal = FakeTemporalScheduleService()
-    temporal.set_error(RuntimeError("temporal down"))
+    temporal.set_error(OSError("temporal down"))
 
     svc = _build_service(
         sc_repo=sc_repo,

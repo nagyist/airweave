@@ -4,6 +4,7 @@ Called exclusively from RunSyncActivity (Temporal worker).
 """
 
 from typing import Optional
+from uuid import UUID
 
 from airweave import schemas
 from airweave.api.context import ApiContext
@@ -14,6 +15,7 @@ from airweave.domains.errors.credential_error_classifier import classify_error
 from airweave.domains.sync_pipeline.config import SyncConfig
 from airweave.domains.sync_pipeline.protocols import SyncFactoryProtocol
 from airweave.domains.syncs.protocols import SyncJobServiceProtocol, SyncServiceProtocol
+from airweave.domains.temporal.protocols import TemporalScheduleServiceProtocol
 
 
 class SyncService(SyncServiceProtocol):
@@ -26,10 +28,12 @@ class SyncService(SyncServiceProtocol):
         self,
         sync_job_service: SyncJobServiceProtocol,
         sync_factory: SyncFactoryProtocol,
+        temporal_schedule_service: TemporalScheduleServiceProtocol,
     ) -> None:
         """Initialize with job service and factory dependencies."""
         self._sync_job_service = sync_job_service
         self._sync_factory = sync_factory
+        self._temporal_schedule_service = temporal_schedule_service
 
     async def run(
         self,
@@ -42,6 +46,7 @@ class SyncService(SyncServiceProtocol):
         execution_config: Optional[SyncConfig] = None,
         access_token: Optional[str] = None,
         authentication_method: Optional[str] = None,
+        source_connection_id: Optional[UUID] = None,
     ) -> schemas.Sync:
         """Run a sync."""
         try:
@@ -71,6 +76,22 @@ class SyncService(SyncServiceProtocol):
                 failed_at=utc_now_naive(),
                 error_category=classification.category,
             )
+
+            # Pause schedules on credential errors to avoid repeated failures
+            if classification.category is not None and source_connection_id:
+                try:
+                    async with get_db_context() as pause_db:
+                        await self._temporal_schedule_service.pause_schedules_for_source_connection(
+                            source_connection_id,
+                            pause_db,
+                            ctx,
+                            reason=f"Credential error: {classification.category.value}",
+                        )
+                except Exception:
+                    ctx.logger.warning(
+                        "Failed to pause schedules after credential error", exc_info=True
+                    )
+
             raise e
 
         return await orchestrator.run()

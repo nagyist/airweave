@@ -451,6 +451,7 @@ def create_container(settings: Settings) -> Container:
     sync_service = SyncService(
         sync_job_service=sync_deps["sync_job_service"],
         sync_factory=sync_factory,
+        temporal_schedule_service=sync_deps["temporal_schedule_service"],
     )
 
     # -----------------------------------------------------------------

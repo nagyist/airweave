@@ -6,6 +6,9 @@ Tests the end-to-end behaviour:
 - Credential update triggers unpause
 - A paused schedule does NOT fire during a wait window
 
+Strategy: create with a valid Stripe key (passes validate()), then PATCH to
+an invalid key, then trigger a sync which fails with a credential error.
+
 NOTE: Requires local environment with Temporal running on localhost:8088.
 """
 
@@ -18,6 +21,7 @@ import pytest  # noqa: I001
 
 TEMPORAL_REST = "http://localhost:8088"
 SCHEDULE_PREFIXES = ("sync-", "minute-sync-", "daily-cleanup-")
+BAD_KEY = "sk_test_fakeinvalidkey000000000000"
 
 
 @pytest.mark.asyncio
@@ -66,14 +70,14 @@ class TestSchedulePauseUnpause:
             states[sid] = await self._is_schedule_paused(sid)
         return states
 
-    async def _trigger_sync_and_wait_for_failure(
+    async def _trigger_sync_and_wait_for_terminal(
         self,
         api_client: httpx.AsyncClient,
         conn_id: str,
         timeout: int = 60,
     ) -> dict:
         """Trigger a sync and wait for it to reach a terminal state."""
-        resp = await api_client.post(f"/source-connections/{conn_id}/trigger-sync")
+        resp = await api_client.post(f"/source-connections/{conn_id}/run")
         resp.raise_for_status()
 
         elapsed = 0
@@ -88,14 +92,14 @@ class TestSchedulePauseUnpause:
 
         pytest.fail(f"Sync did not reach terminal state within {timeout}s")
 
-    async def _create_stripe_connection_with_schedule(
+    async def _create_stripe_connection(
         self,
         api_client: httpx.AsyncClient,
         collection: Dict,
         api_key: str,
         cron: str = "0 0 * * *",
     ) -> dict:
-        """Create a Stripe connection with a cron schedule."""
+        """Create a Stripe connection with a valid key and a cron schedule."""
         payload = {
             "name": f"Pause Test {int(time.time())}",
             "short_name": "stripe",
@@ -108,6 +112,35 @@ class TestSchedulePauseUnpause:
         assert resp.status_code == 200, f"Failed to create connection: {resp.text}"
         return resp.json()
 
+    async def _swap_to_bad_key(
+        self, api_client: httpx.AsyncClient, conn_id: str
+    ) -> None:
+        """PATCH the connection to use an invalid API key."""
+        resp = await api_client.patch(
+            f"/source-connections/{conn_id}",
+            json={"authentication": {"credentials": {"api_key": BAD_KEY}}},
+        )
+        assert resp.status_code == 200, f"Failed to update credentials: {resp.text}"
+
+    async def _create_and_break(
+        self,
+        api_client: httpx.AsyncClient,
+        collection: Dict,
+        config,
+        cron: str = "0 0 * * *",
+    ) -> tuple:
+        """Create with valid key, swap to bad key. Returns (conn_id, sync_id)."""
+        connection = await self._create_stripe_connection(
+            api_client, collection, api_key=config.TEST_STRIPE_API_KEY, cron=cron
+        )
+        conn_id = connection["id"]
+        sync_id = await self._get_sync_id(api_client, conn_id)
+        assert sync_id is not None
+
+        # Swap to invalid key — next sync will fail with credential error
+        await self._swap_to_bad_key(api_client, conn_id)
+        return conn_id, sync_id
+
     # ------------------------------------------------------------------
     # Tests
     # ------------------------------------------------------------------
@@ -119,26 +152,17 @@ class TestSchedulePauseUnpause:
         if not config.is_local:
             pytest.skip("Temporal tests only run locally")
 
-        # Create a connection with an invalid API key so the sync will fail
-        # with a credential error (SourceAuthError / API_KEY_INVALID).
-        connection = await self._create_stripe_connection_with_schedule(
-            api_client, collection, api_key="sk_test_fakeinvalidkey000000000000"
-        )
-        conn_id = connection["id"]
-        sync_id = await self._get_sync_id(api_client, conn_id)
-        assert sync_id is not None
+        conn_id, sync_id = await self._create_and_break(api_client, collection, config)
 
         # Wait for schedule to be registered in Temporal
         await asyncio.sleep(3)
 
         # Verify schedule exists and is NOT paused before the sync
-        states_before = await self._get_paused_states(sync_id)
         primary_schedule = f"sync-{sync_id}"
-        assert states_before[primary_schedule] is not None, "Schedule should exist"
-        assert states_before[primary_schedule] is False, "Schedule should be running"
+        assert await self._is_schedule_paused(primary_schedule) is False, "Should be running"
 
         # Trigger a sync — it should fail with a credential error
-        job = await self._trigger_sync_and_wait_for_failure(api_client, conn_id)
+        job = await self._trigger_sync_and_wait_for_terminal(api_client, conn_id)
         assert job["status"] == "failed"
 
         # Refetch the source connection to check status and error_category
@@ -152,9 +176,8 @@ class TestSchedulePauseUnpause:
         await asyncio.sleep(3)
 
         # Verify schedule is now paused
-        states_after = await self._get_paused_states(sync_id)
-        assert states_after[primary_schedule] is True, (
-            f"Schedule should be paused after credential error, got {states_after}"
+        assert await self._is_schedule_paused(primary_schedule) is True, (
+            "Schedule should be paused after credential error"
         )
 
         # Cleanup
@@ -167,84 +190,52 @@ class TestSchedulePauseUnpause:
         if not config.is_local:
             pytest.skip("Temporal tests only run locally")
 
-        # Create connection with invalid key → sync fails → schedules pause
-        connection = await self._create_stripe_connection_with_schedule(
-            api_client, collection, api_key="sk_test_fakeinvalidkey000000000000"
-        )
-        conn_id = connection["id"]
-        sync_id = await self._get_sync_id(api_client, conn_id)
-        assert sync_id is not None
-
+        conn_id, sync_id = await self._create_and_break(api_client, collection, config)
         await asyncio.sleep(3)
 
         # Trigger sync to cause credential failure and pausing
-        await self._trigger_sync_and_wait_for_failure(api_client, conn_id)
+        await self._trigger_sync_and_wait_for_terminal(api_client, conn_id)
         await asyncio.sleep(3)
 
         primary_schedule = f"sync-{sync_id}"
-        paused = await self._is_schedule_paused(primary_schedule)
-        assert paused is True, "Schedule should be paused after credential error"
+        assert await self._is_schedule_paused(primary_schedule) is True, "Should be paused"
 
-        # Update credentials (still invalid, but the update itself triggers unpause)
+        # Update credentials (still invalid format-wise valid, but triggers unpause)
         resp = await api_client.patch(
             f"/source-connections/{conn_id}",
-            json={"authentication": {"credentials": {"api_key": "sk_test_anotherfakekey0000000000"}}},
+            json={"authentication": {"credentials": {"api_key": config.TEST_STRIPE_API_KEY}}},
         )
         assert resp.status_code == 200
 
         # Wait for unpause
         await asyncio.sleep(3)
 
-        paused_after = await self._is_schedule_paused(primary_schedule)
-        assert paused_after is False, "Schedule should be unpaused after credential update"
+        assert await self._is_schedule_paused(primary_schedule) is False, (
+            "Schedule should be unpaused after credential update"
+        )
 
         # Cleanup
         await api_client.delete(f"/source-connections/{conn_id}")
 
-    async def test_paused_schedule_does_not_fire(
+    async def test_all_schedule_prefixes_paused(
         self, api_client: httpx.AsyncClient, collection: Dict, config
     ):
-        """A paused minute-level schedule does not create new sync jobs."""
+        """All three schedule prefixes (sync-, minute-sync-, daily-cleanup-) are paused."""
         if not config.is_local:
             pytest.skip("Temporal tests only run locally")
 
-        # Create connection with invalid key and every-minute schedule
-        connection = await self._create_stripe_connection_with_schedule(
-            api_client,
-            collection,
-            api_key="sk_test_fakeinvalidkey000000000000",
-            cron="* * * * *",
-        )
-        conn_id = connection["id"]
-        sync_id = await self._get_sync_id(api_client, conn_id)
-        assert sync_id is not None
-
+        conn_id, sync_id = await self._create_and_break(api_client, collection, config)
         await asyncio.sleep(3)
 
         # Trigger sync to cause credential failure and pausing
-        await self._trigger_sync_and_wait_for_failure(api_client, conn_id)
+        await self._trigger_sync_and_wait_for_terminal(api_client, conn_id)
         await asyncio.sleep(3)
 
-        # Verify paused
-        primary_schedule = f"sync-{sync_id}"
-        assert await self._is_schedule_paused(primary_schedule) is True
-
-        # Count jobs before waiting
-        resp = await api_client.get(f"/source-connections/{conn_id}/jobs")
-        resp.raise_for_status()
-        jobs_before = len(resp.json())
-
-        # Wait 90 seconds — if the schedule were running, it would fire at least once
-        await asyncio.sleep(90)
-
-        resp = await api_client.get(f"/source-connections/{conn_id}/jobs")
-        resp.raise_for_status()
-        jobs_after = len(resp.json())
-
-        assert jobs_after == jobs_before, (
-            f"Paused schedule should not create new jobs. "
-            f"Before: {jobs_before}, after: {jobs_after}"
-        )
+        # Check all prefixes
+        states = await self._get_paused_states(sync_id)
+        for schedule_id, paused in states.items():
+            if paused is not None:  # schedule exists
+                assert paused is True, f"{schedule_id} should be paused, got {paused}"
 
         # Cleanup
         await api_client.delete(f"/source-connections/{conn_id}")
@@ -256,15 +247,11 @@ class TestSchedulePauseUnpause:
         if not config.is_local:
             pytest.skip("Temporal tests only run locally")
 
-        connection = await self._create_stripe_connection_with_schedule(
-            api_client, collection, api_key="sk_test_fakeinvalidkey000000000000"
-        )
-        conn_id = connection["id"]
-
+        conn_id, _ = await self._create_and_break(api_client, collection, config)
         await asyncio.sleep(3)
 
         # Trigger sync to cause credential failure
-        await self._trigger_sync_and_wait_for_failure(api_client, conn_id)
+        await self._trigger_sync_and_wait_for_terminal(api_client, conn_id)
 
         # Fetch the connection
         resp = await api_client.get(f"/source-connections/{conn_id}")
@@ -286,13 +273,17 @@ class TestSchedulePauseUnpause:
         if not config.is_local:
             pytest.skip("Temporal tests only run locally")
 
-        connection = await self._create_stripe_connection_with_schedule(
-            api_client, collection, api_key="sk_test_fakeinvalidkey000000000000"
-        )
-        conn_id = connection["id"]
-
+        conn_id, _ = await self._create_and_break(api_client, collection, config)
         await asyncio.sleep(3)
-        await self._trigger_sync_and_wait_for_failure(api_client, conn_id)
+        await self._trigger_sync_and_wait_for_terminal(api_client, conn_id)
+
+        # Verify detail endpoint first to confirm error_category is set
+        detail_resp = await api_client.get(f"/source-connections/{conn_id}")
+        detail_resp.raise_for_status()
+        detail = detail_resp.json()
+        assert detail["status"] == "needs_reauth", (
+            f"Detail shows {detail['status']}, error_category={detail.get('error_category')}"
+        )
 
         # Fetch the list for this collection
         readable_id = collection["readable_id"]

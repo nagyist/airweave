@@ -96,6 +96,7 @@ async def test_run(case: RunCase):
     svc = SyncService(
         sync_job_service=fake_job_svc,
         sync_factory=fake_factory,
+        temporal_schedule_service=MagicMock(),
     )
 
     sync = _mock_sync()
@@ -163,6 +164,7 @@ async def test_run_forwards_optional_kwargs():
     svc = SyncService(
         sync_job_service=fake_job_svc,
         sync_factory=fake_factory,
+        temporal_schedule_service=MagicMock(),
     )
 
     mock_db = AsyncMock()
@@ -212,7 +214,7 @@ async def test_credential_error_propagates_error_category():
     fake_factory = MagicMock()
     fake_factory.create_orchestrator = AsyncMock(side_effect=wrapper)
 
-    svc = SyncService(sync_job_service=fake_job_svc, sync_factory=fake_factory)
+    svc = SyncService(sync_job_service=fake_job_svc, sync_factory=fake_factory, temporal_schedule_service=MagicMock())
 
     with patch("airweave.domains.syncs.service.get_db_context") as mock_db_ctx:
         mock_db_ctx.return_value.__aenter__ = AsyncMock(return_value=AsyncMock())
@@ -241,7 +243,7 @@ async def test_non_credential_error_has_no_error_category():
     fake_factory = MagicMock()
     fake_factory.create_orchestrator = AsyncMock(side_effect=RuntimeError("bad config"))
 
-    svc = SyncService(sync_job_service=fake_job_svc, sync_factory=fake_factory)
+    svc = SyncService(sync_job_service=fake_job_svc, sync_factory=fake_factory, temporal_schedule_service=MagicMock())
 
     with patch("airweave.domains.syncs.service.get_db_context") as mock_db_ctx:
         mock_db_ctx.return_value.__aenter__ = AsyncMock(return_value=AsyncMock())
@@ -263,6 +265,6 @@ async def test_non_credential_error_has_no_error_category():
 def test_stores_injected_deps():
     fake_job = FakeSyncJobService()
     fake_factory = MagicMock()
-    svc = SyncService(sync_job_service=fake_job, sync_factory=fake_factory)
+    svc = SyncService(sync_job_service=fake_job, sync_factory=fake_factory, temporal_schedule_service=MagicMock())
     assert svc._sync_job_service is fake_job
     assert svc._sync_factory is fake_factory

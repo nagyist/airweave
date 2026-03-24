@@ -183,6 +183,7 @@ class SyncServiceProtocol(Protocol):
         execution_config: Optional[SyncConfig] = None,
         access_token: Optional[str] = None,
         authentication_method: Optional[str] = None,
+        source_connection_id: Optional[UUID] = None,
     ) -> schemas.Sync:
         """Run a sync via SyncFactory + SyncOrchestrator."""
         ...

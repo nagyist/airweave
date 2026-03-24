@@ -148,7 +148,17 @@ class RunSyncActivity:
                 )
                 if source_conn:
                     source_connection_id = source_conn.id
-                    authentication_method = getattr(source_conn, "authentication_method", None)
+                    # Resolve authentication_method via Connection → IntegrationCredential
+                    if source_conn.connection_id:
+                        conn = await crud.connection.get(
+                            db=db, id=source_conn.connection_id, ctx=ctx
+                        )
+                        if conn and conn.integration_credential_id:
+                            cred = await crud.integration_credential.get(
+                                db=db, id=conn.integration_credential_id, ctx=ctx
+                            )
+                            if cred:
+                                authentication_method = cred.authentication_method
                     ctx.logger.info(
                         f"Resolved SourceConnection.id={source_connection_id} "
                         f"(internal Connection.id={sync.source_connection_id})"

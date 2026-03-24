@@ -126,10 +126,18 @@ class SourceConnectionService(SourceConnectionServiceProtocol):
         return await self._update_service.update(db, id=id, obj_in=obj_in, ctx=ctx)
 
     async def reinitiate_oauth(
-        self, db: AsyncSession, *, id: UUID, ctx: ApiContext
+        self,
+        db: AsyncSession,
+        *,
+        id: UUID,
+        ctx: ApiContext,
+        force: bool = False,
+        redirect_url: Optional[str] = None,
     ) -> SourceConnectionSchema:
         """Create a fresh OAuth session for an un-authenticated connection."""
-        return await self._create_service.reinitiate_oauth(db, id=id, ctx=ctx)
+        return await self._create_service.reinitiate_oauth(
+            db, id=id, ctx=ctx, force=force, redirect_url=redirect_url
+        )
 
     async def delete(self, db: AsyncSession, id: UUID, ctx: ApiContext) -> SourceConnectionSchema:
         """Delete a source connection."""

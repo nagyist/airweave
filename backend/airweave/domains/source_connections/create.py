@@ -160,13 +160,26 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
         return result
 
     async def reinitiate_oauth(
-        self, db: AsyncSession, *, id: UUID, ctx: ApiContext
+        self,
+        db: AsyncSession,
+        *,
+        id: UUID,
+        ctx: ApiContext,
+        force: bool = False,
+        redirect_url: Optional[str] = None,
     ) -> SourceConnectionSchema:
-        """Create a fresh OAuth session for an un-authenticated connection."""
+        """Create a fresh OAuth session for an un-authenticated connection.
+
+        Args:
+            force: When True, skip the is_authenticated guard (used for NEEDS_REAUTH
+                   flows where credentials are stale but the flag hasn't been cleared).
+            redirect_url: Where to redirect after OAuth completes. If provided,
+                   overrides the URL stored in the previous init session.
+        """
         source_conn = await self._sc_repo.get(db, id=id, ctx=ctx)
         if not source_conn:
             raise NotFoundException("Source connection not found")
-        if source_conn.is_authenticated:
+        if source_conn.is_authenticated and not force:
             raise HTTPException(
                 status_code=400,
                 detail="Connection is already authenticated",
@@ -180,7 +193,7 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
         byoc_consumer_key: Optional[str] = None
         byoc_consumer_secret: Optional[str] = None
         template_configs: Optional[dict[str, Any]] = None
-        redirect_url: Optional[str] = None
+        resolved_redirect_url: Optional[str] = redirect_url  # Prefer caller-supplied URL
         payload: Optional[dict[str, Any]] = None
         old_init = None
 
@@ -195,7 +208,8 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
                 byoc_consumer_key = overrides.get("consumer_key")
                 byoc_consumer_secret = overrides.get("consumer_secret")
                 template_configs = overrides.get("template_configs")
-                redirect_url = overrides.get("redirect_url")
+                if not resolved_redirect_url:
+                    resolved_redirect_url = overrides.get("redirect_url")
                 payload = old_init.payload
 
         # Fall back: reconstruct payload from source_conn fields
@@ -264,7 +278,7 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
                 client_id=initiation_result.client_id,
                 client_secret=initiation_result.client_secret,
                 oauth_client_mode=initiation_result.oauth_client_mode,
-                redirect_url=redirect_url,
+                redirect_url=resolved_redirect_url,
                 template_configs=template_configs,
                 additional_overrides=initiation_result.additional_overrides,
                 initiator_user_id=initiator_user_id,

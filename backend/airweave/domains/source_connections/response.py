@@ -302,7 +302,7 @@ class ResponseBuilder(ResponseBuilderProtocol):
             if init_session.overrides:
                 redirect_url = init_session.overrides.get("redirect_url")
 
-            if init_session.redirect_session and not source_conn.is_authenticated:
+            if init_session.redirect_session:
                 auth_url = (
                     f"{core_settings.api_url}/source-connections/authorize/"
                     f"{init_session.redirect_session.code}"

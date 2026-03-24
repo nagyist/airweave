@@ -11,6 +11,8 @@ import random
 from datetime import datetime, timedelta
 from typing import AsyncGenerator, Callable
 
+from pydantic import BaseModel
+
 from airweave.core.logging import ContextualLogger
 from airweave.domains.browse_tree.types import NodeSelectionData
 from airweave.domains.sources.exceptions import (
@@ -52,7 +54,7 @@ AUTHORS = ["Alice Smith", "Bob Johnson", "Charlie Brown", "Diana Prince", "Eve W
 def _build_exception_factories(
     error_message: str,
     auth_provider_kind: AuthProviderKind,
-) -> dict[str, Callable[[], Exception]]:
+) -> dict[str, Callable[[], BaseException]]:
     """Build a map of exception_type string -> factory callable."""
     kind_str = auth_provider_kind.value
 
@@ -134,6 +136,11 @@ class ExceptionStubSource(BaseSource):
     pipeline error propagation.
     """
 
+    _config: ExceptionStubConfig
+    _resolved_trigger: int
+    _exception_factories: dict[str, Callable[[], BaseException]]
+    _error_message: str
+
     @classmethod
     async def create(
         cls,
@@ -141,9 +148,10 @@ class ExceptionStubSource(BaseSource):
         auth: SourceAuthProvider,
         logger: ContextualLogger,
         http_client: AirweaveHttpClient,
-        config: ExceptionStubConfig,
+        config: BaseModel,
     ) -> ExceptionStubSource:
         """Create a new exception stub source instance."""
+        assert isinstance(config, ExceptionStubConfig)
         instance = cls(auth=auth, logger=logger, http_client=http_client)
         instance._config = config
 

@@ -184,9 +184,11 @@ class TemporalScheduleService(TemporalScheduleServiceProtocol):
                 ),
                 state=ScheduleState(note=note, paused=False),
             ),
-            search_attributes=TypedSearchAttributes([
-                SYNC_ID_SEARCH_ATTRIBUTE.value_set(str(sync_id)),
-            ]),
+            search_attributes=TypedSearchAttributes(
+                [
+                    SYNC_ID_SEARCH_ATTRIBUTE.value_set(str(sync_id)),
+                ]
+            ),
         )
 
         if schedule_type != "cleanup":
@@ -504,6 +506,30 @@ class TemporalScheduleService(TemporalScheduleServiceProtocol):
                     logger.warning(f"Failed to unpause schedule {schedule_id}: {e}")
             except Exception as e:
                 logger.warning(f"Failed to unpause schedule {schedule_id}: {e}")
+
+    async def get_schedules_for_sync(self, sync_id: UUID) -> list[dict]:
+        """Return schedule metadata for a sync via the SyncId search attribute."""
+        client = await self._get_client()
+        schedules = []
+        async for s in await client.list_schedules(query=f'SyncId = "{sync_id}"'):
+            schedule_type = "unknown"
+            for prefix in SCHEDULE_PREFIXES:
+                if s.id.startswith(prefix):
+                    schedule_type = prefix.rstrip("-")
+                    break
+
+            next_times = s.info.next_action_times if s.info else []
+            schedules.append(
+                {
+                    "schedule_id": s.id,
+                    "schedule_type": schedule_type,
+                    "paused": s.schedule.state.paused,
+                    "note": s.schedule.state.note or "",
+                    "next_action_at": next_times[0].isoformat() if next_times else None,
+                    "num_recent_actions": len(s.info.recent_actions) if s.info else 0,
+                }
+            )
+        return schedules
 
     async def ensure_system_schedules(self) -> None:
         """Create system-level singleton schedules if they don't already exist.

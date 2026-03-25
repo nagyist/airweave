@@ -75,6 +75,13 @@ class FakeTemporalScheduleService(TemporalScheduleServiceProtocol):
         """No-op for tests."""
         self._calls.append(("ensure_system_schedules",))
 
+    async def get_schedules_for_sync(self, sync_id: UUID) -> list[dict]:
+        """Record call and return empty list."""
+        self._calls.append(("get_schedules_for_sync", sync_id))
+        if self._should_raise:
+            raise self._should_raise
+        return []
+
     async def pause_schedules_for_sync(
         self,
         sync_id: UUID,

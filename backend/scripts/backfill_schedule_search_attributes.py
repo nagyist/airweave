@@ -43,9 +43,7 @@ async def backfill(apply: bool) -> None:
     client = await temporal_client.get_client()
 
     async with AsyncSessionLocal() as db:
-        result = await db.execute(
-            select(Sync.id).where(Sync.temporal_schedule_id.isnot(None))
-        )
+        result = await db.execute(select(Sync.id).where(Sync.temporal_schedule_id.isnot(None)))
         sync_ids: list[UUID] = list(result.scalars().all())
 
     print(f"Found {len(sync_ids)} syncs with temporal schedules")
@@ -68,11 +66,11 @@ async def backfill(apply: bool) -> None:
                 async def updater(input):
                     return ScheduleUpdate(
                         schedule=input.description.schedule,
-                        search_attributes=TypedSearchAttributes([
-                            SearchAttributePair(
-                                SYNC_ID_SEARCH_ATTRIBUTE, str(sync_id)
-                            ),
-                        ]),
+                        search_attributes=TypedSearchAttributes(
+                            [
+                                SearchAttributePair(SYNC_ID_SEARCH_ATTRIBUTE, str(sync_id)),
+                            ]
+                        ),
                     )
 
                 await handle.update(updater)
@@ -85,9 +83,7 @@ async def backfill(apply: bool) -> None:
                 return "failed"
 
     tasks = [
-        update_schedule(sync_id, prefix)
-        for sync_id in sync_ids
-        for prefix in SCHEDULE_PREFIXES
+        update_schedule(sync_id, prefix) for sync_id in sync_ids for prefix in SCHEDULE_PREFIXES
     ]
     results = await asyncio.gather(*tasks)
 

@@ -108,6 +108,10 @@ class TemporalScheduleServiceProtocol(Protocol):
         """Unpause all schedules for a sync (credential fixed)."""
         ...
 
+    async def get_schedules_for_sync(self, sync_id: UUID) -> list[dict]:
+        """Return schedule metadata for a sync via the SyncId search attribute."""
+        ...
+
     async def ensure_system_schedules(self) -> None:
         """Create system-level singleton schedules if they don't already exist.
 

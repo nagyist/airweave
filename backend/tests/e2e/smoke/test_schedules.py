@@ -1130,16 +1130,25 @@ class TestTemporalSchedules:
                 resp.raise_for_status()
                 data = resp.json()
 
-            schedules = data.get("schedules", [])
-            assert len(schedules) > 0, (
-                f"Expected at least one schedule with SyncId={sync_id}, got 0. "
+            all_schedules = data.get("schedules", [])
+
+            # Filter to schedules belonging to this sync
+            matching = [
+                s for s in all_schedules
+                if sync_id in s.get("scheduleId", "")
+            ]
+            assert len(matching) > 0, (
+                f"Expected at least one schedule containing sync_id={sync_id}, got 0. "
                 "SyncId search attribute may not be registered or set on creation."
             )
 
-            # Verify the returned schedule IDs belong to this sync
-            schedule_ids = [s.get("scheduleId", "") for s in schedules]
-            for sid in schedule_ids:
-                assert sync_id in sid, f"Schedule {sid} does not contain sync_id {sync_id}"
+            # Verify the SyncId search attribute is present on each matching schedule
+            for s in matching:
+                sa = s.get("searchAttributes", {}).get("indexedFields", {})
+                assert "SyncId" in sa, (
+                    f"Schedule {s['scheduleId']} missing SyncId search attribute. "
+                    f"Found attributes: {list(sa.keys())}"
+                )
 
         finally:
             # Cleanup

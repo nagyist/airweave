@@ -274,6 +274,13 @@ async def test_create_schedule(case: CreateScheduleCase):
         mock_client.create_schedule.assert_not_called()
     else:
         mock_client.create_schedule.assert_called_once()
+        call_kwargs = mock_client.create_schedule.call_args
+        search_attrs = call_kwargs.kwargs.get("search_attributes")
+        assert search_attrs is not None, "search_attributes should be passed"
+        pairs = search_attrs.search_attributes
+        assert len(pairs) == 1
+        assert pairs[0].key.name == "SyncId"
+        assert pairs[0].value == str(SYNC_ID)
 
     assert isinstance(result, str)
 

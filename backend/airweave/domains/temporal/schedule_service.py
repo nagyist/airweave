@@ -26,6 +26,7 @@ from temporalio.client import (
     ScheduleUpdate,
     ScheduleUpdateInput,
 )
+from temporalio.common import SearchAttributeKey, TypedSearchAttributes
 from temporalio.service import RPCError, RPCStatusCode
 
 from airweave import schemas
@@ -45,6 +46,9 @@ from airweave.platform.temporal.workflows import RunSourceConnectionWorkflow
 
 # Schedule ID prefixes for the three schedule types per sync.
 SCHEDULE_PREFIXES = ("sync-", "minute-sync-", "daily-cleanup-")
+
+# Custom Temporal search attribute for linking schedules to syncs.
+SYNC_ID_SEARCH_ATTRIBUTE = SearchAttributeKey.for_keyword("SyncId")
 
 _MINUTE_LEVEL_RE = re.compile(r"^(\*/([1-5]?\d)|([0-5]?\d)) \* \* \* \*$")
 
@@ -180,6 +184,9 @@ class TemporalScheduleService(TemporalScheduleServiceProtocol):
                 ),
                 state=ScheduleState(note=note, paused=False),
             ),
+            search_attributes=TypedSearchAttributes([
+                SYNC_ID_SEARCH_ATTRIBUTE.value_set(str(sync_id)),
+            ]),
         )
 
         if schedule_type != "cleanup":

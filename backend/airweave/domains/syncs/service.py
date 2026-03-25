@@ -10,9 +10,11 @@ from airweave.api.context import ApiContext
 from airweave.core.datetime_utils import utc_now_naive
 from airweave.core.shared_models import SyncJobStatus
 from airweave.db.session import get_db_context
+from airweave.domains.sources.exceptions.classifier import classify_error
 from airweave.domains.sync_pipeline.config import SyncConfig
 from airweave.domains.sync_pipeline.protocols import SyncFactoryProtocol
 from airweave.domains.syncs.protocols import SyncJobServiceProtocol, SyncServiceProtocol
+from airweave.domains.temporal.protocols import TemporalScheduleServiceProtocol
 
 
 class SyncService(SyncServiceProtocol):
@@ -25,10 +27,12 @@ class SyncService(SyncServiceProtocol):
         self,
         sync_job_service: SyncJobServiceProtocol,
         sync_factory: SyncFactoryProtocol,
+        temporal_schedule_service: TemporalScheduleServiceProtocol,
     ) -> None:
         """Initialize with job service and factory dependencies."""
         self._sync_job_service = sync_job_service
         self._sync_factory = sync_factory
+        self._temporal_schedule_service = temporal_schedule_service
 
     async def run(
         self,
@@ -57,13 +61,31 @@ class SyncService(SyncServiceProtocol):
                 )
         except Exception as e:
             ctx.logger.error(f"Error during sync orchestrator creation: {e}")
+
+            # Classify credential errors so the UI shows NEEDS_REAUTH
+            classification = classify_error(e)
+
             await self._sync_job_service.update_status(
                 sync_job_id=sync_job.id,
                 status=SyncJobStatus.FAILED,
                 ctx=ctx,
                 error=str(e),
                 failed_at=utc_now_naive(),
+                error_category=classification.category,
             )
+
+            # Pause schedules on credential errors to avoid repeated failures
+            if classification.category is not None and sync:
+                try:
+                    await self._temporal_schedule_service.pause_schedules_for_sync(
+                        sync.id,
+                        reason=f"Credential error: {classification.category.value}",
+                    )
+                except Exception:
+                    ctx.logger.warning(
+                        "Failed to pause schedules after credential error", exc_info=True
+                    )
+
             raise e
 
         return await orchestrator.run()

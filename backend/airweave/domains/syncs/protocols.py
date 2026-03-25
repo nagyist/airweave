@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import schemas
 from airweave.api.context import ApiContext
-from airweave.core.shared_models import SyncJobStatus
+from airweave.core.shared_models import SourceConnectionErrorCategory, SyncJobStatus
 from airweave.db.unit_of_work import UnitOfWork
 from airweave.domains.sources.types import SourceRegistryEntry
 from airweave.domains.sync_pipeline.config import SyncConfig
@@ -163,6 +163,7 @@ class SyncJobServiceProtocol(Protocol):
         started_at: Optional[datetime] = None,
         completed_at: Optional[datetime] = None,
         failed_at: Optional[datetime] = None,
+        error_category: Optional[SourceConnectionErrorCategory] = None,
     ) -> None:
         """Update sync job status with provided details."""
         ...

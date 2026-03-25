@@ -1096,3 +1096,51 @@ class TestTemporalSchedules:
         finally:
             # Cleanup
             await api_client.delete(f"/source-connections/{conn_id}")
+
+    async def test_search_attribute_set_on_schedule_creation(
+        self, api_client: httpx.AsyncClient, source_connection_fast: dict, config
+    ):
+        """Test that SyncId search attribute is set when a schedule is created."""
+        if not config.is_local:
+            pytest.skip("Temporal tests only run locally")
+
+        conn_id = source_connection_fast["id"]
+
+        try:
+            # Set a schedule so Temporal creates schedule(s)
+            update_payload = {"schedule": {"cron": "0 * * * *"}}
+            response = await api_client.patch(
+                f"/source-connections/{conn_id}", json=update_payload
+            )
+            assert response.status_code == 200
+
+            # Get the sync_id
+            sync_id = await self._get_sync_id(api_client, conn_id)
+            assert sync_id is not None, "Expected a sync_id after setting schedule"
+
+            # Wait briefly for Temporal to index the search attribute
+            await asyncio.sleep(2)
+
+            # Query Temporal REST API using the SyncId search attribute
+            temporal_url = "http://localhost:8088/api/v1/namespaces/default/schedules"
+            query = f'SyncId = "{sync_id}"'
+
+            async with httpx.AsyncClient() as client:
+                resp = await client.get(temporal_url, params={"query": query})
+                resp.raise_for_status()
+                data = resp.json()
+
+            schedules = data.get("schedules", [])
+            assert len(schedules) > 0, (
+                f"Expected at least one schedule with SyncId={sync_id}, got 0. "
+                "SyncId search attribute may not be registered or set on creation."
+            )
+
+            # Verify the returned schedule IDs belong to this sync
+            schedule_ids = [s.get("scheduleId", "") for s in schedules]
+            for sid in schedule_ids:
+                assert sync_id in sid, f"Schedule {sid} does not contain sync_id {sync_id}"
+
+        finally:
+            # Cleanup
+            await api_client.delete(f"/source-connections/{conn_id}")

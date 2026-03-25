@@ -9,6 +9,7 @@ from temporalio.client import WorkflowHandle
 from airweave import schemas
 from airweave.api.context import ApiContext
 from airweave.db.unit_of_work import UnitOfWork
+from airweave.domains.temporal.types import ScheduleInfo
 
 
 class TemporalWorkflowServiceProtocol(Protocol):
@@ -108,7 +109,7 @@ class TemporalScheduleServiceProtocol(Protocol):
         """Unpause all schedules for a sync (credential fixed)."""
         ...
 
-    async def get_schedules_for_sync(self, sync_id: UUID) -> list[dict]:
+    async def get_schedules_for_sync(self, sync_id: UUID) -> list[ScheduleInfo]:
         """Return schedule metadata for a sync via the SyncId search attribute."""
         ...
 

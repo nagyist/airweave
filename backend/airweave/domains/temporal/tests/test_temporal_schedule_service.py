@@ -967,15 +967,15 @@ async def test_get_schedules_for_sync_returns_metadata():
     assert len(result) == 2
 
     minute = result[0]
-    assert minute["schedule_type"] == "minute-sync"
-    assert minute["paused"] is True
-    assert minute["note"] == "Credential error: api_key_invalid"
-    assert minute["next_action_at"] == next_time.isoformat()
-    assert minute["num_recent_actions"] == 3
+    assert minute.schedule_type == "minute-sync"
+    assert minute.paused is True
+    assert minute.note == "Credential error: api_key_invalid"
+    assert minute.next_action_at == next_time.isoformat()
+    assert minute.num_recent_actions == 3
 
     cleanup = result[1]
-    assert cleanup["schedule_type"] == "daily-cleanup"
-    assert cleanup["next_action_at"] is None
+    assert cleanup.schedule_type == "daily-cleanup"
+    assert cleanup.next_action_at is None
 
 
 @pytest.mark.asyncio

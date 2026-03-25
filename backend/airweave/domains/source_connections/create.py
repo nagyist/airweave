@@ -11,6 +11,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from airweave import schemas
 from airweave.api.context import ApiContext
 from airweave.core.config import settings
+
+
+def _default_redirect_url(readable_collection_id: str) -> str:
+    """Return the default post-OAuth redirect URL for a collection."""
+    return f"{settings.app_url}/collections/{readable_collection_id}"
+
+
 from airweave.core.events.source_connection import SourceConnectionLifecycleEvent
 from airweave.core.events.sync import SyncLifecycleEvent
 from airweave.core.exceptions import NotFoundException
@@ -212,7 +219,7 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
 
         # Use stored redirect_url (Connect integrators) or default to collection page
         if not redirect_url:
-            redirect_url = f"{settings.app_url}/collections/{source_conn.readable_collection_id}"
+            redirect_url = _default_redirect_url(source_conn.readable_collection_id)
 
         # Fall back: reconstruct payload from source_conn fields
         if payload is None:
@@ -583,7 +590,7 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
                 client_secret=initiation_result.client_secret,
                 oauth_client_mode=initiation_result.oauth_client_mode,
                 redirect_url=obj_in.redirect_url
-                or (f"{settings.app_url}/collections/{obj_in.readable_collection_id}"),
+                or _default_redirect_url(obj_in.readable_collection_id),
                 template_configs=template_configs,
                 additional_overrides=initiation_result.additional_overrides,
                 initiator_user_id=initiator_user_id,

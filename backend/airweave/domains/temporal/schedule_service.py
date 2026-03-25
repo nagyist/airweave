@@ -26,7 +26,7 @@ from temporalio.client import (
     ScheduleUpdate,
     ScheduleUpdateInput,
 )
-from temporalio.common import SearchAttributeKey, TypedSearchAttributes
+from temporalio.common import SearchAttributeKey, SearchAttributePair, TypedSearchAttributes
 from temporalio.service import RPCError, RPCStatusCode
 
 from airweave import schemas
@@ -186,7 +186,7 @@ class TemporalScheduleService(TemporalScheduleServiceProtocol):
             ),
             search_attributes=TypedSearchAttributes(
                 [
-                    SYNC_ID_SEARCH_ATTRIBUTE.value_set(str(sync_id)),
+                    SearchAttributePair(SYNC_ID_SEARCH_ATTRIBUTE, str(sync_id)),
                 ]
             ),
         )

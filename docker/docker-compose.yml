@@ -188,7 +188,7 @@ services:
 
   temporal-init:
     container_name: airweave-temporal-init
-    image: temporalio/admin-tools:1.24.2
+    image: temporalio/admin-tools:1.27.2-tctl-1.18.2-cli-1.3.0
     depends_on:
       temporal:
         condition: service_healthy

@@ -48,7 +48,8 @@ def _make_orchestrator(**overrides):
         usage_checker=usage_checker,
         usage_ledger=usage_ledger,
         sync_cursor_service=overrides.pop("sync_cursor_service", MagicMock()),
-        sync_job_service=overrides.pop("sync_job_service", MagicMock()),
+        state_machine=overrides.pop("state_machine", MagicMock()),
+        lifecycle_data=overrides.pop("lifecycle_data", MagicMock()),
         temporal_schedule_service=overrides.pop("temporal_schedule_service", MagicMock()),
     )
 
@@ -65,7 +66,11 @@ class TestUsageLedgerFlushFailure:
         orc = _make_orchestrator(usage_ledger=usage_ledger)
 
         with (
-            patch.object(orc, "_start_sync", new_callable=AsyncMock, side_effect=SyncFailureError("source failed")),
+            patch.object(
+                orc, "_start_sync",
+                new_callable=AsyncMock,
+                side_effect=SyncFailureError("source failed"),
+            ),
             patch.object(orc, "_handle_sync_failure", new_callable=AsyncMock),
             patch.object(orc, "entity_pipeline", MagicMock()),
             patch(
@@ -127,21 +132,20 @@ class TestPublishAclHeartbeat:
 class TestHandleSyncFailure:
     @pytest.mark.asyncio
     async def test_credential_error_writes_error_category_and_pauses(self):
-        """Auth error → error_category set on job + pause_schedules called."""
+        """Auth error -> error_category on transition + pause_schedules called."""
         from airweave.core.shared_models import SourceConnectionErrorCategory
         from airweave.domains.sources.exceptions import SourceAuthError
         from airweave.domains.sources.token_providers.protocol import AuthProviderKind
 
-        sync_job_service = AsyncMock()
+        state_machine = AsyncMock()
         temporal_schedule_service = AsyncMock()
 
         ctx = _make_sync_context()
-
         ctx.sync_job.started_at = None
 
         orc = _make_orchestrator(
             sync_context=ctx,
-            sync_job_service=sync_job_service,
+            state_machine=state_machine,
             temporal_schedule_service=temporal_schedule_service,
         )
 
@@ -152,63 +156,68 @@ class TestHandleSyncFailure:
             token_provider_kind=AuthProviderKind.OAUTH,
         )
 
-        with patch("airweave.domains.sync_pipeline.orchestrator.business_events"):
+        with patch(
+            "airweave.domains.sync_pipeline.orchestrator.business_events"
+        ):
             await orc._handle_sync_failure(exc)
 
-        # Verify error_category was passed to update_status
-        sync_job_service.update_status.assert_awaited_once()
-        call_kwargs = sync_job_service.update_status.call_args.kwargs
-        assert call_kwargs["error_category"] == SourceConnectionErrorCategory.OAUTH_CREDENTIALS_EXPIRED
-        assert call_kwargs["status"] == SyncJobStatus.FAILED
+        state_machine.transition.assert_awaited_once()
+        call_kwargs = state_machine.transition.call_args.kwargs
+        assert (
+            call_kwargs["error_category"]
+            == SourceConnectionErrorCategory.OAUTH_CREDENTIALS_EXPIRED
+        )
+        assert call_kwargs["target"] == SyncJobStatus.FAILED
 
-        # Verify pause_schedules was called
         temporal_schedule_service.pause_schedules_for_sync.assert_awaited_once()
-        pause_kwargs = temporal_schedule_service.pause_schedules_for_sync.call_args
-        assert pause_kwargs[0][0] == ctx.sync.id
+        pause_args = (
+            temporal_schedule_service.pause_schedules_for_sync.call_args
+        )
+        assert pause_args[0][0] == ctx.sync.id
 
     @pytest.mark.asyncio
     async def test_non_credential_error_no_category_no_pause(self):
-        """Non-auth error → error_category=None, no pause."""
-        sync_job_service = AsyncMock()
+        """Non-auth error -> error_category=None, no pause."""
+        state_machine = AsyncMock()
         temporal_schedule_service = AsyncMock()
 
         ctx = _make_sync_context()
-
         ctx.sync_job.started_at = None
 
         orc = _make_orchestrator(
             sync_context=ctx,
-            sync_job_service=sync_job_service,
+            state_machine=state_machine,
             temporal_schedule_service=temporal_schedule_service,
         )
 
-        with patch("airweave.domains.sync_pipeline.orchestrator.business_events"):
+        with patch(
+            "airweave.domains.sync_pipeline.orchestrator.business_events"
+        ):
             await orc._handle_sync_failure(RuntimeError("network timeout"))
 
-        call_kwargs = sync_job_service.update_status.call_args.kwargs
+        call_kwargs = state_machine.transition.call_args.kwargs
         assert call_kwargs["error_category"] is None
 
         temporal_schedule_service.pause_schedules_for_sync.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_pause_failure_is_nonfatal(self):
-        """If pause_schedules raises OSError, _handle_sync_failure still completes."""
+        """If pause_schedules raises OSError, failure handler still completes."""
         from airweave.domains.sources.exceptions import SourceAuthError
         from airweave.domains.sources.token_providers.protocol import AuthProviderKind
 
-        sync_job_service = AsyncMock()
+        state_machine = AsyncMock()
         temporal_schedule_service = AsyncMock()
-        temporal_schedule_service.pause_schedules_for_sync.side_effect = OSError(
-            "connection refused"
+        temporal_schedule_service.pause_schedules_for_sync.side_effect = (
+            OSError("connection refused")
         )
 
         ctx = _make_sync_context()
-
         ctx.sync_job.started_at = None
 
         orc = _make_orchestrator(
             sync_context=ctx,
-            sync_job_service=sync_job_service,
+            state_machine=state_machine,
             temporal_schedule_service=temporal_schedule_service,
         )
 
@@ -219,9 +228,10 @@ class TestHandleSyncFailure:
             token_provider_kind=AuthProviderKind.OAUTH,
         )
 
-        with patch("airweave.domains.sync_pipeline.orchestrator.business_events"):
-            await orc._handle_sync_failure(exc)  # should not raise
+        with patch(
+            "airweave.domains.sync_pipeline.orchestrator.business_events"
+        ):
+            await orc._handle_sync_failure(exc)
 
-        # Job was still updated
-        sync_job_service.update_status.assert_awaited_once()
+        state_machine.transition.assert_awaited_once()
         ctx.logger.warning.assert_called()

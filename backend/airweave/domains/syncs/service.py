@@ -7,13 +7,12 @@ from typing import Optional
 
 from airweave import schemas
 from airweave.api.context import ApiContext
-from airweave.core.datetime_utils import utc_now_naive
 from airweave.core.shared_models import SyncJobStatus
 from airweave.db.session import get_db_context
 from airweave.domains.sources.exceptions.classifier import classify_error
 from airweave.domains.sync_pipeline.config import SyncConfig
 from airweave.domains.sync_pipeline.protocols import SyncFactoryProtocol
-from airweave.domains.syncs.protocols import SyncJobServiceProtocol, SyncServiceProtocol
+from airweave.domains.syncs.protocols import SyncJobStateMachineProtocol, SyncServiceProtocol
 from airweave.domains.temporal.protocols import TemporalScheduleServiceProtocol
 
 
@@ -25,12 +24,12 @@ class SyncService(SyncServiceProtocol):
 
     def __init__(
         self,
-        sync_job_service: SyncJobServiceProtocol,
+        state_machine: SyncJobStateMachineProtocol,
         sync_factory: SyncFactoryProtocol,
         temporal_schedule_service: TemporalScheduleServiceProtocol,
     ) -> None:
-        """Initialize with job service and factory dependencies."""
-        self._sync_job_service = sync_job_service
+        """Initialize with state machine and factory dependencies."""
+        self._state_machine = state_machine
         self._sync_factory = sync_factory
         self._temporal_schedule_service = temporal_schedule_service
 
@@ -62,19 +61,16 @@ class SyncService(SyncServiceProtocol):
         except Exception as e:
             ctx.logger.error(f"Error during sync orchestrator creation: {e}")
 
-            # Classify credential errors so the UI shows NEEDS_REAUTH
             classification = classify_error(e)
 
-            await self._sync_job_service.update_status(
+            await self._state_machine.transition(
                 sync_job_id=sync_job.id,
-                status=SyncJobStatus.FAILED,
+                target=SyncJobStatus.FAILED,
                 ctx=ctx,
                 error=str(e),
-                failed_at=utc_now_naive(),
                 error_category=classification.category,
             )
 
-            # Pause schedules on credential errors to avoid repeated failures
             if classification.category is not None and sync:
                 try:
                     await self._temporal_schedule_service.pause_schedules_for_sync(

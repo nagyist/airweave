@@ -257,7 +257,7 @@ export const SourceConfigView: React.FC<SourceConfigViewProps> = ({ context }) =
                                     const filteredConnections = authProviderConnections.filter(
                                         conn => supportedAuthProviders.includes(conn.short_name)
                                     );
-                                    
+
                                     return filteredConnections.length > 0 ? (
                                         <div className="space-y-2">
                                             {filteredConnections.map(conn => (
@@ -275,7 +275,7 @@ export const SourceConfigView: React.FC<SourceConfigViewProps> = ({ context }) =
                                         </div>
                                     ) : (
                                         <p className="text-sm text-muted-foreground">
-                                            {authProviderConnections.length > 0 
+                                            {authProviderConnections.length > 0
                                                 ? "This source is not supported by your connected auth providers."
                                                 : "No auth providers connected."}
                                         </p>

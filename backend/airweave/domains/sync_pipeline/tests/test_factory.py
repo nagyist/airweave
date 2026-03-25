@@ -23,7 +23,6 @@ def _build_factory(**overrides):
         "source_registry": MagicMock(),
         # Services
         "source_lifecycle_service": MagicMock(),
-        "sync_job_service": MagicMock(),
         "temporal_schedule_service": MagicMock(),
         "sync_cursor_service": MagicMock(),
         "processor": MagicMock(),
@@ -33,6 +32,7 @@ def _build_factory(**overrides):
         "usage_checker": MagicMock(),
         "usage_ledger": MagicMock(),
         "storage_backend": MagicMock(),
+        "state_machine": MagicMock(),
     }
     defaults.update(overrides)
     return SyncFactory(**defaults)
@@ -57,7 +57,6 @@ def test_constructor_stores_all_deps():
         "source_registry": MagicMock(),
         # Services
         "source_lifecycle_service": MagicMock(),
-        "sync_job_service": MagicMock(),
         "temporal_schedule_service": MagicMock(),
         "sync_cursor_service": MagicMock(),
         "processor": MagicMock(),
@@ -67,6 +66,7 @@ def test_constructor_stores_all_deps():
         "usage_checker": MagicMock(),
         "usage_ledger": MagicMock(),
         "storage_backend": MagicMock(),
+        "state_machine": MagicMock(),
     }
     f = SyncFactory(**deps)
     assert f._sc_repo is deps["sc_repo"]
@@ -77,7 +77,6 @@ def test_constructor_stores_all_deps():
     assert f._entity_definition_registry is deps["entity_definition_registry"]
     assert f._source_registry is deps["source_registry"]
     assert f._source_lifecycle_service is deps["source_lifecycle_service"]
-    assert f._sync_job_service is deps["sync_job_service"]
     assert f._temporal_schedule_service is deps["temporal_schedule_service"]
     assert f._sync_cursor_service is deps["sync_cursor_service"]
     assert f._processor is deps["processor"]

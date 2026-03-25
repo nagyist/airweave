@@ -9,7 +9,9 @@ from temporalio.service import RPCError
 from airweave import schemas
 from airweave.analytics import business_events
 from airweave.core.datetime_utils import utc_now_naive
-from airweave.core.events.sync import AccessControlMembershipBatchProcessedEvent
+from airweave.core.events.sync import (
+    AccessControlMembershipBatchProcessedEvent,
+)
 from airweave.core.protocols.event_bus import EventBus
 from airweave.core.shared_models import SyncJobStatus
 from airweave.db.session import get_db_context
@@ -22,7 +24,9 @@ from airweave.domains.sync_pipeline.exceptions import EntityProcessingError, Syn
 from airweave.domains.sync_pipeline.stream import AsyncSourceStream
 from airweave.domains.sync_pipeline.worker_pool import AsyncWorkerPool
 from airweave.domains.syncs.cursors.service import SyncCursorService
-from airweave.domains.syncs.protocols import SyncJobServiceProtocol
+from airweave.domains.syncs.protocols import SyncJobStateMachineProtocol
+from airweave.domains.syncs.types import LifecycleData
+from airweave.domains.temporal.metrics import worker_metrics
 from airweave.domains.temporal.protocols import TemporalScheduleServiceProtocol
 from airweave.domains.usage.exceptions import (
     PaymentRequiredError,
@@ -56,7 +60,8 @@ class SyncOrchestrator:
         usage_checker: UsageLimitCheckerProtocol,
         usage_ledger: UsageLedgerProtocol,
         sync_cursor_service: SyncCursorService,
-        sync_job_service: SyncJobServiceProtocol,
+        state_machine: SyncJobStateMachineProtocol,
+        lifecycle_data: LifecycleData,
         temporal_schedule_service: TemporalScheduleServiceProtocol,
     ):
         """Initialize the sync orchestrator with ALL required components."""
@@ -70,7 +75,8 @@ class SyncOrchestrator:
         self._usage_checker = usage_checker
         self._usage_ledger = usage_ledger
         self._sync_cursor_service = sync_cursor_service
-        self._sync_job_service = sync_job_service
+        self._state_machine = state_machine
+        self._lifecycle_data = lifecycle_data
         self._temporal_schedule_service = temporal_schedule_service
 
         # Batch config from context
@@ -84,8 +90,6 @@ class SyncOrchestrator:
         # Format: sync_{sync_id}_job_{sync_job_id} for easier parsing in metrics
         pool_id = f"sync_{self.sync_context.sync.id}_job_{self.sync_context.sync_job.id}"
         try:
-            from airweave.platform.temporal.worker_metrics import worker_metrics
-
             worker_metrics.register_worker_pool(pool_id, self.worker_pool)
         except Exception as e:
             self.sync_context.logger.warning(
@@ -149,8 +153,6 @@ class SyncOrchestrator:
 
             # Unregister worker pool from metrics
             try:
-                from airweave.platform.temporal.worker_metrics import worker_metrics
-
                 worker_metrics.unregister_worker_pool(pool_id)
             except Exception as e:
                 self.sync_context.logger.warning(
@@ -186,18 +188,14 @@ class SyncOrchestrator:
         """Initialize sync job and start all components."""
         self.sync_context.logger.info("Starting sync job")
 
-        # Start the stream (worker pool doesn't need starting)
         await self.stream.start()
 
-        started_at = utc_now_naive()
-        await self._sync_job_service.update_status(
+        await self._state_machine.transition(
             sync_job_id=self.sync_context.sync_job.id,
-            status=SyncJobStatus.RUNNING,
+            target=SyncJobStatus.RUNNING,
             ctx=self.sync_context,
-            started_at=started_at,
+            lifecycle_data=self._lifecycle_data,
         )
-
-        self.sync_context.sync_job.started_at = started_at
 
     async def _process_entities(self) -> None:  # noqa: C901
         """Process entities using micro-batching with bounded inner concurrency."""
@@ -530,16 +528,13 @@ class SyncOrchestrator:
         # downstream consumers (search, metadata builders) see the real source.
         await self._update_snapshot_short_name()
 
-        await self._sync_job_service.update_status(
+        await self._state_machine.transition(
             sync_job_id=self.sync_context.sync_job.id,
-            status=SyncJobStatus.COMPLETED,
+            target=SyncJobStatus.COMPLETED,
             ctx=self.sync_context,
-            completed_at=utc_now_naive(),
+            lifecycle_data=self._lifecycle_data,
             stats=stats,
         )
-
-        # Track sync completed
-        from airweave.analytics import business_events
 
         entities_processed = 0
         entities_synced = 0  # NEW: actual work done (for billing)
@@ -673,12 +668,12 @@ class SyncOrchestrator:
 
         stats = self.runtime.entity_tracker.get_stats()
 
-        await self._sync_job_service.update_status(
+        await self._state_machine.transition(
             sync_job_id=self.sync_context.sync_job.id,
-            status=SyncJobStatus.FAILED,
+            target=SyncJobStatus.FAILED,
             ctx=self.sync_context,
+            lifecycle_data=self._lifecycle_data,
             error=error_message,
-            failed_at=utc_now_naive(),
             stats=stats,
             error_category=classification.category,
         )
@@ -727,12 +722,11 @@ class SyncOrchestrator:
         # 2. Cancel stream to stop producer
         await self.stream.cancel()
 
-        # 3. Update job status to final CANCELLED state
-        await self._sync_job_service.update_status(
+        await self._state_machine.transition(
             sync_job_id=self.sync_context.sync_job.id,
-            status=SyncJobStatus.CANCELLED,
+            target=SyncJobStatus.CANCELLED,
             ctx=self.sync_context,
-            completed_at=utc_now_naive(),
+            lifecycle_data=self._lifecycle_data,
         )
 
         # 4. Track sync cancelled

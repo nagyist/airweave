@@ -12,7 +12,6 @@ from uuid import uuid4
 import pytest
 
 from airweave.core.shared_models import SyncJobStatus
-from airweave.domains.syncs.fakes.sync_job_service import FakeSyncJobService
 from airweave.domains.syncs.service import SyncService
 
 
@@ -78,7 +77,7 @@ RUN_CASES = [
 @pytest.mark.asyncio
 @pytest.mark.parametrize("case", RUN_CASES, ids=lambda c: c.name)
 async def test_run(case: RunCase):
-    fake_job_svc = FakeSyncJobService()
+    fake_state_machine = AsyncMock()
     fake_factory = MagicMock()
 
     mock_orchestrator = MagicMock()
@@ -94,7 +93,7 @@ async def test_run(case: RunCase):
         )
 
     svc = SyncService(
-        sync_job_service=fake_job_svc,
+        state_machine=fake_state_machine,
         sync_factory=fake_factory,
         temporal_schedule_service=MagicMock(),
     )
@@ -134,14 +133,13 @@ async def test_run(case: RunCase):
             mock_orchestrator.run.assert_awaited_once()
 
     if case.expect_job_failed:
-        assert len(fake_job_svc._calls) == 1
-        call = fake_job_svc._calls[0]
-        assert call[0] == "update_status"
-        assert call[1] == sync_job.id
-        assert call[2] == SyncJobStatus.FAILED
-        assert call[5] == str(case.factory_error)
+        fake_state_machine.transition.assert_awaited_once()
+        call_kwargs = fake_state_machine.transition.call_args.kwargs
+        assert call_kwargs["sync_job_id"] == sync_job.id
+        assert call_kwargs["target"] == SyncJobStatus.FAILED
+        assert call_kwargs["error"] == str(case.factory_error)
     else:
-        assert len(fake_job_svc._calls) == 0
+        fake_state_machine.transition.assert_not_awaited()
 
 
 # ---------------------------------------------------------------------------
@@ -152,7 +150,7 @@ async def test_run(case: RunCase):
 @pytest.mark.asyncio
 async def test_run_forwards_optional_kwargs():
     """force_full_sync, execution_config reach the factory."""
-    fake_job_svc = FakeSyncJobService()
+    fake_state_machine = AsyncMock()
     fake_factory = MagicMock()
 
     mock_orchestrator = MagicMock()
@@ -162,7 +160,7 @@ async def test_run_forwards_optional_kwargs():
     )
 
     svc = SyncService(
-        sync_job_service=fake_job_svc,
+        state_machine=fake_state_machine,
         sync_factory=fake_factory,
         temporal_schedule_service=MagicMock(),
     )
@@ -198,7 +196,7 @@ async def test_run_forwards_optional_kwargs():
 
 @pytest.mark.asyncio
 async def test_credential_error_propagates_error_category():
-    """Factory raising a credential error → error_category set on job update."""
+    """Factory raising a credential error -> error_category set on state machine transition."""
     from airweave.core.shared_models import SourceConnectionErrorCategory
     from airweave.domains.sources.exceptions import SourceValidationError
     from airweave.domains.sources.token_providers.exceptions import TokenExpiredError
@@ -207,14 +205,20 @@ async def test_credential_error_propagates_error_category():
     cause = TokenExpiredError(
         "JWT expired", source_short_name="github", provider_kind=AuthProviderKind.OAUTH
     )
-    wrapper = SourceValidationError(short_name="github", reason="credential validation failed")
+    wrapper = SourceValidationError(
+        short_name="github", reason="credential validation failed"
+    )
     wrapper.__cause__ = cause
 
-    fake_job_svc = FakeSyncJobService()
+    fake_sm = AsyncMock()
     fake_factory = MagicMock()
     fake_factory.create_orchestrator = AsyncMock(side_effect=wrapper)
 
-    svc = SyncService(sync_job_service=fake_job_svc, sync_factory=fake_factory, temporal_schedule_service=MagicMock())
+    svc = SyncService(
+        state_machine=fake_sm,
+        sync_factory=fake_factory,
+        temporal_schedule_service=MagicMock(),
+    )
 
     with patch("airweave.domains.syncs.service.get_db_context") as mock_db_ctx:
         mock_db_ctx.return_value.__aenter__ = AsyncMock(return_value=AsyncMock())
@@ -229,20 +233,29 @@ async def test_credential_error_propagates_error_category():
                 ctx=_mock_ctx(),
             )
 
-    assert len(fake_job_svc._calls) == 1
-    call = fake_job_svc._calls[0]
-    # error_category is the last element in the tuple
-    assert call[-1] == SourceConnectionErrorCategory.OAUTH_CREDENTIALS_EXPIRED
+    fake_sm.transition.assert_awaited_once()
+    call_kwargs = fake_sm.transition.call_args.kwargs
+    assert call_kwargs["target"] == SyncJobStatus.FAILED
+    assert (
+        call_kwargs["error_category"]
+        == SourceConnectionErrorCategory.OAUTH_CREDENTIALS_EXPIRED
+    )
 
 
 @pytest.mark.asyncio
 async def test_non_credential_error_has_no_error_category():
-    """Non-auth factory error → error_category=None on job update."""
-    fake_job_svc = FakeSyncJobService()
+    """Non-auth factory error -> error_category=None on state machine transition."""
+    fake_sm = AsyncMock()
     fake_factory = MagicMock()
-    fake_factory.create_orchestrator = AsyncMock(side_effect=RuntimeError("bad config"))
+    fake_factory.create_orchestrator = AsyncMock(
+        side_effect=RuntimeError("bad config")
+    )
 
-    svc = SyncService(sync_job_service=fake_job_svc, sync_factory=fake_factory, temporal_schedule_service=MagicMock())
+    svc = SyncService(
+        state_machine=fake_sm,
+        sync_factory=fake_factory,
+        temporal_schedule_service=MagicMock(),
+    )
 
     with patch("airweave.domains.syncs.service.get_db_context") as mock_db_ctx:
         mock_db_ctx.return_value.__aenter__ = AsyncMock(return_value=AsyncMock())
@@ -257,13 +270,17 @@ async def test_non_credential_error_has_no_error_category():
                 ctx=_mock_ctx(),
             )
 
-    call = fake_job_svc._calls[0]
-    assert call[-1] is None
+    call_kwargs = fake_sm.transition.call_args.kwargs
+    assert call_kwargs["error_category"] is None
 
 
 def test_stores_injected_deps():
-    fake_job = FakeSyncJobService()
+    fake_sm = MagicMock()
     fake_factory = MagicMock()
-    svc = SyncService(sync_job_service=fake_job, sync_factory=fake_factory, temporal_schedule_service=MagicMock())
-    assert svc._sync_job_service is fake_job
+    svc = SyncService(
+        state_machine=fake_sm,
+        sync_factory=fake_factory,
+        temporal_schedule_service=MagicMock(),
+    )
+    assert svc._state_machine is fake_sm
     assert svc._sync_factory is fake_factory

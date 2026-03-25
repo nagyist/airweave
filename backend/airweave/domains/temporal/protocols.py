@@ -8,6 +8,7 @@ from temporalio.client import WorkflowHandle
 
 from airweave import schemas
 from airweave.api.context import ApiContext
+from airweave.core.context import BaseContext
 from airweave.db.unit_of_work import UnitOfWork
 from airweave.domains.temporal.types import ScheduleInfo
 
@@ -18,8 +19,8 @@ class TemporalWorkflowServiceProtocol(Protocol):
     Responsible only for starting, cancelling, and cleaning up Temporal
     workflows. Does NOT cover schedule management (see
     TemporalScheduleServiceProtocol), workflow/activity definitions
-    (platform/temporal/workflows/), or the worker runtime
-    (platform/temporal/worker/).
+    (domains/temporal/workflows/), or the worker runtime
+    (domains/temporal/worker/).
     """
 
     async def run_source_connection_workflow(
@@ -35,7 +36,7 @@ class TemporalWorkflowServiceProtocol(Protocol):
         """Start a source connection sync workflow."""
         ...
 
-    async def cancel_sync_job_workflow(self, sync_job_id: str, ctx: ApiContext) -> dict[str, bool]:
+    async def cancel_sync_job_workflow(self, sync_job_id: str, ctx: BaseContext) -> dict[str, bool]:
         """Request cancellation of a running workflow by sync job ID.
 
         Returns dict with 'success' and 'workflow_found' boolean keys.

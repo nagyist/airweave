@@ -316,7 +316,7 @@ const SourceConnectionStateView: React.FC<Props> = ({
   useEffect(() => {
     const updateLastRan = () => {
       // Don't show "Running now" - let the status badge handle that
-      const startedAt = storeConnection?.last_sync_job?.started_at || sourceConnection?.last_sync_job?.started_at;
+      const startedAt = storeConnection?.last_sync_job?.started_at;
       setLastRanDisplay(formatTimeAgo(startedAt));
     };
 
@@ -325,7 +325,7 @@ const SourceConnectionStateView: React.FC<Props> = ({
     const interval = setInterval(updateLastRan, 60000);
 
     return () => clearInterval(interval);
-  }, [storeConnection?.last_sync_job?.started_at, sourceConnection?.last_sync_job?.started_at, formatTimeAgo]);
+  }, [storeConnection?.last_sync_job?.started_at, formatTimeAgo]);
 
 
   // Clear local cancelling state when appropriate
@@ -715,7 +715,7 @@ const SourceConnectionStateView: React.FC<Props> = ({
                   </TooltipTrigger>
                   <TooltipContent>
                     <p className="text-xs">
-                      {formatExactTime(sourceConnection?.last_sync_job?.started_at)}
+                      {formatExactTime(storeConnection?.last_sync_job?.started_at)}
                     </p>
                   </TooltipContent>
                 </Tooltip>

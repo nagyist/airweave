@@ -330,7 +330,7 @@ class VespaClient:
         yql = (
             f"select documentid, sddocname() from sources {source_list} where "
             f"airweave_system_metadata_original_entity_id in ({escaped_ids}) and "
-            f"airweave_system_metadata_collection_id = '{collection_id}'"
+            f"airweave_system_metadata_collection_id contains '{collection_id}'"
         )
         query_params = {
             "yql": yql,

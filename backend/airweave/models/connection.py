@@ -90,11 +90,9 @@ class Connection(Base):
     __table_args__ = (
         CheckConstraint(
             """
-            (short_name IN ('qdrant_native', 'neo4j_native', 'local_text2vec'))
+            (short_name IN ('qdrant_native', 'neo4j_native', 'vespa_native', 'local_text2vec'))
             OR
-            (organization_id IS NOT NULL
-             AND created_by_email IS NOT NULL
-             AND modified_by_email IS NOT NULL)
+            (organization_id IS NOT NULL)
             """,
             name="ck_connection_native_or_complete",
         ),

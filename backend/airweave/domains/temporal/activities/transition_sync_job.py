@@ -1,6 +1,6 @@
 """Transition sync job activity — thin Temporal wrapper over SyncJobStateMachine.
 
-Called by the workflow for COMPLETED, FAILED, and CANCELLED transitions.
+Called by the workflow for CANCELLING, COMPLETED, FAILED, and CANCELLED transitions.
 Deserializes Temporal payloads and delegates to the state machine.
 """
 
@@ -19,6 +19,7 @@ from airweave.domains.syncs.jobs.types import LifecycleData
 from airweave.domains.temporal.activities.context import build_activity_context
 
 _STATUS_MAP: dict[str, SyncJobStatus] = {
+    "cancelling": SyncJobStatus.CANCELLING,
     "completed": SyncJobStatus.COMPLETED,
     "failed": SyncJobStatus.FAILED,
     "cancelled": SyncJobStatus.CANCELLED,
@@ -46,10 +47,10 @@ class TransitionSyncJobActivity:
         stats_dict: Optional[Dict[str, Any]] = None,
         timestamp_iso: Optional[str] = None,
     ) -> None:
-        """Execute a terminal state transition via the state machine.
+        """Execute a state transition via the state machine.
 
         Args:
-            transition: One of "completed", "failed", "cancelled".
+            transition: One of "cancelling", "completed", "failed", "cancelled".
             sync_job_id: The sync job UUID as a string.
             ctx_dict: Serialized context dict (contains organization).
             lifecycle_data: Fields for building LifecycleData.

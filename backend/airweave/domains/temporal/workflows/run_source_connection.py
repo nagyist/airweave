@@ -1,6 +1,6 @@
 """Run source connection workflow — the sync state machine.
 
-Owns terminal state transitions (COMPLETED, FAILED, CANCELLED) via
+Owns state transitions (CANCELLING, COMPLETED, FAILED, CANCELLED) via
 TransitionSyncJobActivity. RUNNING is published by the orchestrator
 because only it knows when sync work actually begins.
 """
@@ -95,7 +95,9 @@ class RunSourceConnectionWorkflow:
             )
         except BaseException as e:
             if is_cancelled_exception(e):
-                await self._transition("cancelled", sync_job_dict, ctx_dict, lifecycle, shield=True)
+                cancel_args = (sync_job_dict, ctx_dict, lifecycle)
+                await self._transition("cancelling", *cancel_args, shield=True)
+                await self._transition("cancelled", *cancel_args, shield=True)
                 raise
             if self._is_orphaned_sync_error(e):
                 reason = self._extract_orphaned_reason(e)
@@ -203,7 +205,12 @@ class RunSourceConnectionWorkflow:
         error: Optional[str] = None,
         shield: bool = False,
     ) -> None:
-        """Call TransitionSyncJobActivity for a terminal state change."""
+        """Call TransitionSyncJobActivity for a state change.
+
+        Shielded transitions (cancel path) are best-effort retries — the
+        orchestrator already performed these transitions, so failures here
+        are expected and logged at debug level.
+        """
         timestamp = workflow.now().replace(tzinfo=None).isoformat()
         coro = workflow.execute_activity(
             transition_sync_job_activity,
@@ -227,9 +234,8 @@ class RunSourceConnectionWorkflow:
         try:
             await (asyncio.shield(coro) if shield else coro)
         except Exception:
-            workflow.logger.warning(
-                f"Failed to transition sync job {sync_job_dict.get('id')} to {transition}"
-            )
+            log = workflow.logger.debug if shield else workflow.logger.warning
+            log(f"Failed to transition sync job {sync_job_dict.get('id')} to {transition}")
 
     # ------------------------------------------------------------------
     # Self-destruct orphaned sync

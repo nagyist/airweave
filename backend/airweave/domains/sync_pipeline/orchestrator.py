@@ -23,7 +23,7 @@ from airweave.domains.sync_pipeline.stream import AsyncSourceStream
 from airweave.domains.sync_pipeline.worker_pool import AsyncWorkerPool
 from airweave.domains.syncs.cursors.service import SyncCursorService
 from airweave.domains.syncs.jobs.protocols import SyncJobStateMachineProtocol
-from airweave.domains.syncs.jobs.types import LifecycleData
+from airweave.domains.syncs.jobs.types import InvalidTransitionError, LifecycleData
 from airweave.domains.syncs.protocols import SyncStateMachineProtocol
 from airweave.domains.temporal.metrics import worker_metrics
 from airweave.domains.usage.exceptions import (
@@ -714,21 +714,49 @@ class SyncOrchestrator:
         """Centralized cancellation handler - explicit and immediate."""
         self.sync_context.logger.info("Handling cancellation...")
 
-        # 1. Cancel all pending tasks IMMEDIATELY
+        # Cancel all pending tasks immediately
         if self.worker_pool:
             await self.worker_pool.cancel_all()
 
-        # 2. Cancel stream to stop producer
+        # Cancel stream to stop producer
         await self.stream.cancel()
 
-        await self._state_machine.transition(
-            sync_job_id=self.sync_context.sync_job.id,
-            target=SyncJobStatus.CANCELLED,
-            ctx=self.sync_context,
-            lifecycle_data=self._lifecycle_data,
-        )
+        # Transition through CANCELLING → CANCELLED.
+        # RUNNING → CANCELLING is required by the state machine.
+        # If still PENDING (cancellation before _start_sync completed),
+        # PENDING → CANCELLING is invalid, so fall through to direct CANCELLED.
+        #
+        # The workflow will also attempt these transitions via
+        # TransitionSyncJobActivity once the CancelledError propagates.
+        # That redundancy is intentional — it guards against the activity
+        # being killed before the error reaches the workflow.
+        try:
+            await self._state_machine.transition(
+                sync_job_id=self.sync_context.sync_job.id,
+                target=SyncJobStatus.CANCELLING,
+                ctx=self.sync_context,
+                lifecycle_data=self._lifecycle_data,
+            )
+        except InvalidTransitionError as exc:
+            self.sync_context.logger.debug(
+                "Skipped CANCELLING transition",
+                current_state=exc.current.value,
+            )
 
-        # 4. Track sync cancelled
+        try:
+            await self._state_machine.transition(
+                sync_job_id=self.sync_context.sync_job.id,
+                target=SyncJobStatus.CANCELLED,
+                ctx=self.sync_context,
+                lifecycle_data=self._lifecycle_data,
+            )
+        except InvalidTransitionError as exc:
+            self.sync_context.logger.warning(
+                "Skipped CANCELLED transition — job in unexpected terminal state",
+                current_state=exc.current.value,
+            )
+
+        # Track sync cancelled
         if not self.sync_context.sync_job.started_at:
             # This can happen if cancellation occurs during _start_sync before
             # the job status is updated with started_at

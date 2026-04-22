@@ -1,6 +1,6 @@
 """Tests for TransitionSyncJobActivity."""
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 from uuid import UUID
 
 import pytest
@@ -8,7 +8,6 @@ import pytest
 from airweave.core.shared_models import SyncJobStatus
 from airweave.domains.temporal.activities.transition_sync_job import (
     TransitionSyncJobActivity,
-    _STATUS_MAP,
 )
 
 from .conftest import ORG_ID, SYNC_ID, SYNC_JOB_ID, make_ctx_dict
@@ -98,6 +97,27 @@ async def test_failed_transition_with_error(activity, state_machine):
     call = state_machine.calls[0]
     assert call["target"] == SyncJobStatus.FAILED
     assert call["error"] == "Something went wrong"
+
+
+@pytest.mark.unit
+async def test_cancelling_transition(activity, state_machine):
+    lifecycle = {
+        "organization_id": ORG_ID,
+        "sync_id": SYNC_ID,
+        "sync_job_id": SYNC_JOB_ID,
+        "collection_id": "00000000-0000-0000-0000-000000000030",
+        "source_connection_id": "00000000-0000-0000-0000-000000000050",
+    }
+
+    await activity.run(
+        transition="cancelling",
+        sync_job_id=SYNC_JOB_ID,
+        ctx_dict=make_ctx_dict(),
+        lifecycle_data=lifecycle,
+    )
+
+    call = state_machine.calls[0]
+    assert call["target"] == SyncJobStatus.CANCELLING
 
 
 @pytest.mark.unit

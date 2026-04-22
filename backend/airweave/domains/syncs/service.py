@@ -284,10 +284,12 @@ class SyncService(SyncServiceProtocol):
         job_id: UUID,
         ctx: ApiContext,
     ) -> schemas.SyncJob:
-        """Cancel a running sync job.
+        """Cancel a pending or running sync job.
 
-        Transitions to CANCELLING, sends cancel to Temporal, and handles
-        edge cases (workflow not found, Temporal failure with one retry).
+        PENDING jobs are transitioned directly to CANCELLED (the CANCELLING
+        intermediate state is only valid from RUNNING). RUNNING jobs go
+        through CANCELLING and rely on the Temporal workflow for the final
+        CANCELLED transition.
         """
         sync_job = await self._sync_job_repo.get(db, job_id, ctx)
         if not sync_job:
@@ -299,6 +301,23 @@ class SyncService(SyncServiceProtocol):
                 detail=f"Cannot cancel job in {sync_job.status} state",
             )
 
+        if sync_job.status == SyncJobStatus.PENDING:
+            # PENDING → CANCELLED directly (PENDING → CANCELLING is invalid)
+            await self._job_state_machine.transition(
+                sync_job_id=job_id, target=SyncJobStatus.CANCELLED, ctx=ctx
+            )
+            # Best-effort workflow cleanup — workflow may not exist yet for
+            # PENDING jobs, but if it does we need to stop it.
+            cancel_result = await self._cancel_temporal_workflow_with_retry(job_id, ctx)
+            if not cancel_result["success"] and cancel_result["workflow_found"]:
+                ctx.logger.warning(
+                    f"Temporal cancel failed for PENDING job {job_id}, "
+                    "workflow may continue running against cancelled job",
+                )
+            await db.refresh(sync_job)
+            return schemas.SyncJob.model_validate(sync_job, from_attributes=True)
+
+        # RUNNING → CANCELLING; workflow handles CANCELLING → CANCELLED
         await self._job_state_machine.transition(
             sync_job_id=job_id, target=SyncJobStatus.CANCELLING, ctx=ctx
         )

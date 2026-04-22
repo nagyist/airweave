@@ -167,6 +167,7 @@ jobs:
           images: ${{ env.REGISTRY }}/${{ github.repository }}-${{ matrix.component }}
 
       - name: Trivy image scan
+        id: trivy
         uses: aquasecurity/trivy-action@97e0b3872f55f89b95b2f65b3dbab56962816478 # v0.34.2
         with:
           image-ref: ${{ env.REGISTRY }}/${{ github.repository }}-${{ matrix.component }}:${{ steps.meta.outputs.version }}
@@ -179,13 +180,15 @@ jobs:
           limit-severities-for-sarif: true
 
       - name: Upload Trivy SARIF
-        if: always()
+        if: ${{ !cancelled() && steps.trivy.outcome != 'skipped' }}
         uses: github/codeql-action/upload-sarif@c793b717bc78562f491db7b0e93a3a178b099162 # v4.32.5
         with:
           sarif_file: trivy-${{ matrix.component }}.sarif
           category: trivy-${{ matrix.component }}
 
       - name: Generate SBOM
+        id: sbom
+        if: ${{ !cancelled() }}
         uses: anchore/sbom-action@17ae1740179002c89186b61233e0f892c3118b11 # v0.23.0
         with:
           image: ${{ env.REGISTRY }}/${{ github.repository }}-${{ matrix.component }}:${{ steps.meta.outputs.version }}
@@ -193,13 +196,24 @@ jobs:
           output-file: sbom-${{ matrix.component }}.json
 
       - name: Vulnerability scan on SBOM
+        id: grype
+        if: ${{ !cancelled() && steps.sbom.outcome == 'success' }}
         uses: anchore/scan-action@7037fa011853d5a11690026fb85feee79f4c946c # v7.3.2
         with:
           sbom: sbom-${{ matrix.component }}.json
           fail-build: "true"
           severity-cutoff: critical
+          only-fixed: "true"
+
+      - name: Upload Grype SARIF
+        if: ${{ always() && steps.grype.outputs.sarif }}
+        uses: github/codeql-action/upload-sarif@c793b717bc78562f491db7b0e93a3a178b099162 # v4.32.5
+        with:
+          sarif_file: ${{ steps.grype.outputs.sarif }}
+          category: grype-${{ matrix.component }}
 
       - name: Get image digest
+        if: ${{ !cancelled() }}
         id: digest
         run: |
           IMAGE="${{ env.REGISTRY }}/${{ github.repository }}-${{ matrix.component }}"
@@ -209,6 +223,7 @@ jobs:
           echo "Image digest: ${DIGEST}"
 
       - name: Attest SBOM
+        if: ${{ !cancelled() && steps.digest.outcome == 'success' && steps.sbom.outcome == 'success' }}
         uses: actions/attest@59d89421af93a897026c735860bf21b6eb4f7b26 # v4.1.0
         with:
           subject-name: ${{ env.REGISTRY }}/${{ github.repository }}-${{ matrix.component }}
@@ -217,6 +232,7 @@ jobs:
           push-to-registry: true
 
       - name: Attest build provenance
+        if: ${{ !cancelled() && steps.digest.outcome == 'success' }}
         uses: actions/attest@59d89421af93a897026c735860bf21b6eb4f7b26 # v4.1.0
         with:
           subject-name: ${{ env.REGISTRY }}/${{ github.repository }}-${{ matrix.component }}
@@ -224,6 +240,7 @@ jobs:
           push-to-registry: true
 
       - name: Upload SBOM artifact
+        if: ${{ !cancelled() && steps.sbom.outcome == 'success' }}
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         with:
           name: sbom-${{ matrix.component }}
@@ -233,6 +250,7 @@ jobs:
   # Package Vespa application and attach to the GitHub Release
   package-vespa:
     needs: scan-and-attest
+    if: ${{ !cancelled() && needs.scan-and-attest.result != 'skipped' }}
     runs-on: ubuntu-latest
     permissions:
       contents: write

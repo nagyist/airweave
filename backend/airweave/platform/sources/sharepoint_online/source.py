@@ -97,7 +97,7 @@ class SharePointOnlineBase(BaseSource):
     - create() — class constructor
     - _get_access_token() — return a valid Microsoft Graph token
     - _handle_401() — refresh/re-exchange on 401, return new token
-    - _make_sp_token_provider() — callable returning SP REST API token
+    - _make_sp_token_provider_for_site(site_url) — per-site SP REST token provider
     - _get_download_auth(url) — auth suitable for file download
     - _discover_sites(graph_client) — site discovery strategy
     """
@@ -127,14 +127,6 @@ class SharePointOnlineBase(BaseSource):
 
     async def _handle_401(self) -> str:
         """Handle a 401 by refreshing/re-exchanging. Returns new token."""
-        raise NotImplementedError
-
-    def _make_sp_token_provider(self) -> Optional[Callable]:
-        """Create an async callable returning a SharePoint REST API token, or None.
-
-        Legacy single-site provider that derives hostname from ``self._site_url``.
-        New code should use ``_make_sp_token_provider_for_site`` instead.
-        """
         raise NotImplementedError
 
     def _make_sp_token_provider_for_site(self, site_url: str) -> Optional[Callable]:
@@ -1351,10 +1343,6 @@ class SharePointOnlineSource(SharePointOnlineBase):
             return await self.auth.force_refresh()
         return await self.auth.get_token()
 
-    def _make_sp_token_provider(self) -> Optional[Callable]:
-        """Create SP token provider via OAuth scope exchange (config-site-bound)."""
-        return self._make_sp_token_provider_for_site(self._site_url)
-
     def _make_sp_token_provider_for_site(self, site_url: str) -> Optional[Callable]:
         """Create SP token provider for a specific site URL via OAuth scope exchange."""
         if not site_url:
@@ -1372,19 +1360,6 @@ class SharePointOnlineSource(SharePointOnlineBase):
             return token
 
         return _provider
-
-    def _derive_sp_resource_scope(self) -> Optional[str]:
-        """Derive the SharePoint resource scope from the site URL.
-
-        E.g. https://neenacorp.sharepoint.com/sites/JAman
-             -> https://neenacorp.sharepoint.com/.default
-        """
-        if not self._site_url:
-            return None
-        parsed = urlparse(self._site_url)
-        if not parsed.netloc:
-            return None
-        return f"https://{parsed.netloc}/.default"
 
     async def _discover_sites(self, graph_client: GraphClient) -> List[Dict[str, Any]]:
         """Discover sites via Graph search (delegated permissions).
@@ -1595,10 +1570,6 @@ class SharePointOnlineAppSource(SharePointOnlineBase):
     async def _handle_401(self) -> str:
         self._graph_token_expires = 0  # force re-exchange
         return await self._get_access_token()
-
-    def _make_sp_token_provider(self) -> Optional[Callable]:
-        """Create SP token provider via certificate exchange (config-site-bound)."""
-        return self._make_sp_token_provider_for_site(self._site_url)
 
     def _make_sp_token_provider_for_site(self, site_url: str) -> Optional[Callable]:
         """Create SP token provider for a specific site URL via certificate exchange."""

@@ -73,3 +73,12 @@ def test_missing_colon_raises_helpful_error() -> None:
 def test_trailing_comma_is_tolerated() -> None:
     parsed = parse_llm_fallback_chain("mistral:mistral-large,")
     assert parsed == [(LLMProvider.MISTRAL, LLMModel.MISTRAL_LARGE)]
+
+
+def test_valid_enums_but_invalid_pair_raises() -> None:
+    with pytest.raises(ValueError) as excinfo:
+        parse_llm_fallback_chain("together:mistral-large")
+    message = str(excinfo.value)
+    assert "mistral-large" in message
+    assert "together" in message
+    assert "zai-glm-5" in message

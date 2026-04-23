@@ -1279,9 +1279,6 @@ def _create_search_services(
     config = SearchConfig()
 
     # 1. Tokenizer — validate against primary LLM model requirements
-    if not config.LLM_FALLBACK_CHAIN:
-        raise ValueError("LLM_FALLBACK_CHAIN is empty — at least one provider is required")
-
     primary_provider, primary_model = config.LLM_FALLBACK_CHAIN[0]
     primary_llm_spec = get_llm_model_spec(primary_provider, primary_model)
 

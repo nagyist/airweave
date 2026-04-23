@@ -13,11 +13,18 @@ from typing import TypeVar
 
 from pydantic import BaseModel
 
-from airweave.adapters.llm.registry import LLMModelSpec
+from airweave.adapters.llm.registry import PROVIDER_API_KEY_SETTINGS, LLMModelSpec
 from airweave.adapters.llm.tool_response import LLMResponse
 from airweave.core.exceptions import LLMUnavailableError
 
 T = TypeVar("T", bound=BaseModel)
+
+_DETAILED_MESSAGE = (
+    "No LLM provider configured. Set one of: "
+    f"{', '.join(PROVIDER_API_KEY_SETTINGS.values())} — "
+    "or customize the chain via LLM_FALLBACK_CHAIN "
+    "(format: 'provider:model,provider:model')."
+)
 
 
 class UnavailableLLM:
@@ -31,7 +38,7 @@ class UnavailableLLM:
     @property
     def model_spec(self) -> LLMModelSpec:
         """Raise because no provider is configured."""
-        raise LLMUnavailableError()
+        raise LLMUnavailableError(_DETAILED_MESSAGE)
 
     async def structured_output(
         self,
@@ -41,7 +48,7 @@ class UnavailableLLM:
         thinking: bool = False,
     ) -> T:
         """Raise because no provider is configured."""
-        raise LLMUnavailableError()
+        raise LLMUnavailableError(_DETAILED_MESSAGE)
 
     async def chat(
         self,
@@ -52,7 +59,7 @@ class UnavailableLLM:
         max_tokens: int | None = None,
     ) -> LLMResponse:
         """Raise because no provider is configured."""
-        raise LLMUnavailableError()
+        raise LLMUnavailableError(_DETAILED_MESSAGE)
 
     async def close(self) -> None:
         """No-op: the null-object holds no resources."""

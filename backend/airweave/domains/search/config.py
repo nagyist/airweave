@@ -2,7 +2,7 @@
 
 from enum import Enum
 
-from airweave.adapters.llm.registry import LLMModel, LLMProvider
+from airweave.adapters.llm.registry import MODEL_REGISTRY, LLMModel, LLMProvider
 from airweave.adapters.tokenizer.registry import TokenizerEncoding, TokenizerType
 from airweave.core.config import settings
 
@@ -53,7 +53,15 @@ def parse_llm_fallback_chain(raw: str | None) -> list[tuple[LLMProvider, LLMMode
                 f"Unknown model {model_raw!r} in LLM_FALLBACK_CHAIN. "
                 f"Accepted: {list(_VALID_MODELS)}."
             )
-        parsed.append((_VALID_PROVIDERS[provider_raw], _VALID_MODELS[model_raw]))
+        provider = _VALID_PROVIDERS[provider_raw]
+        model = _VALID_MODELS[model_raw]
+        provider_models = MODEL_REGISTRY.get(provider, {})
+        if model not in provider_models:
+            raise ValueError(
+                f"Model {model_raw!r} not available for provider {provider_raw!r}. "
+                f"Available: {[m.value for m in provider_models]}."
+            )
+        parsed.append((provider, model))
 
     if not parsed:
         return list(_DEFAULT_LLM_FALLBACK_CHAIN)

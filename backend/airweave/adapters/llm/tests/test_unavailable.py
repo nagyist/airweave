@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 from pydantic import BaseModel
 
+from airweave.adapters.llm.registry import PROVIDER_API_KEY_SETTINGS
 from airweave.adapters.llm.unavailable import UnavailableLLM
 from airweave.core.exceptions import LLMUnavailableError
 
@@ -45,12 +46,6 @@ def test_error_message_mentions_accepted_api_key_env_vars() -> None:
         _ = llm.model_spec
 
     message = str(excinfo.value)
-    for env_var in (
-        "TOGETHER_API_KEY",
-        "ANTHROPIC_API_KEY",
-        "MISTRAL_API_KEY",
-        "GROQ_API_KEY",
-        "CEREBRAS_API_KEY",
-        "LLM_FALLBACK_CHAIN",
-    ):
+    for env_var in PROVIDER_API_KEY_SETTINGS.values():
         assert env_var in message, f"{env_var} missing from error message"
+    assert "LLM_FALLBACK_CHAIN" in message

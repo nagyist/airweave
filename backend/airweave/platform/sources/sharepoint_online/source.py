@@ -27,8 +27,9 @@ Two source variants:
 from __future__ import annotations
 
 import asyncio
+import re
 from dataclasses import dataclass
-from typing import Any, AsyncGenerator, Callable, Dict, List, Optional
+from typing import Any, AsyncGenerator, Callable, Dict, List, Optional, Set, Tuple
 from urllib.parse import urlparse
 
 import httpx
@@ -96,7 +97,7 @@ class SharePointOnlineBase(BaseSource):
     - create() — class constructor
     - _get_access_token() — return a valid Microsoft Graph token
     - _handle_401() — refresh/re-exchange on 401, return new token
-    - _make_sp_token_provider() — callable returning SP REST API token
+    - _make_sp_token_provider_for_site(site_url) — per-site SP REST token provider
     - _get_download_auth(url) — auth suitable for file download
     - _discover_sites(graph_client) — site discovery strategy
     """
@@ -105,8 +106,10 @@ class SharePointOnlineBase(BaseSource):
     _site_url: str
     _include_personal_sites: bool
     _include_pages: bool
-    _item_level_entra_groups: set
-    _item_level_sp_groups: set
+    _item_level_entra_groups: Set[str]
+    # Site-scoped SP group tracking: {site_url: {sp_group_name, ...}}
+    # Keyed by normalized site URL so multi-site syncs can expand SP groups per site.
+    _item_level_sp_groups: Dict[str, Set[str]]
 
     def _init_common(self, config: SharePointOnlineConfig) -> None:
         """Initialize fields shared by both OAuth and client-credentials sources."""
@@ -114,7 +117,7 @@ class SharePointOnlineBase(BaseSource):
         self._include_personal_sites = config.include_personal_sites
         self._include_pages = config.include_pages
         self._item_level_entra_groups = set()
-        self._item_level_sp_groups = set()
+        self._item_level_sp_groups = {}
 
     # -- Auth hooks (subclasses override) --
 
@@ -126,8 +129,12 @@ class SharePointOnlineBase(BaseSource):
         """Handle a 401 by refreshing/re-exchanging. Returns new token."""
         raise NotImplementedError
 
-    def _make_sp_token_provider(self) -> Optional[Callable]:
-        """Create an async callable returning a SharePoint REST API token, or None."""
+    def _make_sp_token_provider_for_site(self, site_url: str) -> Optional[Callable]:
+        """Create an SP REST token provider scoped to a specific site URL.
+
+        Subclasses must override. Returns None if a token cannot be obtained
+        for the given site (e.g., malformed URL).
+        """
         raise NotImplementedError
 
     async def _get_download_auth(self, url: str) -> Any:
@@ -191,16 +198,101 @@ class SharePointOnlineBase(BaseSource):
         parsed = urlparse(self._site_url)
         return parsed.netloc or None
 
-    def _track_entity_groups(self, entity: BaseEntity) -> None:
-        """Track Entra ID and SP site groups found in entity permissions."""
+    @staticmethod
+    def _normalize_site_url(site_url: str) -> str:
+        """Normalize a site URL for use as a dict key (strip trailing slash)."""
+        return (site_url or "").rstrip("/")
+
+    def _track_entity_groups(self, entity: BaseEntity, site_url: str = "") -> None:
+        """Track Entra ID and SP site groups found in entity permissions.
+
+        Args:
+            entity: The entity whose access viewers to inspect.
+            site_url: The site URL this entity belongs to. SP groups are keyed
+                by site URL so multi-site syncs can expand SP groups per-site.
+                May be empty for paths that lack site context (incremental /
+                targeted single-file); those SP groups won't expand.
+        """
         if not hasattr(entity, "access") or entity.access is None:
             return
+        norm_site = self._normalize_site_url(site_url)
         for viewer in entity.access.viewers or []:
             if viewer.startswith("group:entra:"):
                 group_id = viewer[len("group:") :]
                 self._item_level_entra_groups.add(group_id)
             elif viewer.startswith("group:sp:"):
-                self._item_level_sp_groups.add(viewer[len("group:") :])
+                sp_name = viewer[len("group:") :]
+                self._item_level_sp_groups.setdefault(norm_site, set()).add(sp_name)
+
+    # -- SP site group membership parsing --
+
+    # Match regular user logins: "i:0#.f|membership|<email>"
+    _MEMBERSHIP_LOGIN_RE = re.compile(r"^i:0#\.f\|membership\|(?P<email>[^|]+@[^|]+)$")
+    # Match Entra federated group logins: "c:0o.c|federateddirectoryclaimprovider|<guid>[_o]"
+    _ENTRA_GROUP_LOGIN_RE = re.compile(
+        r"^c:0o\.c\|federateddirectoryclaimprovider\|"
+        r"(?P<guid>[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-"
+        r"[0-9a-fA-F]{4}-[0-9a-fA-F]{12})(_o)?$"
+    )
+
+    @classmethod
+    def _email_from_membership_login(cls, login: str) -> Optional[str]:
+        """Extract email from SP user LoginName if it follows the membership pattern.
+
+        Only matches "i:0#.f|membership|<email>". Returns None for role principals
+        (e.g., "c:0-.f|rolemanager|spo-grid-all-users/...") and other shapes so
+        we don't pollute the membership table with fake email-like strings.
+        """
+        if not login:
+            return None
+        m = cls._MEMBERSHIP_LOGIN_RE.match(login)
+        if m:
+            return m.group("email").strip().lower() or None
+        return None
+
+    @classmethod
+    def _parse_sp_group_member(cls, user: Dict[str, Any]) -> Optional[Tuple[str, str]]:
+        """Parse one entry from /_api/web/sitegroups({id})/users into (member_id, member_type).
+
+        Returns None for entries that should not become memberships:
+        - Role principals (PrincipalType=16, e.g. "Everyone except external users")
+        - Catch-all "All" principals (PrincipalType=15)
+        - DistList, SPGroup, unknown types (skipped; rare in practice)
+        - Unparseable entries (no email for users, no GUID for groups)
+
+        PrincipalType reference:
+            1  = User
+            2  = DistList
+            4  = SecurityGroup (Entra group when LoginName uses
+                 federateddirectoryclaimprovider)
+            8  = SPGroup
+            15 = All
+            16 = RoleManager
+        """
+        ptype = user.get("PrincipalType")
+        login = user.get("LoginName", "") or ""
+
+        if ptype == 1:
+            email = user.get("Email") or ""
+            email = email.strip().lower()
+            if not email:
+                email = cls._email_from_membership_login(login) or ""
+            if not email:
+                return None
+            # Bare email (no "user:" prefix) matches the broker storage
+            # convention used by EntraGroupExpander and SP 2019 V2.
+            return (email, "user")
+
+        if ptype == 4:
+            m = cls._ENTRA_GROUP_LOGIN_RE.match(login)
+            if not m:
+                return None
+            guid = m.group("guid").lower()
+            return (f"entra:{guid}", "group")
+
+        # PrincipalType 2 (DistList), 8 (SPGroup), 15 (All), 16 (RoleManager),
+        # and unknown types are intentionally skipped.
+        return None
 
     # -- Browse Tree --
 
@@ -440,7 +532,7 @@ class SharePointOnlineBase(BaseSource):
 
     # -- Entity Generation --
 
-    async def generate_entities(
+    async def generate_entities(  # noqa: C901
         self,
         *,
         cursor: SyncCursor | None = None,
@@ -451,8 +543,19 @@ class SharePointOnlineBase(BaseSource):
         cursor_data = cursor.data if cursor else {}
         for g in cursor_data.get("tracked_entra_groups", []):
             self._item_level_entra_groups.add(g)
-        for g in cursor_data.get("tracked_sp_groups", []):
-            self._item_level_sp_groups.add(g)
+
+        # tracked_sp_groups format changed from List[str] (flat names) to
+        # Dict[site_url, List[str]] (site-scoped). Migrate defensively.
+        tracked_sp = cursor_data.get("tracked_sp_groups")
+        if isinstance(tracked_sp, dict):
+            for site_url, names in tracked_sp.items():
+                if isinstance(names, list):
+                    self._item_level_sp_groups[site_url] = set(names)
+        elif isinstance(tracked_sp, list):
+            self.logger.info(
+                "Legacy tracked_sp_groups list format detected; discarding — "
+                "will re-collect on next full sync"
+            )
 
         if node_selections:
             self.logger.info(f"Sync strategy: TARGETED ({len(node_selections)} node selections)")
@@ -495,10 +598,18 @@ class SharePointOnlineBase(BaseSource):
                 new_viewers.append(v)
         entity.access.viewers = new_viewers
 
-    async def _fetch_sp_group_viewers(self) -> List[str]:
-        """Fetch all SP site groups and return their viewer strings."""
-        sp_token_provider = self._make_sp_token_provider()
-        if not sp_token_provider or not self._site_url:
+    async def _fetch_sp_group_viewers(self, site_url: str) -> List[str]:
+        """Fetch all SP site groups for a site and return their viewer strings.
+
+        Args:
+            site_url: Full site URL (e.g. https://tenant.sharepoint.com/sites/X).
+                Required — without it we can't hit the SP REST endpoint.
+        """
+        norm_site = self._normalize_site_url(site_url)
+        if not norm_site:
+            return []
+        sp_token_provider = self._make_sp_token_provider_for_site(norm_site)
+        if not sp_token_provider:
             return []
         try:
             token = await sp_token_provider()
@@ -507,7 +618,7 @@ class SharePointOnlineBase(BaseSource):
                 "Accept": "application/json;odata=verbose",
             }
             resp = await self.http_client.get(
-                f"{self._site_url}/_api/web/sitegroups",
+                f"{norm_site}/_api/web/sitegroups",
                 headers=headers,
                 timeout=30.0,
             )
@@ -515,18 +626,19 @@ class SharePointOnlineBase(BaseSource):
             groups = resp.json().get("d", {}).get("results", [])
 
             viewers = []
+            site_bucket = self._item_level_sp_groups.setdefault(norm_site, set())
             for g in groups:
                 title = g.get("Title", "")
                 if title:
                     tag = f"group:sp:{title.lower().replace(' ', '_')}"
                     viewers.append(tag)
-                    self._item_level_sp_groups.add(tag[len("group:") :])
-            self.logger.info(f"Fetched {len(viewers)} SP site groups as viewers")
+                    site_bucket.add(tag[len("group:") :])
+            self.logger.info(f"Fetched {len(viewers)} SP site groups as viewers for {norm_site}")
             return viewers
         except SourceAuthError:
             raise
         except Exception as e:
-            self.logger.warning(f"SP group fetch failed: {e}")
+            self.logger.warning(f"SP group fetch failed for {norm_site}: {e}")
             return []
 
     async def _full_sync(  # noqa: C901
@@ -541,6 +653,7 @@ class SharePointOnlineBase(BaseSource):
 
         for site_data in sites:
             site_id = site_data.get("id", "")
+            site_url = self._normalize_site_url(site_data.get("webUrl", ""))
 
             # Collect all drives for this site (single API call)
             all_drives = []
@@ -560,7 +673,7 @@ class SharePointOnlineBase(BaseSource):
 
             try:
                 site_entity = await build_site_entity(site_data, [], access=site_access)
-                self._track_entity_groups(site_entity)
+                self._track_entity_groups(site_entity, site_url)
                 yield site_entity
                 entity_count += 1
 
@@ -574,7 +687,7 @@ class SharePointOnlineBase(BaseSource):
                 self.logger.warning(f"Skipping site {site_id}: {e}")
                 continue
 
-            sp_group_viewers = await self._fetch_sp_group_viewers()
+            sp_group_viewers = await self._fetch_sp_group_viewers(site_url)
 
             for drive_data in all_drives:
                 drive_id = drive_data.get("id", "")
@@ -593,7 +706,7 @@ class SharePointOnlineBase(BaseSource):
                     drive_entity = await build_drive_entity(
                         drive_data, site_id, site_breadcrumbs, access=drive_access
                     )
-                    self._track_entity_groups(drive_entity)
+                    self._track_entity_groups(drive_entity, site_url)
                     yield drive_entity
                     entity_count += 1
 
@@ -631,7 +744,7 @@ class SharePointOnlineBase(BaseSource):
                                     for spv in sp_group_viewers:
                                         if spv not in existing:
                                             file_entity.access.viewers.append(spv)
-                                self._track_entity_groups(file_entity)
+                                self._track_entity_groups(file_entity, site_url)
 
                                 if files:
                                     pending_files.append(
@@ -697,7 +810,7 @@ class SharePointOnlineBase(BaseSource):
                             page_entity = await build_page_entity(
                                 page_data, site_id, site_breadcrumbs, access=site_access
                             )
-                            self._track_entity_groups(page_entity)
+                            self._track_entity_groups(page_entity, site_url)
                             yield page_entity
                             entity_count += 1
                         except EntityProcessingError as e:
@@ -718,7 +831,9 @@ class SharePointOnlineBase(BaseSource):
                 full_sync_required=False,
                 total_entities_synced=entity_count,
                 tracked_entra_groups=list(self._item_level_entra_groups),
-                tracked_sp_groups=list(self._item_level_sp_groups),
+                tracked_sp_groups={
+                    site: sorted(names) for site, names in self._item_level_sp_groups.items()
+                },
             )
 
         self.logger.info(f"Full sync complete: {entity_count} entities")
@@ -850,6 +965,7 @@ class SharePointOnlineBase(BaseSource):
 
             try:
                 site_data = await graph_client.get_site(site_id)
+                targeted_site_url = self._normalize_site_url(site_data.get("webUrl", ""))
 
                 # Fetch site-level permissions from first drive root
                 targeted_site_access = None
@@ -862,7 +978,7 @@ class SharePointOnlineBase(BaseSource):
                     break
 
                 site_entity = await build_site_entity(site_data, [], access=targeted_site_access)
-                self._track_entity_groups(site_entity)
+                self._track_entity_groups(site_entity, targeted_site_url)
                 yield site_entity
                 entity_count += 1
             except SourceAuthError:
@@ -1069,51 +1185,85 @@ class SharePointOnlineBase(BaseSource):
             async for membership in group_expander.expand_group(group_id):
                 yield membership
 
-    async def _expand_sp_site_groups(self) -> AsyncGenerator[MembershipTuple, None]:
-        """Expand tracked SP site groups into user memberships."""
-        sp_group_names = list(self._item_level_sp_groups)
-        if not sp_group_names or not self._site_url:
-            return
-        sp_token_provider = self._make_sp_token_provider()
-        if not sp_token_provider:
-            self.logger.warning("No SP token provider for site group expansion")
+    async def _expand_sp_site_groups(  # noqa: C901
+        self,
+    ) -> AsyncGenerator[MembershipTuple, None]:
+        """Expand tracked SP site groups into user/group memberships.
+
+        Iterates per-site: for each site URL we've tracked SP group names against,
+        fetches that site's SP groups via the SharePoint REST API and resolves
+        their members.
+
+        Member types emitted:
+        - ``user`` for real users (PrincipalType=1). Role principals like
+          "Everyone except external users" are skipped.
+        - ``group`` for Entra security groups nested inside SP groups
+          (PrincipalType=4 with federateddirectoryclaimprovider). The broker's
+          recursive group expansion resolves these to individual users at
+          search time.
+        """
+        if not self._item_level_sp_groups:
             return
 
-        self.logger.info(f"Expanding {len(sp_group_names)} SP site groups")
+        total_groups = sum(len(v) for v in self._item_level_sp_groups.values())
+        self.logger.info(
+            f"Expanding {total_groups} SP site groups across "
+            f"{len(self._item_level_sp_groups)} site(s)"
+        )
+
         graph_client = self._create_graph_client()
 
-        sp_groups = await graph_client.get_site_groups(
-            self._site_url,
-            sp_token_provider=sp_token_provider,
-        )
-        sp_name_to_id = {
-            f"sp:{g['Title'].replace(' ', '_').lower()}": g.get("Id")
-            for g in sp_groups
-            if g.get("Title")
-        }
-
-        for sp_name in sp_group_names:
-            sp_id = sp_name_to_id.get(sp_name)
-            if not sp_id:
-                self.logger.debug(f"SP group '{sp_name}' not found in site")
+        for site_url, sp_group_names in self._item_level_sp_groups.items():
+            if not site_url or not sp_group_names:
                 continue
 
-            users = await graph_client.get_site_group_users(
-                self._site_url,
-                sp_id,
-                sp_token_provider=sp_token_provider,
-            )
-            for user in users:
-                email = user.get("Email", "")
-                login = user.get("LoginName", "")
-                if not email and login and "|" in login:
-                    email = login.split("|")[-1]
-                if email:
+            sp_token_provider = self._make_sp_token_provider_for_site(site_url)
+            if not sp_token_provider:
+                self.logger.warning(
+                    f"No SP token provider for site {site_url}; skipping SP group expansion"
+                )
+                continue
+
+            try:
+                sp_groups = await graph_client.get_site_groups(
+                    site_url, sp_token_provider=sp_token_provider
+                )
+            except Exception as e:
+                self.logger.warning(f"Failed to fetch SP groups for {site_url}: {e}")
+                continue
+
+            sp_name_to_id = {
+                f"sp:{g['Title'].replace(' ', '_').lower()}": g.get("Id")
+                for g in sp_groups
+                if g.get("Title")
+            }
+
+            for sp_name in sp_group_names:
+                sp_id = sp_name_to_id.get(sp_name)
+                if not sp_id:
+                    self.logger.debug(f"SP group '{sp_name}' not found in site {site_url}")
+                    continue
+
+                try:
+                    users = await graph_client.get_site_group_users(
+                        site_url, sp_id, sp_token_provider=sp_token_provider
+                    )
+                except Exception as e:
+                    self.logger.warning(
+                        f"Failed to fetch users for SP group {sp_name} in {site_url}: {e}"
+                    )
+                    continue
+
+                for user in users:
+                    parsed = self._parse_sp_group_member(user)
+                    if parsed is None:
+                        continue
+                    member_id, member_type = parsed
                     yield MembershipTuple(
-                        member_id=email.lower(),
-                        member_type="user",
+                        member_id=member_id,
+                        member_type=member_type,
                         group_id=sp_name,
-                        group_name=user.get("Title", sp_name),
+                        group_name=user.get("Title") or sp_name,
                     )
 
     async def generate_access_control_memberships(
@@ -1193,11 +1343,15 @@ class SharePointOnlineSource(SharePointOnlineBase):
             return await self.auth.force_refresh()
         return await self.auth.get_token()
 
-    def _make_sp_token_provider(self) -> Optional[Callable]:
-        """Create SP token provider via OAuth scope exchange."""
-        sp_scope = self._derive_sp_resource_scope()
-        if not sp_scope:
+    def _make_sp_token_provider_for_site(self, site_url: str) -> Optional[Callable]:
+        """Create SP token provider for a specific site URL via OAuth scope exchange."""
+        if not site_url:
             return None
+        parsed = urlparse(site_url)
+        hostname = parsed.netloc
+        if not hostname:
+            return None
+        sp_scope = f"https://{hostname}/.default"
 
         async def _provider() -> str:
             token = await self.get_token_for_resource(sp_scope)
@@ -1206,19 +1360,6 @@ class SharePointOnlineSource(SharePointOnlineBase):
             return token
 
         return _provider
-
-    def _derive_sp_resource_scope(self) -> Optional[str]:
-        """Derive the SharePoint resource scope from the site URL.
-
-        E.g. https://neenacorp.sharepoint.com/sites/JAman
-             -> https://neenacorp.sharepoint.com/.default
-        """
-        if not self._site_url:
-            return None
-        parsed = urlparse(self._site_url)
-        if not parsed.netloc:
-            return None
-        return f"https://{parsed.netloc}/.default"
 
     async def _discover_sites(self, graph_client: GraphClient) -> List[Dict[str, Any]]:
         """Discover sites via Graph search (delegated permissions).
@@ -1430,9 +1571,12 @@ class SharePointOnlineAppSource(SharePointOnlineBase):
         self._graph_token_expires = 0  # force re-exchange
         return await self._get_access_token()
 
-    def _make_sp_token_provider(self) -> Optional[Callable]:
-        """Create SP token provider via certificate exchange."""
-        hostname = self._derive_sp_hostname()
+    def _make_sp_token_provider_for_site(self, site_url: str) -> Optional[Callable]:
+        """Create SP token provider for a specific site URL via certificate exchange."""
+        if not site_url:
+            return None
+        parsed = urlparse(site_url)
+        hostname = parsed.netloc
         if not hostname:
             return None
 

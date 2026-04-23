@@ -36,7 +36,7 @@ def test_model_spec_raises_llm_unavailable_error() -> None:
 @pytest.mark.asyncio
 async def test_close_is_a_safe_noop() -> None:
     llm = UnavailableLLM()
-    assert await llm.close() is None
+    await llm.close()  # must not raise; returns None by type
 
 
 def test_error_message_mentions_accepted_api_key_env_vars() -> None:

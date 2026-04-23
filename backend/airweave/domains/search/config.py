@@ -4,6 +4,58 @@ from enum import Enum
 
 from airweave.adapters.llm.registry import LLMModel, LLMProvider
 from airweave.adapters.tokenizer.registry import TokenizerEncoding, TokenizerType
+from airweave.core.config import settings
+
+_DEFAULT_LLM_FALLBACK_CHAIN: list[tuple[LLMProvider, LLMModel]] = [
+    (LLMProvider.TOGETHER, LLMModel.ZAI_GLM_5),
+    (LLMProvider.ANTHROPIC, LLMModel.CLAUDE_SONNET_4_6),
+]
+
+
+def parse_llm_fallback_chain(raw: str | None) -> list[tuple[LLMProvider, LLMModel]]:
+    """Parse the LLM_FALLBACK_CHAIN env var.
+
+    Format: comma-separated ``provider:model`` pairs using the enum ``value``
+    strings from ``airweave.adapters.llm.registry``. When ``raw`` is None or
+    empty, returns the in-code default chain.
+
+    Raises ValueError at import time (startup) on unknown provider or model names,
+    listing the accepted values so deployers can fix the misconfiguration fast.
+    """
+    if not raw or not raw.strip():
+        return list(_DEFAULT_LLM_FALLBACK_CHAIN)
+
+    valid_providers = {p.value: p for p in LLMProvider}
+    valid_models = {m.value: m for m in LLMModel}
+
+    parsed: list[tuple[LLMProvider, LLMModel]] = []
+    for entry in raw.split(","):
+        entry = entry.strip()
+        if not entry:
+            continue
+        if ":" not in entry:
+            raise ValueError(
+                f"Invalid LLM_FALLBACK_CHAIN entry {entry!r}: expected 'provider:model'."
+            )
+        provider_raw, model_raw = entry.split(":", 1)
+        provider_raw = provider_raw.strip()
+        model_raw = model_raw.strip()
+
+        if provider_raw not in valid_providers:
+            raise ValueError(
+                f"Unknown provider {provider_raw!r} in LLM_FALLBACK_CHAIN. "
+                f"Accepted: {sorted(valid_providers)}."
+            )
+        if model_raw not in valid_models:
+            raise ValueError(
+                f"Unknown model {model_raw!r} in LLM_FALLBACK_CHAIN. "
+                f"Accepted: {sorted(valid_models)}."
+            )
+        parsed.append((valid_providers[provider_raw], valid_models[model_raw]))
+
+    if not parsed:
+        return list(_DEFAULT_LLM_FALLBACK_CHAIN)
+    return parsed
 
 
 class DatabaseImpl(str, Enum):
@@ -35,13 +87,11 @@ class SearchConfig:
     # configured) and responds successfully handles the request. Subsequent
     # providers are only tried when the previous one fails.
     #
-    # To change the primary model, reorder this list or swap the model for a
-    # provider. For example, to use GPT_OSS_120B on Cerebras instead of GLM:
-    #   (LLMProvider.CEREBRAS, LLMModel.GPT_OSS_120B),
-    LLM_FALLBACK_CHAIN: list[tuple[LLMProvider, LLMModel]] = [
-        (LLMProvider.TOGETHER, LLMModel.ZAI_GLM_5),
-        (LLMProvider.ANTHROPIC, LLMModel.CLAUDE_SONNET_4_6),
-    ]
+    # Deployers can override via the LLM_FALLBACK_CHAIN env var
+    # (format: "provider:model,provider:model"). Unset → use the default below.
+    LLM_FALLBACK_CHAIN: list[tuple[LLMProvider, LLMModel]] = parse_llm_fallback_chain(
+        settings.LLM_FALLBACK_CHAIN
+    )
 
     # Tokenizer
     # Note: Must be compatible with the chosen LLM model (validated at startup)

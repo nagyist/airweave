@@ -1,6 +1,5 @@
 """Coverage tests for SyncOrchestrator — missing state_machine.transition lines."""
 
-import asyncio
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import UUID
@@ -12,6 +11,7 @@ from airweave.core.shared_models import ConnectionStatus, IntegrationType, SyncJ
 from airweave.domains.sync_pipeline.contexts.sync import SyncContext
 from airweave.domains.sync_pipeline.orchestrator import SyncOrchestrator
 from airweave.domains.sync_pipeline.pipeline.entity_tracker import SyncStats
+from airweave.domains.syncs.jobs.types import InvalidTransitionError
 
 MODULE = "airweave.domains.sync_pipeline.orchestrator"
 
@@ -184,11 +184,37 @@ async def test_handle_sync_failure_calls_state_machine_transition():
 
 
 @pytest.mark.unit
-async def test_handle_cancellation_calls_state_machine_transition():
-    """_handle_cancellation calls state_machine.transition with CANCELLED."""
+async def test_handle_cancellation_transitions_through_cancelling():
+    """_handle_cancellation transitions RUNNING → CANCELLING → CANCELLED."""
     orch, sm = _make_orchestrator()
 
     with patch(f"{MODULE}.business_events"):
         await orch._handle_cancellation()
 
-    assert any(c["target"] == SyncJobStatus.CANCELLED for c in sm.calls)
+    targets = [c["target"] for c in sm.calls]
+    assert targets == [SyncJobStatus.CANCELLING, SyncJobStatus.CANCELLED]
+
+
+@pytest.mark.unit
+async def test_handle_cancellation_pending_falls_through_to_cancelled():
+    """When CANCELLING raises InvalidTransitionError (PENDING), go directly to CANCELLED."""
+
+    class PendingStateMachine:
+        def __init__(self):
+            self.calls: list[dict] = []
+
+        async def transition(self, **kwargs):
+            self.calls.append(kwargs)
+            if kwargs["target"] == SyncJobStatus.CANCELLING:
+                raise InvalidTransitionError(
+                    SyncJobStatus.PENDING, SyncJobStatus.CANCELLING
+                )
+            return MagicMock(applied=True)
+
+    orch, sm = _make_orchestrator(state_machine=PendingStateMachine())
+
+    with patch(f"{MODULE}.business_events"):
+        await orch._handle_cancellation()
+
+    targets = [c["target"] for c in sm.calls]
+    assert targets == [SyncJobStatus.CANCELLING, SyncJobStatus.CANCELLED]

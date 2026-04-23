@@ -550,10 +550,34 @@ async def test_cancel_job_success():
 
 
 @pytest.mark.asyncio
-async def test_cancel_job_workflow_not_found_marks_cancelled():
+async def test_cancel_pending_job_transitions_directly_to_cancelled():
     job_id = uuid4()
     job_repo = AsyncMock()
     job = _orm_sync_job(job_id=job_id, status=SyncJobStatus.PENDING)
+    job_repo.get.return_value = job
+
+    temporal = AsyncMock()
+    job_sm = AsyncMock()
+    db = AsyncMock()
+
+    svc = _build_svc(
+        sync_job_repo=job_repo,
+        temporal_workflow_service=temporal,
+        job_state_machine=job_sm,
+    )
+    await svc.cancel_job(db, job_id=job_id, ctx=_mock_ctx())
+
+    job_sm.transition.assert_awaited_once()
+    assert job_sm.transition.call_args.kwargs["target"] == SyncJobStatus.CANCELLED
+    temporal.cancel_sync_job_workflow.assert_awaited_once()
+    db.refresh.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_cancel_job_workflow_not_found_marks_cancelled():
+    job_id = uuid4()
+    job_repo = AsyncMock()
+    job = _orm_sync_job(job_id=job_id, status=SyncJobStatus.RUNNING)
     job_repo.get.return_value = job
 
     temporal = AsyncMock()
@@ -573,6 +597,8 @@ async def test_cancel_job_workflow_not_found_marks_cancelled():
     await svc.cancel_job(db, job_id=job_id, ctx=_mock_ctx())
 
     assert job_sm.transition.await_count == 2
+    first_call = job_sm.transition.call_args_list[0].kwargs
+    assert first_call["target"] == SyncJobStatus.CANCELLING
     second_call = job_sm.transition.call_args_list[1].kwargs
     assert second_call["target"] == SyncJobStatus.CANCELLED
 

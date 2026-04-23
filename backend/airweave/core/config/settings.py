@@ -195,6 +195,13 @@ class Settings(BaseSettings):
     TOGETHER_API_KEY: Optional[str] = None
     AZURE_KEYVAULT_NAME: Optional[str] = None
 
+    # Overrides SearchConfig.LLM_FALLBACK_CHAIN when set.
+    # Format: comma-separated "provider:model" pairs using the values from
+    # airweave.adapters.llm.registry (e.g. "mistral:mistral-large" or
+    # "together:zai-glm-5,anthropic:claude-sonnet-4.6"). Unset → use the
+    # in-code default in domains/search/config.py.
+    LLM_FALLBACK_CHAIN: Optional[str] = None
+
     # Docling OCR fallback service (None = disabled)
     DOCLING_BASE_URL: Optional[str] = None
 

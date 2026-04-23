@@ -22,6 +22,7 @@ from airweave.core.exceptions import (
     AirweaveException,
     InvalidInputError,
     InvalidStateError,
+    LLMUnavailableError,
     NotFoundException,
     PermissionException,
     RateLimitExceededException,
@@ -437,6 +438,7 @@ async def airweave_exception_handler(request: Request, exc: AirweaveException) -
     # Add new base classes here as they're introduced (BadRequestError, etc.).
     status_map = {
         TokenRefreshError: 401,
+        LLMUnavailableError: 503,
     }
 
     for exc_type, code in status_map.items():

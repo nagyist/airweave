@@ -208,6 +208,23 @@ class RateLimitExceededException(AirweaveException):
         super().__init__(self.message)
 
 
+class LLMUnavailableError(AirweaveException):
+    """Raised when an LLM-backed feature is requested but no LLM provider is configured.
+
+    The container wires an UnavailableLLM null-object when LLM_FALLBACK_CHAIN has no
+    entries with a configured API key. Instant search still works; classic/agentic
+    search surface this on first use and map to HTTP 503.
+    """
+
+    def __init__(
+        self,
+        message: str = ("No LLM provider configured. See LLM_FALLBACK_CHAIN docs for setup."),
+    ):
+        """Create a new LLMUnavailableError with an actionable message."""
+        self.message = message
+        super().__init__(self.message)
+
+
 class SourceRateLimitExceededException(Exception):
     """Exception raised when source API rate limit is exceeded.
 

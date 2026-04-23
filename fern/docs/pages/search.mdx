@@ -581,3 +581,60 @@ This allows expressions like: `(A AND B) OR (C AND D)`
 ## Response Format
 
 All three tiers return the same `SearchV2Response` with a `results` array. See the [API Reference](/api-reference/collections/instant-search) for the full response schema and interactive examples.
+
+
+## Configuring the LLM provider chain
+
+<Callout intent="note" title="Self-hosted only">
+  This section is only relevant to self-hosted deployments. The managed service ships with providers configured.
+</Callout>
+
+Classic and Agentic search call an LLM. Instant search does not — a backend with no LLM configured still answers instant queries, and Classic/Agentic return HTTP 503 until an API key is set.
+
+### Default chain
+
+Out of the box, Airweave tries providers in this order:
+
+1. `together:zai-glm-5`
+2. `anthropic:claude-sonnet-4.6`
+
+The first provider with an API key set that responds successfully handles the request. Subsequent entries are tried only on failure.
+
+### Setting API keys
+
+Set at least one of the following environment variables on the backend:
+
+| Env var | Provider |
+|---|---|
+| `TOGETHER_API_KEY` | Together |
+| `ANTHROPIC_API_KEY` | Anthropic |
+| `MISTRAL_API_KEY` | Mistral |
+| `GROQ_API_KEY` | Groq |
+| `CEREBRAS_API_KEY` | Cerebras |
+
+If none are set, the backend boots normally; Classic/Agentic search return `503 Service Unavailable` with a message listing these variables.
+
+### Overriding the chain
+
+Set `LLM_FALLBACK_CHAIN` to a comma-separated list of `provider:model` pairs. Example:
+
+```
+LLM_FALLBACK_CHAIN=cerebras:gpt-oss-120b,anthropic:claude-sonnet-4.6
+```
+
+Supported providers: `cerebras`, `groq`, `anthropic`, `together`, `mistral`. The full list of models per provider lives in `backend/airweave/adapters/llm/registry.py`.
+
+The parser validates three things at startup:
+
+- Every provider is a known provider.
+- Every model is a known model.
+- Every `(provider, model)` combination exists in the registry (e.g. `together:mistral-large` is rejected because `mistral-large` is hosted on Mistral, not Together).
+
+Misconfiguration is caught at startup with an error that lists the accepted values.
+
+### Fallback semantics
+
+- Providers without an API key are silently skipped when the chain is built.
+- Providers whose initialization raises are logged and skipped.
+- If the resulting chain is empty, the backend wires a null LLM — instant search still works; Classic/Agentic return 503.
+- When a call fails in a chained provider, the next one is tried; a circuit breaker temporarily removes providers that recently failed.

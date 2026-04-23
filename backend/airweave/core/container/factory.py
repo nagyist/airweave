@@ -1200,6 +1200,13 @@ def _build_llm_chain(
         LLMProvider.TOGETHER: TogetherLLM,
     }
 
+    def _unavailable(reason: str, level: str = "info") -> UnavailableLLM:
+        getattr(logger, level)(
+            f"[SearchFactory] {reason} — classic/agentic search will return HTTP 503 "
+            "until a key is set. Instant search is unaffected."
+        )
+        return UnavailableLLM()
+
     # Collect available (provider, model_spec, class) tuples first,
     # then decide retry strategy based on how many survived.
     available = []
@@ -1218,11 +1225,7 @@ def _build_llm_chain(
         available.append((provider, model, model_spec, provider_cls))
 
     if not available:
-        logger.info(
-            "[SearchFactory] No LLM provider API keys configured — classic/agentic "
-            "search will return HTTP 503 until a key is set. Instant search is unaffected."
-        )
-        return UnavailableLLM()
+        return _unavailable("No LLM provider API keys configured")
 
     # Single provider: use default retries.
     # Multiple providers: max_retries=0 for all except the last provider,
@@ -1244,11 +1247,7 @@ def _build_llm_chain(
             )
 
     if not llm_providers:
-        logger.warning(
-            "[SearchFactory] All configured LLM providers failed to initialize — "
-            "classic/agentic search will return HTTP 503. Instant search is unaffected."
-        )
-        return UnavailableLLM()
+        return _unavailable("All configured LLM providers failed to initialize", level="warning")
 
     if len(llm_providers) == 1:
         return llm_providers[0]

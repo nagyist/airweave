@@ -4,6 +4,8 @@ from typing import Optional
 
 from pydantic import ValidationError
 
+from airweave.adapters.llm.registry import PROVIDER_API_KEY_SETTINGS
+
 
 class AirweaveException(Exception):
     """Base exception for Airweave services."""
@@ -219,10 +221,9 @@ class LLMUnavailableError(AirweaveException):
     def __init__(self, message: Optional[str] = None):
         """Create a new LLMUnavailableError with an actionable default message."""
         if message is None:
+            env_vars = ", ".join(PROVIDER_API_KEY_SETTINGS.values())
             message = (
-                "No LLM provider configured. Set one of: "
-                "TOGETHER_API_KEY, ANTHROPIC_API_KEY, MISTRAL_API_KEY, "
-                "GROQ_API_KEY, CEREBRAS_API_KEY — "
+                f"No LLM provider configured. Set one of: {env_vars} — "
                 "or customize the chain via LLM_FALLBACK_CHAIN "
                 "(format: 'provider:model,provider:model')."
             )

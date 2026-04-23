@@ -11,6 +11,11 @@ _DEFAULT_LLM_FALLBACK_CHAIN: list[tuple[LLMProvider, LLMModel]] = [
     (LLMProvider.ANTHROPIC, LLMModel.CLAUDE_SONNET_4_6),
 ]
 
+# Value → enum lookup tables built once at import time. Dict insertion order
+# matches enum declaration order, which we surface in error messages.
+_VALID_PROVIDERS: dict[str, LLMProvider] = {p.value: p for p in LLMProvider}
+_VALID_MODELS: dict[str, LLMModel] = {m.value: m for m in LLMModel}
+
 
 def parse_llm_fallback_chain(raw: str | None) -> list[tuple[LLMProvider, LLMModel]]:
     """Parse the LLM_FALLBACK_CHAIN env var.
@@ -25,9 +30,6 @@ def parse_llm_fallback_chain(raw: str | None) -> list[tuple[LLMProvider, LLMMode
     if not raw or not raw.strip():
         return list(_DEFAULT_LLM_FALLBACK_CHAIN)
 
-    valid_providers = {p.value: p for p in LLMProvider}
-    valid_models = {m.value: m for m in LLMModel}
-
     parsed: list[tuple[LLMProvider, LLMModel]] = []
     for entry in raw.split(","):
         entry = entry.strip()
@@ -41,17 +43,17 @@ def parse_llm_fallback_chain(raw: str | None) -> list[tuple[LLMProvider, LLMMode
         provider_raw = provider_raw.strip()
         model_raw = model_raw.strip()
 
-        if provider_raw not in valid_providers:
+        if provider_raw not in _VALID_PROVIDERS:
             raise ValueError(
                 f"Unknown provider {provider_raw!r} in LLM_FALLBACK_CHAIN. "
-                f"Accepted: {sorted(valid_providers)}."
+                f"Accepted: {list(_VALID_PROVIDERS)}."
             )
-        if model_raw not in valid_models:
+        if model_raw not in _VALID_MODELS:
             raise ValueError(
                 f"Unknown model {model_raw!r} in LLM_FALLBACK_CHAIN. "
-                f"Accepted: {sorted(valid_models)}."
+                f"Accepted: {list(_VALID_MODELS)}."
             )
-        parsed.append((valid_providers[provider_raw], valid_models[model_raw]))
+        parsed.append((_VALID_PROVIDERS[provider_raw], _VALID_MODELS[model_raw]))
 
     if not parsed:
         return list(_DEFAULT_LLM_FALLBACK_CHAIN)
@@ -89,6 +91,9 @@ class SearchConfig:
     #
     # Deployers can override via the LLM_FALLBACK_CHAIN env var
     # (format: "provider:model,provider:model"). Unset → use the default below.
+    # Evaluated once at class-definition time. Tests that need to vary this must
+    # call parse_llm_fallback_chain directly or reload the module — monkey-
+    # patching settings.LLM_FALLBACK_CHAIN after import has no effect here.
     LLM_FALLBACK_CHAIN: list[tuple[LLMProvider, LLMModel]] = parse_llm_fallback_chain(
         settings.LLM_FALLBACK_CHAIN
     )

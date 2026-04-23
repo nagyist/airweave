@@ -9,10 +9,11 @@ exception handler maps to HTTP 503.
 
 from __future__ import annotations
 
-from typing import Any, TypeVar
+from typing import TypeVar
 
 from pydantic import BaseModel
 
+from airweave.adapters.llm.registry import LLMModelSpec
 from airweave.adapters.llm.tool_response import LLMResponse
 from airweave.core.exceptions import LLMUnavailableError
 
@@ -28,7 +29,7 @@ class UnavailableLLM:
     """
 
     @property
-    def model_spec(self) -> Any:
+    def model_spec(self) -> LLMModelSpec:
         """Raise because no provider is configured."""
         raise LLMUnavailableError()
 
